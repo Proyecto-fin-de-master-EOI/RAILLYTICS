@@ -1,0 +1,24 @@
+# === Ingesta (capa Bronze) ===
+requests~=2.32          # Descarga de APIs REST (Renfe Open Data, AEMET, BOE)
+python-dotenv~=1.0      # Carga de variables de entorno desde .env
+pandas~=2.2             # Manipulación de datos en la ingesta
+pyarrow~=16.1           # Lectura/escritura Parquet
+
+# === Procesamiento (capa Silver) ===
+pyspark~=3.5            # Limpieza, normalización y enriquecimiento
+delta-spark~=3.2        # Delta Lake sobre Spark (versionado, ACID) — compatible con PySpark 3.5
+
+# === Modelo dimensional (capa Gold) ===
+dbt-core~=1.8           # Transformaciones Silver → Gold
+dbt-snowflake~=1.8      # Adaptador dbt para Snowflake
+
+# === Machine Learning ===
+scikit-learn~=1.5       # Modelo predictivo de demanda
+numpy~=1.26             # Dependencia base de scikit-learn
+
+# === Exploración ===
+jupyter~=1.0            # Notebooks de EDA
+matplotlib~=3.9         # Visualización en notebooks
+
+# === Testing ===
+pytest~=8.2             # Tests unitarios de ingesta y transformaciones

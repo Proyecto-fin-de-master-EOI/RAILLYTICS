@@ -1,1 +1,67 @@
-.idea
+# === IDEs y editores ===
+.idea/
+.vscode/
+*.swp
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.python-version
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Testing y cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Type checkers y linters
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# === Credenciales y configuración local ===
+.env
+*.local.yml
+secrets/
+
+# === Data Lake (Bronze/Silver/Gold) — datos generados, no se versionan ===
+# Se ignora el contenido de data/ pero se conserva el esqueleto de carpetas (.gitkeep)
+data/**
+!data/**/
+!data/**/.gitkeep
+*.parquet
+
+# === Spark / Delta Lake ===
+spark-warehouse/
+metastore_db/
+derby.log
+*.crc
+_delta_log/
+
+# === dbt ===
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+logs/
+
+# === Power BI (ficheros temporales) ===
+*.pbix.tmp
+~$*.pbix
+
+# === Sistema operativo ===
+.DS_Store
+Thumbs.db
+.claude
+.remember
