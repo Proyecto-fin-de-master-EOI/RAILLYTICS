@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Ejecuta los tests SBT antes de pushear, solo si el push incluye cambios en Scala/SBT.
+set -euo pipefail
+
+zero="0000000000000000000000000000000000000000"
+has_scala_changes=false
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue # borrado de rama remota
+
+  if [ "$remote_sha" = "$zero" ]; then
+    range="$local_sha"
+  else
+    range="$remote_sha..$local_sha"
+  fi
+
+  if git diff --name-only "$range" 2>/dev/null | grep -qE '(^|/)([^/]+\.(scala|sbt)|project/.*)$'; then
+    has_scala_changes=true
+  fi
+done
+
+if [ "$has_scala_changes" = false ]; then
+  exit 0
+fi
+
+if ! command -v sbt >/dev/null 2>&1; then
+  echo "⚠ sbt no está en el PATH, se omite la comprobación de tests." >&2
+  exit 0
+fi
+
+echo "→ Cambios en Scala/SBT detectados, ejecutando tests (sbt test)..."
+if ! sbt -batch test; then
+  echo "✗ sbt test ha fallado. Push abortado." >&2
+  exit 1
+fi
+echo "✓ sbt test OK"

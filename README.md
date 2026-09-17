@@ -90,6 +90,23 @@ RAILLYTICS/
 
 ---
 
+## Git hooks
+
+El repositorio incluye hooks versionados en `.githooks/` (no en `.git/hooks/`, que no se versiona):
+
+- **pre-commit**: si hay ficheros `.scala`/`.sbt`/`project/**` en staging, ejecuta `sbt compile` y bloquea el commit si falla.
+- **pre-push**: si el push incluye cambios en `.scala`/`.sbt`/`project/**`, ejecuta `sbt test` y bloquea el push si falla.
+
+Ambos se omiten (sin ejecutar sbt) si no hay cambios relevantes en Scala/SBT, para no ralentizar commits de Python/dbt/Airflow.
+
+Activación local (una sola vez por clon del repo):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+---
+
 ## Criterios de nombrado de ramas
 
 | Rama         | Propósito                                                                                          |
