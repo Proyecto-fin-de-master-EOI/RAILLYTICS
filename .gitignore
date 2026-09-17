@@ -56,9 +56,26 @@ dbt/dbt_packages/
 dbt/logs/
 logs/
 
+# === Airflow (docker-compose) — artefactos generados, no se versionan ===
+!docker/airflow/logs/
+docker/airflow/logs/**
+!docker/airflow/logs/**/
+!docker/airflow/logs/**/.gitkeep
+docker/airflow/config/airflow.cfg
+
 # === Power BI (ficheros temporales) ===
 *.pbix.tmp
 ~$*.pbix
+
+# === Scala / SBT ===
+/target/
+project/target/
+project/project/
+.bloop/
+.bsp/
+.metals/
+.ammonite/
+metals.sbt
 
 # === Sistema operativo ===
 .DS_Store

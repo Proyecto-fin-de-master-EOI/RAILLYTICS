@@ -60,12 +60,18 @@ RAILLYTICS/
 │   ├── silver/                 # Datos limpios, normalizados y enriquecidos (Delta Lake)
 │   └── gold/                   # Modelo dimensional local previo a carga en Snowflake
 │
-├── src/
+├── python/
 │   └── raillytics/
 │       ├── ingesta/            # Scripts Python de descarga y validación (capa Bronze)
 │       ├── procesamiento/      # Jobs PySpark de limpieza y enriquecimiento (capa Silver)
 │       ├── ml/                 # Modelo predictivo Scikit-learn (features, entrenamiento, evaluación)
 │       └── utils/              # Utilidades comunes (logging, validación de esquemas, helpers)
+│
+├── build.sbt                   # Proyecto SBT (Scala 2.13 / Spark 4.2) en la raíz para que IntelliJ lo reconozca
+├── project/                    # Metadatos del build SBT (build.properties)
+├── src/
+│   ├── main/scala/raillytics/  # Jobs Spark en Scala
+│   └── test/scala/raillytics/  # Tests ScalaTest
 │
 ├── dbt/                        # Proyecto dbt: transformaciones Silver → Gold
 │   ├── models/
