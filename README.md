@@ -102,8 +102,14 @@ Ambos se omiten (sin ejecutar sbt) si no hay cambios relevantes en Scala/SBT, pa
 Activación local (una sola vez por clon del repo):
 
 ```bash
-git config core.hooksPath .githooks
+# Linux / macOS
+./scripts/install-githooks.sh
+
+# Windows (PowerShell)
+.\scripts\install-githooks.ps1
 ```
+
+Ambos scripts hacen lo mismo: `git config core.hooksPath .githooks` (y en Linux/macOS marcan los hooks como ejecutables).
 
 ---
 
