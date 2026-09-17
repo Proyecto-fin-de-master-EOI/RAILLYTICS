@@ -3,6 +3,7 @@ requests~=2.32          # Descarga de APIs REST (Renfe Open Data, AEMET, BOE)
 python-dotenv~=1.0      # Carga de variables de entorno desde .env
 pandas~=2.2             # Manipulación de datos en la ingesta
 pyarrow~=16.1           # Lectura/escritura Parquet
+PyYAML~=6.0              # Parseo de config/data_sources.yml
 
 # === Procesamiento (capa Silver) ===
 pyspark~=3.5            # Limpieza, normalización y enriquecimiento
