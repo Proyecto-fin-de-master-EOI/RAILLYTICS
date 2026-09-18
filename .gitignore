@@ -77,6 +77,9 @@ project/project/
 .ammonite/
 metals.sbt
 
+# === Documentación de trabajo (specs/planes de Claude Code) — no se versiona ===
+docs/superpowers/
+
 # === Sistema operativo ===
 .DS_Store
 Thumbs.db
