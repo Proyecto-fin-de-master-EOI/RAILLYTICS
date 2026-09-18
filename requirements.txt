@@ -5,10 +5,6 @@ pandas~=2.2             # Manipulación de datos en la ingesta
 pyarrow~=16.1           # Lectura/escritura Parquet
 PyYAML~=6.0              # Parseo de config/data_sources.yml
 
-# === Procesamiento (capa Silver) ===
-pyspark~=3.5            # Limpieza, normalización y enriquecimiento
-delta-spark~=3.2        # Delta Lake sobre Spark (versionado, ACID) — compatible con PySpark 3.5
-
 # === Modelo dimensional (capa Gold) ===
 dbt-core~=1.8           # Transformaciones Silver → Gold
 dbt-snowflake~=1.8      # Adaptador dbt para Snowflake
