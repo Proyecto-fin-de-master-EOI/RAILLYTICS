@@ -40,9 +40,16 @@ object ParquetConverterApp {
   def startQuery(source: DataSource, bronzeRoot: String, l1DoneRoot: String, processedRoot: String,
                  checkpointRoot: String, hadoopConf: Configuration)
                 (implicit spark: SparkSession): StreamingQuery = {
-    spark.readStream
-      .format(source.format)               // "csv" | "json", desde el YAML
-      .option("header", "true")
+    val reader = spark.readStream.format(source.format) // "csv" | "json", desde el YAML
+    val readerWithOptions = source.format match {
+      case "csv" => reader.option("header", "true")
+      // Los feeds GTFS-RT (y JSON en general) suelen venir como un único objeto
+      // JSON multi-línea, no JSON-Lines — sin multiLine, Spark trocea el fichero
+      // línea a línea y casi todas las líneas acaban en _corrupt_record.
+      case "json" => reader.option("multiLine", "true")
+      case _ => reader
+    }
+    readerWithOptions
       .load(s"$l1DoneRoot/${source.id}/*")  // plano, sin recursión (hermano de data/bronze/)
       .withColumn(SourceFileCol, input_file_name())
       .writeStream

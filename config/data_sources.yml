@@ -3,3 +3,11 @@ sources:
     name: "CRTM - Consorcio Regional de Transportes de Madrid"
     url: "https://crtm.maps.arcgis.com/sharing/rest/content/items/1a25440bf66f499bae2657ec7fb40144/data"
     format: csv
+  - id: renfe_trip_updates
+    name: "Renfe GTFS-RT - Actualizaciones de viaje (Larga Distancia)"
+    url: "https://gtfsrt.renfe.com/trip_updates_LD.json"
+    format: json
+  - id: renfe_vehicle_positions
+    name: "Renfe GTFS-RT - Posiciones de vehículos (Larga Distancia)"
+    url: "https://gtfsrt.renfe.com/vehicle_positions_LD.json"
+    format: json
