@@ -1,0 +1,4 @@
+# Silencia los WARNING de acceso nativo/sun.misc.Unsafe que emiten las
+# dependencias internas del propio launcher de sbt (jna, zero-allocation-hashing)
+# en JDK 17+ — no vienen de este proyecto, son ruido del arranque de sbt.
+--enable-native-access=ALL-UNNAMED

@@ -76,6 +76,10 @@ services:
       POSTGRES_USER: ${AIRFLOW_POSTGRES_USER:-airflow}
       POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD:?AIRFLOW_POSTGRES_PASSWORD debe definirse en .env}
       POSTGRES_DB: ${AIRFLOW_POSTGRES_DB:-airflow}
+      # La imagen base declara LANG=en_US.utf8, pero Alpine (musl) no trae esa
+      # locale instalada -> initdb avisa "no usable system locales were found".
+      # C.UTF-8 sí es nativa de musl, así que initdb no tiene que buscar nada.
+      LANG: C.UTF-8
     volumes:
       - airflow_postgres_data:/var/lib/postgresql/data
     healthcheck:
