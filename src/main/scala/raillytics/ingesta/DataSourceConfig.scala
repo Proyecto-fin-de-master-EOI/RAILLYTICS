@@ -1,5 +1,6 @@
 package raillytics.ingesta
 
+import org.slf4j.LoggerFactory
 import org.yaml.snakeyaml.{LoaderOptions, Yaml}
 import org.yaml.snakeyaml.constructor.SafeConstructor
 
@@ -11,10 +12,15 @@ case class DataSource(id: String, name: String, url: String, format: String)
 object DataSourceConfig {
   val SupportedFormats: Set[String] = Set("csv", "json")
 
+  private val logger = LoggerFactory.getLogger(getClass.getName.stripSuffix("$"))
+
   def load(path: String): Seq[DataSource] = {
+    logger.info(s"cargando fuentes de datos desde '$path'")
     val is = new FileInputStream(path)
-    try loadFromStream(is)
+    val sources = try loadFromStream(is)
     finally is.close()
+    logger.info(s"${sources.size} fuente(s) cargada(s): ${sources.map(_.id).mkString(", ")}")
+    sources
   }
 
   def loadFromStream(is: InputStream): Seq[DataSource] = {

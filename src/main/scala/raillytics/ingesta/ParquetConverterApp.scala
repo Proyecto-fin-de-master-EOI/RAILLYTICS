@@ -5,12 +5,15 @@ import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions.input_file_name
 import org.apache.spark.sql.streaming.StreamingQuery
+import org.slf4j.LoggerFactory
 
 import java.net.URI
 import java.time.LocalDate
 import scala.util.{Failure, Success, Try}
 
 object ParquetConverterApp {
+
+  private val logger = LoggerFactory.getLogger(getClass.getName.stripSuffix("$"))
 
   // Columna de bookkeeping (no analítica): readStream sobre csv/json no expone
   // "path" como sí hace binaryFile, así que hace falta input_file_name() para
@@ -24,15 +27,18 @@ object ParquetConverterApp {
 
     filePaths.foreach { localUri =>
       val srcPath = new Path(localUri)
+      logger.debug(s"moviendo '$srcPath' -> '$destDir' (fuente=$source)")
       localFs.rename(srcPath, new Path(destDir, srcPath.getName))
     }
   }
 
   def processBatch(source: DataSource, batch: DataFrame, hadoopConf: Configuration, bronzeRoot: String, processedRoot: String): Unit = {
     val filesInBatch = batch.select(SourceFileCol).distinct().collect().map(_.getString(0)).toSeq
+    logger.info(s"micro-batch de la fuente '${source.id}': ${filesInBatch.size} fichero(s)")
 
-    batch.drop(SourceFileCol).write.mode("append")
-      .parquet(BronzePaths.l2(bronzeRoot, source.id, LocalDate.now()))
+    val destPath = BronzePaths.l2(bronzeRoot, source.id, LocalDate.now())
+    batch.drop(SourceFileCol).write.mode("append").parquet(destPath)
+    logger.debug(s"batch de '${source.id}' escrito en '$destPath'")
 
     moveProcessedFiles(filesInBatch, hadoopConf, source.id, processedRoot)
   }
@@ -40,6 +46,7 @@ object ParquetConverterApp {
   def startQuery(source: DataSource, bronzeRoot: String, l1DoneRoot: String, processedRoot: String,
                  checkpointRoot: String, hadoopConf: Configuration)
                 (implicit spark: SparkSession): StreamingQuery = {
+    logger.debug(s"preparando query de la fuente '${source.id}' (formato=${source.format})")
     val reader = spark.readStream.format(source.format) // "csv" | "json", desde el YAML
     val readerWithOptions = source.format match {
       case "csv" => reader.option("header", "true")
@@ -67,6 +74,11 @@ object ParquetConverterApp {
     val checkpointRoot = sys.env.getOrElse("CHECKPOINT_ROOT", "data/checkpoints")
     val bronzeRoot = s"s3a://${sys.env.getOrElse("MINIO_BUCKET_BRONZE", "raillytics-bronze")}"
 
+    logger.info(
+      s"arrancando parquet-converter (configPath=$configPath, l1DoneRoot=$l1DoneRoot, " +
+        s"processedRoot=$processedRoot, checkpointRoot=$checkpointRoot, bronzeRoot=$bronzeRoot)"
+    )
+
     implicit val spark: SparkSession = SparkSessionFactory.build("parquet-converter")
     // Igual que en RawUploaderApp: readStream sobre csv/json también exige inferencia
     // de esquema (o un esquema explícito) antes de resolver la fuente.
@@ -79,13 +91,24 @@ object ParquetConverterApp {
     // schemaInference lanza una AnalysisException síncrona dentro del
     // .foreach -- sin el Try, eso tumbaría main() entero y ninguna otra
     // fuente (aunque esté sana) llegaría a arrancar su query.
+    var startedQueries = 0
     DataSourceConfig.load(configPath).foreach { source =>
       Try(startQuery(source, bronzeRoot, l1DoneRoot, processedRoot, checkpointRoot, hadoopConf)) match {
         case Success(_) =>
-          println(s"[parquet-converter] query iniciada para la fuente '${source.id}'")
+          startedQueries += 1
+          logger.info(s"query iniciada para la fuente '${source.id}'")
         case Failure(e) =>
-          println(s"[parquet-converter] WARN: no se pudo iniciar la query para '${source.id}': ${e.getMessage}")
+          logger.warn(s"no se pudo iniciar la query para '${source.id}': ${e.getMessage}", e)
       }
+    }
+
+    // Si todas las fuentes fallan al arrancar, awaitAnyTermination() se queda
+    // bloqueado indefinidamente sin ninguna query viva -- este aviso hace visible
+    // ese estado en vez de que el proceso parezca "vivo" sin hacer nada.
+    if (startedQueries == 0) {
+      logger.warn("ninguna query se pudo iniciar; el proceso quedará bloqueado sin trabajo que hacer")
+    } else {
+      logger.info(s"$startedQueries query(s) activa(s), esperando a que termine alguna")
     }
 
     // Si una query muere (p.ej. fichero mal formado), todo el proceso termina en
