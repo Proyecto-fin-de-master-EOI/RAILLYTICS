@@ -34,11 +34,16 @@ ifeq ($(OS),Windows_NT)
   VENV_BASE_PYTHON ?= py -3.12
   VENV_PY = $(VENV)/Scripts/python
   INSTALL_HOOKS_CMD = powershell -ExecutionPolicy Bypass -File scripts/install-githooks.ps1
+  # sbt es sbt.bat: con Ctrl+C, cmd.exe se queda preguntando "¿Desea terminar
+  # el trabajo por lotes (S/N)?" y deja la terminal inservible. El wrapper
+  # espera a que java pare y cierra ese cmd sin preguntar.
+  SBT = $(PYTHON) scripts/run_sbt.py
 else
   PYTHON ?= python3
   VENV_BASE_PYTHON ?= python3
   VENV_PY = $(VENV)/bin/python
   INSTALL_HOOKS_CMD = ./scripts/install-githooks.sh
+  SBT = sbt
 endif
 
 COMPOSE = docker compose -f docker/docker-compose.yml --env-file .env
@@ -93,13 +98,13 @@ test-python: $(VENV)/.deps-installed
 	$(VENV_PY) -m pytest -q
 
 test-scala:
-	sbt -batch test
+	$(SBT) -batch test
 
 01_raw-uploader:
-	sbt -batch "runMain raillytics.ingesta.l1.RawUploaderApp"
+	$(SBT) -batch "runMain raillytics.ingesta.l1.RawUploaderApp"
 
 02_parquet-converter:
-	sbt -batch "runMain raillytics.ingesta.l2.ParquetConverterApp"
+	$(SBT) -batch "runMain raillytics.ingesta.l2.ParquetConverterApp"
 
 00_ingest:
 	$(COMPOSE) exec airflow-scheduler airflow dags trigger ingesta_data_sources
