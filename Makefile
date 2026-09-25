@@ -31,9 +31,9 @@ VENV := .venv
 PYTHONPATH := python
 
 ifeq ($(OS),Windows_NT)
-  # Spark/Hadoop en Windows necesita winutils.exe; el `export` de arriba lo
-  # pasa a sbt y al resto de subprocesos. Sobreescribible desde el entorno o .env.
-  HADOOP_HOME ?= C:\dev\winutils\hadoop-3.0.0
+  # Spark/Hadoop en Windows necesita winutils.exe: HADOOP_HOME se define en .env
+  # (ver .env.example) y el `export` de arriba lo pasa a sbt y al resto de
+  # subprocesos.
   PYTHON ?= python
   VENV_BASE_PYTHON ?= py -3.12
   VENV_PY = $(VENV)/Scripts/python
