@@ -8,10 +8,11 @@ en los buckets de MinIO a través de la extensión httpfs.
 
 La configuración sale de las mismas variables de entorno que ya usan las apps
 Spark de ingesta (MINIO_ENDPOINT, MINIO_ROOT_USER, MINIO_ROOT_PASSWORD,
-MINIO_BUCKET_SILVER, MINIO_BUCKET_GOLD). SILVER_ROOT / GOLD_ROOT permiten
-apuntar a directorios locales (tests, desarrollo sin MinIO).
+MINIO_BUCKET_SILVER, MINIO_BUCKET_GOLD). SILVER_ROOT / GOLD_ROOT (y
+TRAZABILIDAD_ROOT para el registro de cargas) permiten apuntar a directorios
+locales (tests, desarrollo sin MinIO).
 
-Uso como script:  python -m raillytics.gold.lake persist-secret
+Uso como script:  python -m raillytics.utils.lake persist-secret
   Guarda las credenciales de MinIO como secret persistente de DuckDB
   (~/.duckdb/stored_secrets), para procesos que abren sus propias conexiones
   sin pasar por este módulo: es lo que hace el contenedor de Superset al
@@ -62,16 +63,19 @@ class S3Settings:
 
 @dataclass(frozen=True)
 class LakeLayout:
-    """Dónde están Silver y Gold: prefijos s3://bucket o directorios locales."""
+    """Dónde están Silver, Gold y la trazabilidad: prefijos s3://bucket o directorios locales."""
 
     silver_root: str
     gold_root: str
+    # Registro de cargas (raillytics.utils.cargas). None -> <gold_root>/_trazabilidad
+    trazabilidad_root: str | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> LakeLayout:
         return cls(
             silver_root=env.get("SILVER_ROOT") or f"s3://{env.get('MINIO_BUCKET_SILVER', 'raillytics-silver')}",
             gold_root=env.get("GOLD_ROOT") or f"s3://{env.get('MINIO_BUCKET_GOLD', 'raillytics-gold')}",
+            trazabilidad_root=env.get("TRAZABILIDAD_ROOT") or None,
         )
 
     @property
@@ -91,6 +95,17 @@ class LakeLayout:
 
     def gold_file(self, table: str) -> str:
         return f"{self.gold_root}/{table}/{table}.parquet"
+
+    # Trazabilidad de cargas: un Parquet por ejecución (ver raillytics.utils.cargas).
+    @property
+    def cargas_dir(self) -> str:
+        return f"{self.trazabilidad_root or self.gold_root + '/_trazabilidad'}/cargas"
+
+    def cargas_glob(self) -> str:
+        return f"{self.cargas_dir}/*.parquet"
+
+    def cargas_file(self, run_id: str) -> str:
+        return f"{self.cargas_dir}/{run_id}.parquet"
 
 
 def is_s3(uri: str) -> bool:
@@ -150,7 +165,7 @@ def _sql_literal(value: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="python -m raillytics.gold.lake",
+        prog="python -m raillytics.utils.lake",
         description="Utilidades DuckDB del Data Lake (MinIO)",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)

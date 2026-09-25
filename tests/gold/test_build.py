@@ -5,7 +5,7 @@ import duckdb
 import pytest
 
 from raillytics.gold.build import GOLD_TABLES, PUNTUALIDAD_UMBRAL_MIN, build_gold, write_catalog
-from raillytics.gold.lake import LakeLayout, connect
+from raillytics.utils.lake import LakeLayout, connect
 from raillytics.procesamiento.silver_sample import generate_silver_sample, write_silver_sample
 
 # Tres semanas que incluyen Viernes Santo (18/4/2025) y el 1 de mayo.
@@ -108,6 +108,27 @@ def test_build_is_idempotent_and_overwrites_previous_parquet(gold):
 
     assert build_gold(connect(), layout) == counts
     assert query(layout, "SELECT count(*) FROM {fact_viajeros}") == [(counts["fact_viajeros"],)]
+
+
+def test_silver_and_gold_loads_are_traced(gold):
+    layout, sample, counts = gold
+
+    trazas = duckdb.connect().execute(
+        "SELECT proceso, tabla, filas, estado, parametros FROM read_parquet(?) "
+        "WHERE run_id IN (SELECT run_id FROM read_parquet(?) QUALIFY row_number() OVER (PARTITION BY proceso ORDER BY inicio DESC) = 1) "
+        "ORDER BY proceso, tabla",
+        [layout.cargas_glob(), layout.cargas_glob()],
+    ).fetchall()
+
+    assert {(proceso, tabla, filas, estado) for proceso, tabla, filas, estado, _ in trazas} == {
+        ("gold_build", table, counts[table], "ok") for table in GOLD_TABLES
+    } | {
+        ("silver_sample", "viajeros_enriquecidos", len(sample.viajeros), "ok"),
+        ("silver_sample", "puntualidad_enriquecida", len(sample.puntualidad), "ok"),
+    }
+    parametros = {proceso: params for proceso, *_, params in trazas}
+    assert f'"seed": {sample.seed}' in parametros["silver_sample"]
+    assert f'"umbral_puntualidad_min": {PUNTUALIDAD_UMBRAL_MIN}' in parametros["gold_build"]
 
 
 def test_write_catalog_exposes_gold_tables_as_views(gold, tmp_path):

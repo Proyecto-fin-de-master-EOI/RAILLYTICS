@@ -1,0 +1,329 @@
+dashboard_title: Trazabilidad de cargas
+description: 'Historial de las cargas del lake (Bronze, Silver y Gold): qué se ejecutó, cuándo, cuántas filas, duración, errores
+  y frescura por tabla. Fuente: raillytics.utils.cargas (s3://raillytics-gold/_trazabilidad/cargas/).'
+css: ''
+slug: trazabilidad-cargas
+uuid: 2afa4f4d-6d0f-5e21-a7be-f47642b49cbf
+position:
+  DASHBOARD_VERSION_KEY: v2
+  ROOT_ID:
+    type: ROOT
+    id: ROOT_ID
+    children:
+    - GRID_ID
+  GRID_ID:
+    type: GRID
+    id: GRID_ID
+    children:
+    - ROW-cargas-1
+    - ROW-cargas-2
+    - ROW-cargas-3
+    - ROW-cargas-4
+    - ROW-cargas-5
+    parents:
+    - ROOT_ID
+  HEADER_ID:
+    id: HEADER_ID
+    type: HEADER
+    meta:
+      text: Trazabilidad de cargas
+  ROW-cargas-1:
+    type: ROW
+    id: ROW-cargas-1
+    children:
+    - CHART-kpi_ejecuciones
+    - CHART-kpi_cargas_ok
+    - CHART-kpi_cargas_error
+    - CHART-kpi_filas_cargadas
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-kpi_ejecuciones:
+    type: CHART
+    id: CHART-kpi_ejecuciones
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-cargas-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 23
+      uuid: ccfdf1f4-70e0-5362-b37d-59edba968047
+      sliceName: Ejecuciones
+  CHART-kpi_cargas_ok:
+    type: CHART
+    id: CHART-kpi_cargas_ok
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-cargas-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 24
+      uuid: 14403f25-3bda-5a7d-8e59-5339641b20da
+      sliceName: Cargas de tabla OK
+  CHART-kpi_cargas_error:
+    type: CHART
+    id: CHART-kpi_cargas_error
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-cargas-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 25
+      uuid: 9c7226cd-0a8e-56df-bb5a-647de49135dd
+      sliceName: Cargas con error
+  CHART-kpi_filas_cargadas:
+    type: CHART
+    id: CHART-kpi_filas_cargadas
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-cargas-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 26
+      uuid: 1683abaf-67d0-535a-963b-73096abfc4cc
+      sliceName: Filas cargadas
+  ROW-cargas-2:
+    type: ROW
+    id: ROW-cargas-2
+    children:
+    - CHART-kpi_ultima_carga
+    - CHART-cargas_por_dia
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-kpi_ultima_carga:
+    type: CHART
+    id: CHART-kpi_ultima_carga
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-cargas-2
+    meta:
+      width: 3
+      height: 55
+      chartId: 27
+      uuid: 4c831303-c8bc-5c17-acac-82e146ca9b49
+      sliceName: Última carga
+  CHART-cargas_por_dia:
+    type: CHART
+    id: CHART-cargas_por_dia
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-cargas-2
+    meta:
+      width: 9
+      height: 55
+      chartId: 28
+      uuid: 746f2b4a-e825-5401-8fb0-8627967e100f
+      sliceName: Cargas por día y estado
+  ROW-cargas-3:
+    type: ROW
+    id: ROW-cargas-3
+    children:
+    - CHART-frescura_tablas
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-frescura_tablas:
+    type: CHART
+    id: CHART-frescura_tablas
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-cargas-3
+    meta:
+      width: 12
+      height: 55
+      chartId: 29
+      uuid: 540e92d3-00c1-54ce-9bb2-02e780a63f07
+      sliceName: Última carga por tabla
+  ROW-cargas-4:
+    type: ROW
+    id: ROW-cargas-4
+    children:
+    - CHART-filas_por_dia_tabla
+    - CHART-duracion_por_proceso
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-filas_por_dia_tabla:
+    type: CHART
+    id: CHART-filas_por_dia_tabla
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-cargas-4
+    meta:
+      width: 7
+      height: 60
+      chartId: 30
+      uuid: 6e297f02-a42c-57e7-86e3-60e6c7e6980d
+      sliceName: Filas cargadas por día y tabla
+  CHART-duracion_por_proceso:
+    type: CHART
+    id: CHART-duracion_por_proceso
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-cargas-4
+    meta:
+      width: 5
+      height: 60
+      chartId: 31
+      uuid: ea2ba21b-c6cc-5f5f-aa93-0111079e04df
+      sliceName: Duración media por proceso (s)
+  ROW-cargas-5:
+    type: ROW
+    id: ROW-cargas-5
+    children:
+    - CHART-historial_cargas
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-historial_cargas:
+    type: CHART
+    id: CHART-historial_cargas
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-cargas-5
+    meta:
+      width: 12
+      height: 75
+      chartId: 32
+      uuid: c6248132-46a2-5cc5-8f8c-4af0f4c64b7c
+      sliceName: Historial de cargas
+metadata:
+  color_scheme: supersetColors
+  refresh_frequency: 0
+  timed_refresh_immune_slices: []
+  expanded_slices: {}
+  label_colors: {}
+  default_filters: '{}'
+  cross_filters_enabled: true
+  native_filter_configuration:
+  - id: NATIVE_FILTER-cargas-fechas
+    name: Rango de fechas
+    filterType: filter_time
+    targets:
+    - {}
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded:
+      - 29
+    controlValues: {}
+    type: NATIVE_FILTER
+    description: ''
+  - id: NATIVE_FILTER-cargas-proceso
+    name: Proceso
+    filterType: filter_select
+    targets:
+    - datasetUuid: c7f7da85-6e7e-5476-b9b0-d10421629fdf
+      column:
+        name: proceso
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: false
+      inverseSelection: false
+    type: NATIVE_FILTER
+    description: ''
+  - id: NATIVE_FILTER-cargas-capa
+    name: Capa
+    filterType: filter_select
+    targets:
+    - datasetUuid: c7f7da85-6e7e-5476-b9b0-d10421629fdf
+      column:
+        name: capa
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: false
+      inverseSelection: false
+    type: NATIVE_FILTER
+    description: ''
+  - id: NATIVE_FILTER-cargas-estado
+    name: Estado
+    filterType: filter_select
+    targets:
+    - datasetUuid: c7f7da85-6e7e-5476-b9b0-d10421629fdf
+      column:
+        name: estado
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: false
+      inverseSelection: false
+    type: NATIVE_FILTER
+    description: ''
+version: 1.0.0
+is_managed_externally: false
+external_url: null
+certified_by: null
+certification_details: null
+published: true

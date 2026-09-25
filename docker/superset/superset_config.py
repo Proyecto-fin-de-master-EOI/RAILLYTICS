@@ -15,11 +15,12 @@ from urllib.parse import quote_plus
 # Obligatoria: Superset se niega a arrancar con la clave por defecto.
 SECRET_KEY = os.environ["SUPERSET_SECRET_KEY"]
 
-# Base de metadatos de Superset (dashboards, usuarios, permisos). No es la
-# fuente de datos analítica: esa es DuckDB sobre el bucket Gold.
-SQLALCHEMY_DATABASE_URI = "postgresql+psycopg2://{user}:{password}@superset-postgres:5432/{db}".format(
-    user=quote_plus(os.environ.get("SUPERSET_POSTGRES_USER", "superset")),
-    password=quote_plus(os.environ["SUPERSET_POSTGRES_PASSWORD"]),
+# Base de metadatos de Superset (dashboards, usuarios, permisos): su propia
+# base de datos en el Postgres compartido con Airflow (servicio `postgres`).
+# No es la fuente de datos analítica: esa es DuckDB sobre el bucket Gold.
+SQLALCHEMY_DATABASE_URI = "postgresql+psycopg2://{user}:{password}@postgres:5432/{db}".format(
+    user=quote_plus(os.environ.get("POSTGRES_USER", "raillytics")),
+    password=quote_plus(os.environ["POSTGRES_PASSWORD"]),
     db=os.environ.get("SUPERSET_POSTGRES_DB", "superset"),
 )
 

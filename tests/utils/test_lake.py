@@ -1,6 +1,6 @@
 import pytest
 
-from raillytics.gold.lake import LakeLayout, S3Settings, is_s3
+from raillytics.utils.lake import LakeLayout, S3Settings, is_s3
 
 
 def test_s3_settings_from_env_strips_scheme_and_detects_ssl():

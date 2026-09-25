@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest 01_raw-uploader 02_parquet-converter 03_silver-sample 04_gold 05_superset-import clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest 01_raw-uploader 02_parquet-converter 03_silver-sample 04_gold 05_superset-import cargas clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -67,6 +67,7 @@ help:
 	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
 	@echo "  04_gold               Construye la capa Gold con DuckDB (Silver -> Parquet en raillytics-gold)"
 	@echo "  05_superset-import    Reimporta los dashboards de dashboards/superset/ en Superset"
+	@echo "  cargas             Muestra las últimas cargas registradas (trazabilidad del lake)"
 	@echo "  clean              Borra directorios de staging/checkpoints generados"
 
 up:
@@ -127,6 +128,9 @@ test-scala:
 
 05_superset-import:
 	$(COMPOSE) exec superset bash /app/raillytics/docker/superset-import-dashboards.sh
+
+cargas: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.utils.cargas
 
 clean:
 	$(PYTHON) -c "import shutil; [shutil.rmtree(p, ignore_errors=True) for p in ['data/bronze_l1_done', 'data/bronze_processed', 'data/checkpoints', 'target', 'project/target']]"

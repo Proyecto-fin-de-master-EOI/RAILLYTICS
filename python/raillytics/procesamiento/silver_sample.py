@@ -31,7 +31,8 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-from raillytics.gold.lake import LakeLayout, S3Settings, connect, ensure_parent_dir
+from raillytics.utils.cargas import registrar_carga
+from raillytics.utils.lake import LakeLayout, S3Settings, connect, ensure_parent_dir
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,10 @@ _HORAS_PUNTA = (7, 8, 9, 17, 18, 19, 20)
 class SilverSample:
     viajeros: pd.DataFrame
     puntualidad: pd.DataFrame
+    # Parámetros con los que se generó (quedan en la trazabilidad de la carga).
+    start: date
+    end: date
+    seed: int
 
 
 def festivos_nacionales(year: int) -> dict[date, str]:
@@ -202,6 +207,9 @@ def generate_silver_sample(start: date, end: date, seed: int = 42) -> SilverSamp
     return SilverSample(
         viajeros=_viajeros(rng, fechas, meteo, festivos),
         puntualidad=_puntualidad(rng, fechas, meteo, festivos),
+        start=start,
+        end=end,
+        seed=seed,
     )
 
 
@@ -220,14 +228,18 @@ def write_silver_sample(con: duckdb.DuckDBPyConnection, layout: LakeLayout, samp
         ),
     )
     written: dict[str, str] = {}
-    for table, frame, casts in tables:
-        dest = layout.silver_file(table)
-        ensure_parent_dir(dest)
-        con.register("silver_sample_frame", frame)
-        con.execute(f"COPY (SELECT * REPLACE ({casts}) FROM silver_sample_frame) TO '{dest}' (FORMAT PARQUET)")
-        con.unregister("silver_sample_frame")
-        written[table] = dest
-        logger.info("%s: %d filas -> %s", table, len(frame), dest)
+    parametros = {"start": sample.start, "end": sample.end, "seed": sample.seed}
+    with registrar_carga("silver_sample", "silver", layout, con, parametros=parametros) as ejecucion:
+        for table, frame, casts in tables:
+            dest = layout.silver_file(table)
+            with ejecucion.tabla(table, origen=__name__, destino=dest) as carga:
+                ensure_parent_dir(dest)
+                con.register("silver_sample_frame", frame)
+                con.execute(f"COPY (SELECT * REPLACE ({casts}) FROM silver_sample_frame) TO '{dest}' (FORMAT PARQUET)")
+                con.unregister("silver_sample_frame")
+                carga.filas = len(frame)
+            written[table] = dest
+            logger.info("%s: %d filas -> %s", table, len(frame), dest)
     return written
 
 

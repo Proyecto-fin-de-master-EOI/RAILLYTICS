@@ -8,6 +8,6 @@
 # ninguna credencial en el YAML versionado ni en el metastore de Superset.
 set -euo pipefail
 
-python -m raillytics.gold.lake persist-secret
+python -m raillytics.utils.lake persist-secret
 
 exec /app/docker/entrypoints/run-server.sh

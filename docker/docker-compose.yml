@@ -13,7 +13,7 @@ x-airflow-common:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:?AIRFLOW_POSTGRES_PASSWORD debe definirse en .env}@airflow-postgres/${AIRFLOW_POSTGRES_DB:-airflow}
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-raillytics}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD debe definirse en .env}@postgres/${AIRFLOW_POSTGRES_DB:-airflow}
     AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?AIRFLOW_FERNET_KEY debe definirse en .env}
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?AIRFLOW_JWT_SECRET debe definirse en .env}
@@ -22,7 +22,7 @@ x-airflow-common:
     PYTHONPATH: /opt/airflow/python
     # Dentro de la red de compose MinIO es minio:9000; el MINIO_ENDPOINT del
     # .env apunta al puerto publicado en el host y aquí no aplica. Lo usa el
-    # DAG gold_duckdb a través de raillytics.gold.lake.
+    # DAG gold_duckdb a través de raillytics.utils.lake.
     MINIO_ENDPOINT: http://minio:9000
     _PIP_ADDITIONAL_REQUIREMENTS: "requests~=2.32 PyYAML~=6.0 duckdb~=1.5.5"
   volumes:
@@ -36,7 +36,7 @@ x-airflow-common:
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
-    airflow-postgres:
+    postgres:
       condition: service_healthy
 
 # Superset consulta la capa Gold directamente en MinIO con DuckDB (sin data
@@ -54,7 +54,7 @@ x-superset-common:
     SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?SUPERSET_SECRET_KEY debe definirse en .env}
     # Dentro de la red de compose MinIO es minio:9000 (el .env apunta al host).
     MINIO_ENDPOINT: http://minio:9000
-    # raillytics.gold.lake (el mismo código del job Gold) crea el secret de
+    # raillytics.utils.lake (el mismo código del job Gold) crea el secret de
     # DuckDB con las credenciales de MinIO al arrancar (superset-run.sh).
     PYTHONPATH: /app/pythonpath:/app/raillytics/python
     # Un único worker de gunicorn: sin Redis la caché en memoria solo es
@@ -66,7 +66,7 @@ x-superset-common:
     - ../dashboards/superset:/app/raillytics/dashboards:ro
   depends_on:
     &superset-common-depends-on
-    superset-postgres:
+    postgres:
       condition: service_healthy
     minio:
       condition: service_healthy
@@ -110,22 +110,27 @@ services:
       - ./init-buckets.sh:/init-buckets.sh:ro
     entrypoint: ["/bin/sh", "/init-buckets.sh"]
 
-  airflow-postgres:
+  # Un único Postgres para los metadatos de Airflow y de Superset: una base de
+  # datos para cada uno en el mismo servidor (docker/postgres/init-databases.sh
+  # crea la de Superset al inicializar el volumen). No es el Data Warehouse.
+  postgres:
     image: postgres:16-alpine
-    container_name: raillytics-airflow-postgres
+    container_name: raillytics-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${AIRFLOW_POSTGRES_USER:-airflow}
-      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD:?AIRFLOW_POSTGRES_PASSWORD debe definirse en .env}
+      POSTGRES_USER: ${POSTGRES_USER:-raillytics}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD debe definirse en .env}
       POSTGRES_DB: ${AIRFLOW_POSTGRES_DB:-airflow}
+      SUPERSET_POSTGRES_DB: ${SUPERSET_POSTGRES_DB:-superset}
       # La imagen base declara LANG=en_US.utf8, pero Alpine (musl) no trae esa
       # locale instalada -> initdb avisa "no usable system locales were found".
       # C.UTF-8 sí es nativa de musl, así que initdb no tiene que buscar nada.
       LANG: C.UTF-8
     volumes:
-      - airflow_postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${AIRFLOW_POSTGRES_USER:-airflow}"]
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-raillytics}", "-d", "${AIRFLOW_POSTGRES_DB:-airflow}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -215,23 +220,6 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
-  superset-postgres:
-    image: postgres:16-alpine
-    container_name: raillytics-superset-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${SUPERSET_POSTGRES_USER:-superset}
-      POSTGRES_PASSWORD: ${SUPERSET_POSTGRES_PASSWORD:?SUPERSET_POSTGRES_PASSWORD debe definirse en .env}
-      POSTGRES_DB: ${SUPERSET_POSTGRES_DB:-superset}
-      LANG: C.UTF-8   # ver airflow-postgres
-    volumes:
-      - superset_postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${SUPERSET_POSTGRES_USER:-superset}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # Migra el metastore, crea el admin e importa dashboards/superset/ (idempotente).
   superset-init:
     <<: *superset-common
@@ -258,5 +246,4 @@ services:
 
 volumes:
   minio_data:
-  airflow_postgres_data:
-  superset_postgres_data:
+  postgres_data:

@@ -19,7 +19,7 @@ def gold_duckdb():
         # Imports dentro de la tarea: el dag-processor no necesita duckdb para
         # parsear el DAG (se instala vía _PIP_ADDITIONAL_REQUIREMENTS).
         from raillytics.gold.build import build_gold
-        from raillytics.gold.lake import LakeLayout, S3Settings, connect
+        from raillytics.utils.lake import LakeLayout, S3Settings, connect
 
         # Dentro de compose MINIO_ENDPOINT apunta a minio:9000 (ver docker-compose.yml).
         layout = LakeLayout.from_env()

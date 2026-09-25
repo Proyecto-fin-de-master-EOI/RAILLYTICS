@@ -25,7 +25,8 @@ from pathlib import Path
 
 import duckdb
 
-from raillytics.gold.lake import LakeLayout, S3Settings, connect, ensure_parent_dir
+from raillytics.utils.cargas import registrar_carga
+from raillytics.utils.lake import LakeLayout, S3Settings, connect, ensure_parent_dir
 
 logger = logging.getLogger(__name__)
 
@@ -61,18 +62,25 @@ def build_gold(
     layout: LakeLayout,
     tables: Iterable[str] = GOLD_TABLES,
 ) -> dict[str, int]:
-    """Construye y escribe las tablas Gold. Devuelve el número de filas de cada una."""
-    register_silver(con, layout)
-    con.execute(f"SET VARIABLE umbral_puntualidad_min = {PUNTUALIDAD_UMBRAL_MIN}")
+    """Construye y escribe las tablas Gold. Devuelve el número de filas de cada una.
 
+    Cada ejecución queda en la trazabilidad de cargas (una fila por tabla,
+    también si falla a medias).
+    """
+    tables = list(tables)
     counts: dict[str, int] = {}
-    for table in tables:
-        con.execute(f"CREATE OR REPLACE TABLE {table} AS {read_model_sql(table)}")
-        dest = layout.gold_file(table)
-        ensure_parent_dir(dest)
-        con.execute(f"COPY {table} TO '{dest}' (FORMAT PARQUET)")
-        counts[table] = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
-        logger.info("%s: %d filas -> %s", table, counts[table], dest)
+    parametros = {"umbral_puntualidad_min": PUNTUALIDAD_UMBRAL_MIN, "tablas": tables}
+    with registrar_carga("gold_build", "gold", layout, con, parametros=parametros) as ejecucion:
+        register_silver(con, layout)
+        con.execute(f"SET VARIABLE umbral_puntualidad_min = {PUNTUALIDAD_UMBRAL_MIN}")
+        for table in tables:
+            dest = layout.gold_file(table)
+            with ejecucion.tabla(table, origen=layout.silver_root, destino=dest) as carga:
+                con.execute(f"CREATE OR REPLACE TABLE {table} AS {read_model_sql(table)}")
+                ensure_parent_dir(dest)
+                con.execute(f"COPY {table} TO '{dest}' (FORMAT PARQUET)")
+                carga.filas = counts[table] = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            logger.info("%s: %d filas -> %s", table, counts[table], dest)
     return counts
 
 

@@ -57,6 +57,7 @@ RAILLYTICS/
 ├── docker/
 │   ├── docker-compose.yml      # MinIO + Postgres + Airflow (LocalExecutor) + Superset, local/desarrollo
 │   ├── init-buckets.sh         # Crea los buckets de MinIO (raillytics-bronze/-silver/-gold)
+│   ├── postgres/               # init-databases.sh: crea la BD de Superset en el Postgres compartido con Airflow
 │   └── superset/               # Imagen de Superset con driver DuckDB, superset_config.py y scripts de arranque/importación
 │
 ├── dags/
@@ -64,7 +65,7 @@ RAILLYTICS/
 │   └── gold_duckdb.py          # DAG Airflow: construye la capa Gold con DuckDB (disparo manual)
 │
 ├── dashboards/
-│   └── superset/raillytics_gold/  # Dashboards de Superset como código (formato de exportación); se importan al arrancar
+│   └── superset/raillytics_gold/  # Dashboards de Superset como código (Demanda, Puntualidad, Trazabilidad de cargas); se importan al arrancar
 │
 ├── data/                       # Data Lake local — NO se versiona en git
 │   ├── bronze/                 # Staging local por fuente — aquí escribe la descarga Python
@@ -78,9 +79,9 @@ RAILLYTICS/
 │   └── raillytics/
 │       ├── ingesta/            # sources.py (registro YAML), formats.py, filenames.py, download.py (descarga a staging)
 │       ├── procesamiento/      # Jobs PySpark de limpieza y enriquecimiento (capa Silver); silver_sample.py: Silver sintético
-│       ├── gold/               # lake.py (DuckDB + MinIO), build.py (modelo dimensional), sql/ (una consulta por tabla Gold)
+│       ├── gold/               # build.py (modelo dimensional con DuckDB), sql/ (una consulta por tabla Gold)
 │       ├── ml/                 # Modelo predictivo Scikit-learn (features, entrenamiento, evaluación)
-│       └── utils/              # Utilidades comunes (fs.py: escritura atómica, logging, helpers)
+│       └── utils/              # Comunes: fs.py (escritura atómica), lake.py (DuckDB + MinIO), cargas.py (trazabilidad de cargas)
 │
 ├── build.sbt                   # Proyecto SBT (Scala 2.13 / Spark 4.2) en la raíz para que IntelliJ lo reconozca
 ├── project/                    # Metadatos del build SBT (build.properties)
@@ -109,7 +110,7 @@ RAILLYTICS/
 │   ├── ingesta/                # Tests pytest del registro de fuentes, nombres de fichero y la descarga
 │   ├── procesamiento/          # Tests pytest del Silver sintético (contrato de columnas, festivos, determinismo)
 │   ├── gold/                   # Tests pytest del modelo Gold sobre un lake local (sin MinIO)
-│   └── utils/                  # Tests pytest de utilidades comunes
+│   └── utils/                  # Tests pytest de utilidades comunes (fs, lake, trazabilidad de cargas)
 │
 └── docs/                       # Documentación técnica y memoria del TFM
 ```
@@ -219,7 +220,7 @@ se puede apuntar a directorios locales (así corren los tests de `tests/gold/`, 
 - **Conexión**: la base de datos `Raillytics Gold (DuckDB)` es `duckdb:///:memory:` con la
   extensión `httpfs` precargada. Al arrancar, el contenedor guarda las credenciales de MinIO del
   `.env` como *secret* persistente de DuckDB (`docker/superset/superset-run.sh` ejecuta
-  `python -m raillytics.gold.lake persist-secret`), así el YAML versionado no contiene
+  `python -m raillytics.utils.lake persist-secret`), así el YAML versionado no contiene
   credenciales. En SQL Lab se puede consultar Gold tal cual:
   `SELECT * FROM read_parquet('s3://raillytics-gold/dim_linea/*.parquet')`.
 - **Datasets**: dos datasets virtuales que hacen el *star join* de cada tabla de hechos con sus
@@ -229,7 +230,10 @@ se puede apuntar a directorios locales (así corren los tests de `tests/gold/`, 
   estación, evolución por tipo de tren, día de la semana, festivos, meteorología, comunidades) y
   *Puntualidad* (% puntuales, retraso medio, evolución mensual y diaria, tabla por línea, franja
   horaria × tipo de tren, meteorología, estaciones críticas), con filtros nativos de fechas,
-  tipo de tren, comunidad y línea.
+  tipo de tren, comunidad y línea. El tercero, *Trazabilidad de cargas*, se describe más abajo.
+- **Metastore**: Superset guarda sus metadatos en la base de datos `superset` del mismo Postgres
+  que usa Airflow (servicio `postgres`, variables `POSTGRES_USER`/`POSTGRES_PASSWORD` del `.env`);
+  `docker/postgres/init-databases.sh` la crea al inicializar el volumen.
 - **Dashboards como código**: `dashboards/superset/raillytics_gold/` está en el formato de
   exportación de Superset (`metadata.yaml` + `databases/`, `datasets/`, `charts/`, `dashboards/`).
   Para cambiar un dashboard: edítalo en la UI, expórtalo (Dashboards → Export), descomprime el
@@ -244,11 +248,40 @@ se puede apuntar a directorios locales (así corren los tests de `tests/gold/`, 
   si cambias `MINIO_BUCKET_GOLD` hay que actualizarlo también ahí. No hay Redis ni Celery (un solo
   worker de gunicorn), suficiente para desarrollo.
 
+### Trazabilidad de cargas
+
+Cada proceso de carga deja constancia de lo que ha hecho en una tabla Parquet del lake,
+`s3://raillytics-gold/_trazabilidad/cargas/` (un fichero por ejecución, una fila por tabla
+cargada): `run_id`, `proceso`, `capa`, `tabla`, `origen`, `destino`, `filas`, `bytes`,
+`inicio`/`fin` (UTC), `duracion_s`, `estado` (`ok`/`error`), `error`, `parametros` (JSON),
+`lanzado_por` (`make`, `airflow:<dag>`, `cli`), `ejecutor` y `usuario`. Ya lo hacen la descarga
+Bronze del DAG `ingesta_data_sources`, el Silver sintético y la construcción de Gold; las apps
+Scala pueden sumarse escribiendo Parquet con las mismas columnas en ese prefijo.
+
+Para instrumentar un proceso nuevo basta con envolverlo (`python/raillytics/utils/cargas.py`):
+
+```python
+from raillytics.utils.cargas import registrar_carga
+
+with registrar_carga("silver_viajeros", "silver", layout, con, parametros={...}) as ejecucion:
+    with ejecucion.tabla("viajeros_enriquecidos", origen=..., destino=...) as carga:
+        ...                 # la carga propiamente dicha
+        carga.filas = n
+```
+
+El registro se escribe al terminar, también si la carga falla (el error queda en la fila y la
+excepción se propaga); si el registro no se puede escribir, se avisa en el log pero la carga no
+falla por eso. `make cargas` lista las últimas ejecuciones desde la terminal, y el dashboard
+*Trazabilidad de cargas* de Superset muestra ejecuciones, errores, filas cargadas por día y
+tabla, duración por proceso, la última carga de cada tabla (en rojo si hace más de 24 h) y el
+historial completo. `TRAZABILIDAD_ROOT` cambia la ubicación del registro (por defecto, dentro
+del bucket Gold).
+
 ### Uso desde notebooks
 
 ```python
 from dotenv import find_dotenv, load_dotenv
-from raillytics.gold.lake import S3Settings, connect
+from raillytics.utils.lake import S3Settings, connect
 
 load_dotenv(find_dotenv(usecwd=True))  # MINIO_* del .env (lo busca hacia arriba desde el directorio actual)
 con = connect(S3Settings.from_env(), database="../data/gold/raillytics_gold.duckdb", read_only=True)
