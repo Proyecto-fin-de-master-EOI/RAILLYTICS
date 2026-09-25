@@ -318,6 +318,11 @@ El repositorio incluye hooks versionados en `.githooks/` (no en `.git/hooks/`, q
 
 Ambos se omiten (sin ejecutar sbt) si no hay cambios relevantes en Scala/SBT, para no ralentizar commits de Python/Airflow.
 
+En Windows, las suites de Spark escriben en disco local y Hadoop necesita `winutils.exe` para ello.
+El hook lanza `sbt test` con el entorno del shell (o del IDE) desde el que se hace push, sin pasar por
+el Makefile: si `HADOOP_HOME` no está definido, los tests usan la misma ruta por defecto que el
+Makefile, `C:\dev\winutils\hadoop-3.0.0` (`src/test/scala/raillytics/testutil/TestSpark.scala`).
+
 Activación local (una sola vez por clon del repo): `make install-hooks`, o directamente:
 
 ```bash

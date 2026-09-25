@@ -6,7 +6,7 @@ import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import raillytics.common.lake.LakePaths
-import raillytics.testutil.TestPaths
+import raillytics.testutil.{TestPaths, TestSpark}
 
 import java.nio.file.{Files, Path}
 import java.time.{LocalDate, LocalDateTime}
@@ -37,7 +37,7 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
   private val viernesSanto = LocalDate.of(2025, 4, 18)
 
   override def beforeAll(): Unit = {
-    spark = SparkSession.builder().appName("GoldBuilderSpec").master("local[1]").getOrCreate()
+    spark = TestSpark.session("GoldBuilderSpec")
     tmpDir = Files.createTempDirectory("gold-builder-spec")
     settings = GoldBuilderSettings(
       silverRoot = TestPaths.fileUri(tmpDir.resolve("silver")),

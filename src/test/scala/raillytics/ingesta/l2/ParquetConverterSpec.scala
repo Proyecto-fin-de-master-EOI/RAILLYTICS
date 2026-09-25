@@ -7,7 +7,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import raillytics.common.lake.BronzePaths
 import raillytics.ingesta.config.DataSource
-import raillytics.testutil.TestPaths
+import raillytics.testutil.{TestPaths, TestSpark}
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters._
@@ -17,7 +17,7 @@ class ParquetConverterSpec extends AnyFlatSpec with Matchers with BeforeAndAfter
   private implicit var spark: SparkSession = _
 
   override def beforeAll(): Unit = {
-    spark = SparkSession.builder().appName("ParquetConverterSpec").master("local[1]").getOrCreate()
+    spark = TestSpark.session("ParquetConverterSpec")
     // startQuery usa readStream, que exige esquema explícito o inferencia
     // habilitada (ver SparkSessionFactory.buildForFileStreaming).
     spark.conf.set("spark.sql.streaming.schemaInference", "true")

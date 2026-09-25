@@ -5,7 +5,7 @@ import org.apache.spark.sql.types.{LongType, TimestampNTZType}
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import raillytics.testutil.TestPaths
+import raillytics.testutil.{TestPaths, TestSpark}
 
 import java.nio.file.Files
 import java.time.LocalDateTime
@@ -15,7 +15,7 @@ class CargasSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
   private implicit var spark: SparkSession = _
 
   override def beforeAll(): Unit = {
-    spark = SparkSession.builder().appName("CargasSpec").master("local[1]").getOrCreate()
+    spark = TestSpark.session("CargasSpec")
   }
 
   override def afterAll(): Unit = spark.stop()

@@ -4,7 +4,7 @@ import org.apache.spark.sql.SparkSession
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import raillytics.testutil.TestPaths
+import raillytics.testutil.{TestPaths, TestSpark}
 
 import java.nio.file.{Files, Path}
 
@@ -13,7 +13,7 @@ class RawUploaderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
   private var spark: SparkSession = _
 
   override def beforeAll(): Unit = {
-    spark = SparkSession.builder().appName("RawUploaderSpec").master("local[1]").getOrCreate()
+    spark = TestSpark.session("RawUploaderSpec")
   }
 
   override def afterAll(): Unit = spark.stop()
