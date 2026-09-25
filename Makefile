@@ -73,6 +73,9 @@ help:
 up:
 	$(COMPOSE) up -d
 
+stop:
+	$(COMPOSE) stop
+
 down:
 	$(COMPOSE) down
 
@@ -108,14 +111,14 @@ test-python: $(VENV)/.deps-installed
 test-scala:
 	$(SBT) -batch test
 
+00_ingest:
+	$(COMPOSE) exec airflow-scheduler airflow dags trigger ingesta_data_sources
+
 01_raw-uploader:
 	$(SBT) -batch "runMain raillytics.ingesta.l1.RawUploaderApp"
 
 02_parquet-converter:
 	$(SBT) -batch "runMain raillytics.ingesta.l2.ParquetConverterApp"
-
-00_ingest:
-	$(COMPOSE) exec airflow-scheduler airflow dags trigger ingesta_data_sources
 
 # Silver sintético: corre en el host con el python del venv (como test-python)
 # y habla con MinIO con las variables MINIO_* del .env.
