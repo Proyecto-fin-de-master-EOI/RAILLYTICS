@@ -134,9 +134,10 @@ las dos apps (cada una movería ficheros que la otra todavía no ha procesado).
 Con Docker y `make` instalados (`choco install make` / `scoop install make` en Windows):
 
 ```bash
-cp .env.example .env        # y rellena las credenciales (nunca valores por defecto)
+make install-dev-env        # crea .venv (Python 3.9–3.12), instala requirements.txt,
+                            # activa los git hooks y copia .env.example -> .env
+                            # (rellena las credenciales: nunca valores por defecto)
 make up                     # levanta MinIO + Postgres + Airflow
-make install-hooks          # activa los git hooks del repo
 make ingest                 # dispara el DAG de descarga una vez
 make raw-uploader           # en una terminal aparte — app L1 (queda en primer plano)
 make parquet-converter      # en otra terminal aparte — app L2 (queda en primer plano)
@@ -144,6 +145,13 @@ make parquet-converter      # en otra terminal aparte — app L2 (queda en prime
 
 `make help` lista todos los targets disponibles (`up`/`down`, `test`, `test-python`,
 `test-scala`, `clean`, etc.).
+
+`install-dev-env` es idempotente: solo recrea el venv si no existe y solo reinstala
+dependencias si cambia `requirements.txt`. Por defecto crea el venv con `py -3.12` en
+Windows y `python3` en Linux/macOS (numpy 1.26 y pyarrow 16 no tienen wheels para
+Python 3.13+); se puede cambiar con `make install-dev-env VENV_BASE_PYTHON=python3.11`.
+Los targets que necesitan dependencias Python (`test-python`) usan directamente el
+intérprete de `.venv`, así que no hace falta activarlo antes de llamar a `make`.
 
 ---
 
