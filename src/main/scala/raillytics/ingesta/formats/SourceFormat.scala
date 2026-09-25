@@ -6,6 +6,8 @@ import org.apache.spark.sql.streaming.DataStreamReader
 // Formatos admitidos en config/data_sources.yml y las opciones de lectura de
 // cada uno. Para añadir un formato basta con añadir su entrada aquí:
 // DataSourceConfig lo valida y ParquetConverter lo lee sin más cambios.
+// La descarga Python valida contra su propia lista, que debe coincidir con
+// esta: python/raillytics/ingesta/formats.py.
 object SourceFormat {
 
   private val readerOptions: Map[String, DataStreamReader => DataStreamReader] = Map(

@@ -70,17 +70,23 @@ RAILLYTICS/
 │
 ├── python/
 │   └── raillytics/
-│       ├── ingesta/            # sources.py (registro YAML), download.py (descarga a staging)
+│       ├── ingesta/            # sources.py (registro YAML), formats.py, filenames.py, download.py (descarga a staging)
 │       ├── procesamiento/      # Jobs PySpark de limpieza y enriquecimiento (capa Silver)
 │       ├── ml/                 # Modelo predictivo Scikit-learn (features, entrenamiento, evaluación)
-│       └── utils/              # Utilidades comunes (logging, validación de esquemas, helpers)
+│       └── utils/              # Utilidades comunes (fs.py: escritura atómica, logging, helpers)
 │
 ├── build.sbt                   # Proyecto SBT (Scala 2.13 / Spark 4.2) en la raíz para que IntelliJ lo reconozca
 ├── project/                    # Metadatos del build SBT (build.properties)
 ├── src/
 │   ├── main/scala/raillytics/
-│   │   └── ingesta/            # RawUploaderApp (L1), ParquetConverterApp (L2), módulos compartidos
-│   └── test/scala/raillytics/  # Tests ScalaTest
+│   │   ├── common/             # Compartido entre jobs: logging, spark (SparkSessionFactory), fs, lake (BronzePaths)
+│   │   └── ingesta/
+│   │       ├── IngestaEnv      # Defaults de entorno comunes a L1 y L2
+│   │       ├── config/         # DataSource + DataSourceConfig (lectura de config/data_sources.yml)
+│   │       ├── formats/        # SourceFormat: formatos soportados y sus opciones de lectura
+│   │       ├── l1/             # RawUploaderApp (main) · RawUploader (lógica) · RawUploaderSettings (entorno)
+│   │       └── l2/             # ParquetConverterApp (main) · ParquetConverter (lógica) · ParquetConverterSettings (entorno)
+│   └── test/scala/raillytics/  # Tests ScalaTest (mismo árbol de paquetes que main)
 │
 ├── dbt/                        # Proyecto dbt: transformaciones Silver → Gold
 │   ├── models/
@@ -93,7 +99,8 @@ RAILLYTICS/
 ├── dashboards/                 # Ficheros Power BI (.pbix) y documentación de los 4 dashboards
 │
 ├── tests/
-│   └── ingesta/                # Tests pytest del registro de fuentes y la descarga
+│   ├── ingesta/                # Tests pytest del registro de fuentes, nombres de fichero y la descarga
+│   └── utils/                  # Tests pytest de utilidades comunes
 │
 └── docs/                       # Documentación técnica y memoria del TFM
 ```

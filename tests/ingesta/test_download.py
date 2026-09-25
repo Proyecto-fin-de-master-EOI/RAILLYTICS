@@ -101,9 +101,9 @@ def test_download_produces_unique_filenames_across_calls(tmp_path, requests_mock
 
     # Fuerza timestamps distintos entre llamadas para que el test no dependa
     # de que las dos descargas caigan en segundos de reloj distintos (la
-    # resolución de _filename_for es de un segundo).
+    # resolución de staging_filename es de un segundo).
     now = datetime.now()
-    with patch("raillytics.ingesta.download.datetime") as mock_datetime:
+    with patch("raillytics.ingesta.filenames.datetime") as mock_datetime:
         mock_datetime.now.side_effect = [now, now + timedelta(seconds=1)]
         first = download(SOURCE, tmp_path)
         second = download(SOURCE, tmp_path)
