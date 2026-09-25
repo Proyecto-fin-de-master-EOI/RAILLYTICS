@@ -23,7 +23,7 @@ class RawUploaderAppSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAl
     Files.createDirectories(stagingDir)
     Files.writeString(stagingDir.resolve("sample.csv"), "estacion,viajeros\nAtocha,100\n")
 
-    val bronzeRoot = s"file://${tmpDir.resolve("bronze")}"
+    val bronzeRoot = TestPaths.fileUri(tmpDir.resolve("bronze"))
     val l1DoneRoot = tmpDir.resolve("l1_done").toString
 
     val batch = spark.read.format("binaryFile").load(s"${tmpDir.resolve("staging")}/*/*")

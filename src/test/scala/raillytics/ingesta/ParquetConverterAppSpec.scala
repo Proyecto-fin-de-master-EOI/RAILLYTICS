@@ -28,7 +28,7 @@ class ParquetConverterAppSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     Files.createDirectories(l1DoneDir)
     Files.writeString(l1DoneDir.resolve("sample.csv"), "estacion,viajeros\nAtocha,100\nSol,50\n")
 
-    val bronzeRoot = s"file://${tmpDir.resolve("bronze")}"
+    val bronzeRoot = TestPaths.fileUri(tmpDir.resolve("bronze"))
     val processedRoot = tmpDir.resolve("processed").toString
     val source = DataSource("crtm", "CRTM test", "https://example.invalid", "csv")
 
@@ -67,7 +67,7 @@ class ParquetConverterAppSpec extends AnyFlatSpec with Matchers with BeforeAndAf
         |""".stripMargin
     )
 
-    val bronzeRoot = s"file://${tmpDir.resolve("bronze")}"
+    val bronzeRoot = TestPaths.fileUri(tmpDir.resolve("bronze"))
     val processedRoot = tmpDir.resolve("processed").toString
     val checkpointRoot = tmpDir.resolve("checkpoints").toString
     val l1DoneRoot = tmpDir.resolve("l1_done").toString
