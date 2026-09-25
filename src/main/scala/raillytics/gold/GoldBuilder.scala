@@ -19,6 +19,8 @@ import scala.io.Source
 // Silver, así que no tiene sentido como stream de micro-batches.
 object GoldBuilder extends Logging {
 
+  // Tablas Silver de entrada; el SQL del modelo las referencia como silver_<tabla>.
+  // Su contrato de columnas lo fija python/raillytics/procesamiento/silver_sample.py.
   private val SilverTables: Seq[String] = Seq("viajeros_enriquecidos", "puntualidad_enriquecida")
 
   // Dimensiones antes que hechos: un fallo en una dimensión aborta antes de
@@ -28,6 +30,8 @@ object GoldBuilder extends Logging {
   // Un servicio cuenta como puntual si llega con este retraso o menos (minutos).
   private val UmbralPuntualidadMin = 5
 
+  // Registra cada tabla Silver (el prefijo entero: un único fichero o varios
+  // part-*.parquet) como vista temporal de la sesión, que es lo que el SQL usa.
   private def registerSilver(silverRoot: String)(implicit spark: SparkSession): Unit =
     SilverTables.foreach { table =>
       spark.read.parquet(LakePaths.silverTable(silverRoot, table)).createOrReplaceTempView(s"silver_$table")
@@ -52,6 +56,9 @@ object GoldBuilder extends Logging {
       GoldTables.map { table =>
         val dest = LakePaths.goldTable(settings.goldRoot, table)
         val rows = ejecucion.tabla(table, origen = Some(settings.silverRoot), destino = Some(dest)) { carga =>
+          // cache + count antes de escribir: si Silver está vacío o el SQL falla se
+          // sabe antes de tocar el destino (overwrite vacía el prefijo entero), y el
+          // recuento para la trazabilidad no vuelve a ejecutar la consulta.
           val df = spark.sql(modelSql(table)).cache()
           val n = df.count()
           // Un único fichero por tabla: son pequeñas y así el prefijo queda

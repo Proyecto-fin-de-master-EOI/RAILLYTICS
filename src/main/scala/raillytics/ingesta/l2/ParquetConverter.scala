@@ -24,6 +24,8 @@ object ParquetConverter extends Logging {
   // saber qué ficheros componen cada micro-batch y poder moverlos después.
   val SourceFileCol = "_source_file"
 
+  // Mueve los ficheros ya convertidos de l1DoneRoot a processedRoot/<fuente>: así
+  // no vuelven a entrar en ningún glob y queda claro qué completó L1 y L2.
   def moveProcessedFiles(filePaths: Seq[String], hadoopConf: Configuration, source: String, processedRoot: String): Unit = {
     val localFs = HadoopFs.local(hadoopConf)
     val destDir = new Path(s"$processedRoot/$source")
@@ -35,6 +37,9 @@ object ParquetConverter extends Logging {
     }
   }
 
+  // Procesa un micro-batch de una fuente: escribe su Parquet en l2/<fuente>/<fecha>/
+  // y mueve los ficheros de origen a processedRoot. Si la escritura falla no se
+  // mueve nada y el checkpoint no avanza, así que el siguiente arranque los reintenta.
   def processBatch(source: DataSource, batch: DataFrame, hadoopConf: Configuration, bronzeRoot: String,
                    processedRoot: String, cargasDir: String): Unit = {
     implicit val spark: SparkSession = batch.sparkSession
@@ -44,6 +49,8 @@ object ParquetConverter extends Logging {
     try {
       val filesInBatch = batch.select(SourceFileCol).distinct().collect().map(_.getString(0)).toSeq
       logger.info(s"micro-batch de la fuente '${source.id}': ${filesInBatch.size} fichero(s)")
+      // Micro-batch vacío: nada que escribir ni que registrar (el return no se
+      // salta el finally, el unpersist se hace igual).
       if (filesInBatch.isEmpty) return
 
       val destPath = BronzePaths.l2(bronzeRoot, source.id, LocalDate.now())
@@ -62,6 +69,8 @@ object ParquetConverter extends Logging {
     } finally batch.unpersist()
   }
 
+  // Una query por fuente, con su propio checkpoint: cada una avanza (y falla) de
+  // forma independiente, y el esquema se infiere por fuente, no mezclando formatos.
   def startQuery(source: DataSource, settings: ParquetConverterSettings, hadoopConf: Configuration)
                 (implicit spark: SparkSession): StreamingQuery = {
     logger.debug(s"preparando query de la fuente '${source.id}' (formato=${source.format})")

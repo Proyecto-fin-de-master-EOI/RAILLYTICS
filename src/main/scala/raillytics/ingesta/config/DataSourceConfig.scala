@@ -8,9 +8,13 @@ import raillytics.ingesta.formats.SourceFormat
 import java.io.{FileInputStream, InputStream}
 import scala.jdk.CollectionConverters._
 
+// Lee el registro de fuentes config/data_sources.yml, compartido con la
+// descarga Python (python/raillytics/ingesta/sources.py): los dos deben
+// aceptar exactamente las mismas entradas.
 object DataSourceConfig extends Logging {
   private val SupportedFormats: Set[String] = SourceFormat.Supported
 
+  // Carga el YAML desde disco (en L2, la ruta de raillytics.ingesta.data-sources).
   def load(path: String): Seq[DataSource] = {
     logger.info(s"cargando fuentes de datos desde '$path'")
     val is = new FileInputStream(path)
@@ -20,6 +24,7 @@ object DataSourceConfig extends Logging {
     sources
   }
 
+  // Separado de load() para poder probarlo con un YAML en memoria.
   def loadFromStream(is: InputStream): Seq[DataSource] = {
     // SafeConstructor: el YAML solo trae mapas/listas/escalares, no hace falta
     // (ni conviene) permitir tags !!  que instancien clases Java arbitrarias.

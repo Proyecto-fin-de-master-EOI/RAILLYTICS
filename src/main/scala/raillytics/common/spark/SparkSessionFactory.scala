@@ -25,7 +25,10 @@ object SparkSessionFactory extends Logging {
       .config("spark.hadoop.fs.s3a.endpoint", endpoint)
       .config("spark.hadoop.fs.s3a.access.key", user)
       .config("spark.hadoop.fs.s3a.secret.key", password)
+      // MinIO expone los buckets como rutas (http://host:puerto/bucket), no como
+      // subdominios (bucket.host), que es lo que S3A asume por defecto.
       .config("spark.hadoop.fs.s3a.path.style.access", "true")
+      // El MinIO de docker-compose va por http, sin TLS.
       .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
       .getOrCreate()
   }
