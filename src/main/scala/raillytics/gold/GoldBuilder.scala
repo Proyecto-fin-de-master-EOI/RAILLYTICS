@@ -19,23 +19,23 @@ import scala.io.Source
 // Silver, así que no tiene sentido como stream de micro-batches.
 object GoldBuilder extends Logging {
 
-  val SilverTables: Seq[String] = Seq("viajeros_enriquecidos", "puntualidad_enriquecida")
+  private val SilverTables: Seq[String] = Seq("viajeros_enriquecidos", "puntualidad_enriquecida")
 
   // Dimensiones antes que hechos: un fallo en una dimensión aborta antes de
   // escribir hechos que no podrían resolverse.
   val GoldTables: Seq[String] = Seq("dim_fecha", "dim_estacion", "dim_linea", "fact_viajeros", "fact_puntualidad")
 
   // Un servicio cuenta como puntual si llega con este retraso o menos (minutos).
-  val UmbralPuntualidadMin = 5
+  private val UmbralPuntualidadMin = 5
 
-  def registerSilver(silverRoot: String)(implicit spark: SparkSession): Unit =
+  private def registerSilver(silverRoot: String)(implicit spark: SparkSession): Unit =
     SilverTables.foreach { table =>
       spark.read.parquet(LakePaths.silverTable(silverRoot, table)).createOrReplaceTempView(s"silver_$table")
     }
 
   // El SQL de cada tabla va como recurso; ${umbral_puntualidad_min} se sustituye
   // antes de ejecutarlo (Spark SQL no tiene variables de sesión portables).
-  def modelSql(table: String): String = {
+  private def modelSql(table: String): String = {
     val resource = s"/gold/$table.sql"
     val stream = Option(getClass.getResourceAsStream(resource))
       .getOrElse(throw new IllegalArgumentException(s"no existe el recurso $resource"))

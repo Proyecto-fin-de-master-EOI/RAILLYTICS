@@ -32,8 +32,8 @@ import scala.util.control.NonFatal
 // queda constancia en el log, pero la carga no falla por eso.
 object Cargas extends Logging {
 
-  val EstadoOk = "ok"
-  val EstadoError = "error"
+  private val EstadoOk = "ok"
+  private val EstadoError = "error"
 
   // Mismo esquema que CARGAS_COLUMNS en Python. TimestampNTZ se guarda en
   // Parquet como TIMESTAMP sin zona horaria, que es como DuckDB escribe
@@ -61,7 +61,7 @@ object Cargas extends Logging {
   private val RunIdFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
   private val Json = new ObjectMapper()
 
-  def ahora(): LocalDateTime = LocalDateTime.now(ZoneOffset.UTC)
+  private def ahora(): LocalDateTime = LocalDateTime.now(ZoneOffset.UTC)
 
   def lanzadoPorDefecto(env: Map[String, String] = sys.env): String =
     env.get("AIRFLOW_CTX_DAG_ID").map(dag => s"airflow:$dag")
@@ -149,7 +149,7 @@ object Cargas extends Logging {
   }
 
   // Un único fichero Parquet por ejecución, añadido al directorio compartido.
-  def escribir(ejecucion: Ejecucion, cargasDir: String)(implicit spark: SparkSession): Unit =
+  private def escribir(ejecucion: Ejecucion, cargasDir: String)(implicit spark: SparkSession): Unit =
     spark.createDataFrame(ejecucion.filasRegistro().asJava, Schema)
       .coalesce(1)
       .write.mode("append").parquet(cargasDir)

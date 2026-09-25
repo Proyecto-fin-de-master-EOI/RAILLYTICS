@@ -9,7 +9,7 @@ import java.io.{FileInputStream, InputStream}
 import scala.jdk.CollectionConverters._
 
 object DataSourceConfig extends Logging {
-  val SupportedFormats: Set[String] = SourceFormat.Supported
+  private val SupportedFormats: Set[String] = SourceFormat.Supported
 
   def load(path: String): Seq[DataSource] = {
     logger.info(s"cargando fuentes de datos desde '$path'")

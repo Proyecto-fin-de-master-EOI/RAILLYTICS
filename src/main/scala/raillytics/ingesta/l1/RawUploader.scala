@@ -17,10 +17,10 @@ import java.time.LocalDate
 // mueve a l1DoneRoot, de donde lo recoge L2.
 object RawUploader extends Logging {
 
-  def sourceIdFromLocalPath(uriString: String): String =
+  private def sourceIdFromLocalPath(uriString: String): String =
     Paths.get(new URI(uriString)).getParent.getFileName.toString
 
-  def fileNameFromLocalPath(uriString: String): String =
+  private def fileNameFromLocalPath(uriString: String): String =
     Paths.get(new URI(uriString)).getFileName.toString
 
   def processBatch(batch: DataFrame, hadoopConf: Configuration, bronzeRoot: String, l1DoneRoot: String,
