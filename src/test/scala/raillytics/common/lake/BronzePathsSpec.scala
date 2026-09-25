@@ -1,4 +1,4 @@
-package raillytics.ingesta
+package raillytics.common.lake
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers

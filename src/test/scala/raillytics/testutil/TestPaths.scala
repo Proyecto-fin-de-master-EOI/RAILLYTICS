@@ -1,4 +1,4 @@
-package raillytics.ingesta
+package raillytics.testutil
 
 import java.nio.file.Path
 

@@ -1,18 +1,15 @@
-package raillytics.ingesta
+package raillytics.ingesta.config
 
-import org.slf4j.LoggerFactory
 import org.yaml.snakeyaml.{LoaderOptions, Yaml}
 import org.yaml.snakeyaml.constructor.SafeConstructor
+import raillytics.common.logging.Logging
+import raillytics.ingesta.formats.SourceFormat
 
 import java.io.{FileInputStream, InputStream}
 import scala.jdk.CollectionConverters._
 
-case class DataSource(id: String, name: String, url: String, format: String)
-
-object DataSourceConfig {
-  val SupportedFormats: Set[String] = Set("csv", "json")
-
-  private val logger = LoggerFactory.getLogger(getClass.getName.stripSuffix("$"))
+object DataSourceConfig extends Logging {
+  val SupportedFormats: Set[String] = SourceFormat.Supported
 
   def load(path: String): Seq[DataSource] = {
     logger.info(s"cargando fuentes de datos desde '$path'")

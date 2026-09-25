@@ -1,10 +1,9 @@
-package raillytics.ingesta
+package raillytics.common.spark
 
 import org.apache.spark.sql.SparkSession
-import org.slf4j.LoggerFactory
+import raillytics.common.logging.Logging
 
-object SparkSessionFactory {
-  private val logger = LoggerFactory.getLogger(getClass.getName.stripSuffix("$"))
+object SparkSessionFactory extends Logging {
 
   def build(appName: String): SparkSession = {
     val master = sys.env.getOrElse("SPARK_MASTER", "local[*]")
@@ -29,5 +28,14 @@ object SparkSessionFactory {
       .config("spark.hadoop.fs.s3a.path.style.access", "true")
       .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
       .getOrCreate()
+  }
+
+  // readStream sobre ficheros (binaryFile, csv, json...) exige un esquema
+  // explícito o habilitar la inferencia antes de resolver la fuente -- incluso
+  // binaryFile, cuyo esquema es fijo (path, modificationTime, length, content).
+  def buildForFileStreaming(appName: String): SparkSession = {
+    val spark = build(appName)
+    spark.conf.set("spark.sql.streaming.schemaInference", "true")
+    spark
   }
 }

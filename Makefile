@@ -96,10 +96,10 @@ test-scala:
 	sbt -batch test
 
 raw-uploader:
-	sbt -batch "runMain raillytics.ingesta.RawUploaderApp"
+	sbt -batch "runMain raillytics.ingesta.l1.RawUploaderApp"
 
 parquet-converter:
-	sbt -batch "runMain raillytics.ingesta.ParquetConverterApp"
+	sbt -batch "runMain raillytics.ingesta.l2.ParquetConverterApp"
 
 ingest:
 	$(COMPOSE) exec airflow-scheduler airflow dags trigger ingesta_data_sources

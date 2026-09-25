@@ -1,4 +1,4 @@
-package raillytics.ingesta
+package raillytics.ingesta.config
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers

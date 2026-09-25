@@ -1,28 +1,31 @@
-package raillytics.ingesta
+package raillytics.ingesta.l2
 
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.input_file_name
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import raillytics.common.lake.BronzePaths
+import raillytics.ingesta.config.DataSource
+import raillytics.testutil.TestPaths
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters._
 
-class ParquetConverterAppSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
+class ParquetConverterSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
 
   private implicit var spark: SparkSession = _
 
   override def beforeAll(): Unit = {
-    spark = SparkSession.builder().appName("ParquetConverterAppSpec").master("local[1]").getOrCreate()
+    spark = SparkSession.builder().appName("ParquetConverterSpec").master("local[1]").getOrCreate()
     // startQuery usa readStream, que exige esquema explícito o inferencia
-    // habilitada (ver la misma config en ParquetConverterApp.main()).
+    // habilitada (ver SparkSessionFactory.buildForFileStreaming).
     spark.conf.set("spark.sql.streaming.schemaInference", "true")
   }
 
   override def afterAll(): Unit = spark.stop()
 
-  "ParquetConverterApp.processBatch" should "convert csv to parquet and move the file to processedRoot" in {
+  "ParquetConverter.processBatch" should "convert csv to parquet and move the file to processedRoot" in {
     val tmpDir: Path = Files.createTempDirectory("parquet-converter-spec")
     val l1DoneDir = tmpDir.resolve("l1_done/crtm")
     Files.createDirectories(l1DoneDir)
@@ -34,9 +37,9 @@ class ParquetConverterAppSpec extends AnyFlatSpec with Matchers with BeforeAndAf
 
     val batch = spark.read.format("csv").option("header", "true")
       .load(s"${tmpDir.resolve("l1_done/crtm")}/*")
-      .withColumn(ParquetConverterApp.SourceFileCol, input_file_name())
+      .withColumn(ParquetConverter.SourceFileCol, input_file_name())
 
-    ParquetConverterApp.processBatch(source, batch, spark.sparkContext.hadoopConfiguration, bronzeRoot, processedRoot)
+    ParquetConverter.processBatch(source, batch, spark.sparkContext.hadoopConfiguration, bronzeRoot, processedRoot)
 
     val today = java.time.LocalDate.now()
     val parquetDir = tmpDir.resolve(s"bronze/l2/crtm/$today")
@@ -51,7 +54,7 @@ class ParquetConverterAppSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     Files.exists(tmpDir.resolve("processed/crtm/sample.csv")) shouldBe true
   }
 
-  "ParquetConverterApp.startQuery" should "parse a multi-line JSON source (GTFS-RT-shaped) using multiLine=true" in {
+  "ParquetConverter.startQuery" should "parse a multi-line JSON source (GTFS-RT-shaped) using multiLine=true" in {
     val tmpDir: Path = Files.createTempDirectory("parquet-converter-json-spec")
     val l1DoneDir = tmpDir.resolve("l1_done/renfe_trip_updates")
     Files.createDirectories(l1DoneDir)
@@ -68,14 +71,16 @@ class ParquetConverterAppSpec extends AnyFlatSpec with Matchers with BeforeAndAf
     )
 
     val bronzeRoot = TestPaths.fileUri(tmpDir.resolve("bronze"))
-    val processedRoot = tmpDir.resolve("processed").toString
-    val checkpointRoot = tmpDir.resolve("checkpoints").toString
-    val l1DoneRoot = tmpDir.resolve("l1_done").toString
+    val settings = ParquetConverterSettings(
+      configPath = "unused",
+      l1DoneRoot = tmpDir.resolve("l1_done").toString,
+      processedRoot = tmpDir.resolve("processed").toString,
+      checkpointRoot = tmpDir.resolve("checkpoints").toString,
+      bronzeRoot = bronzeRoot
+    )
     val source = DataSource("renfe_trip_updates", "Renfe test", "https://example.invalid", "json")
 
-    val query = ParquetConverterApp.startQuery(
-      source, bronzeRoot, l1DoneRoot, processedRoot, checkpointRoot, spark.sparkContext.hadoopConfiguration
-    )
+    val query = ParquetConverter.startQuery(source, settings, spark.sparkContext.hadoopConfiguration)
     query.processAllAvailable()
     query.stop()
 

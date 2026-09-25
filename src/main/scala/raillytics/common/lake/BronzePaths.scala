@@ -1,4 +1,4 @@
-package raillytics.ingesta
+package raillytics.common.lake
 
 import java.time.LocalDate
 

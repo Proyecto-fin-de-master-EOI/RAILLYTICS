@@ -1,23 +1,24 @@
-package raillytics.ingesta
+package raillytics.ingesta.l1
 
 import org.apache.spark.sql.SparkSession
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import raillytics.testutil.TestPaths
 
 import java.nio.file.{Files, Path}
 
-class RawUploaderAppSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
+class RawUploaderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
 
   private var spark: SparkSession = _
 
   override def beforeAll(): Unit = {
-    spark = SparkSession.builder().appName("RawUploaderAppSpec").master("local[1]").getOrCreate()
+    spark = SparkSession.builder().appName("RawUploaderSpec").master("local[1]").getOrCreate()
   }
 
   override def afterAll(): Unit = spark.stop()
 
-  "RawUploaderApp.processBatch" should "copy the file as-is to bronzeRoot and move it to l1DoneRoot" in {
+  "RawUploader.processBatch" should "copy the file as-is to bronzeRoot and move it to l1DoneRoot" in {
     val tmpDir: Path = Files.createTempDirectory("raw-uploader-spec")
     val stagingDir = tmpDir.resolve("staging/crtm")
     Files.createDirectories(stagingDir)
@@ -27,7 +28,7 @@ class RawUploaderAppSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAl
     val l1DoneRoot = tmpDir.resolve("l1_done").toString
 
     val batch = spark.read.format("binaryFile").load(s"${tmpDir.resolve("staging")}/*/*")
-    RawUploaderApp.processBatch(batch, spark.sparkContext.hadoopConfiguration, bronzeRoot, l1DoneRoot)
+    RawUploader.processBatch(batch, spark.sparkContext.hadoopConfiguration, bronzeRoot, l1DoneRoot)
 
     val today = java.time.LocalDate.now()
     val expectedRawFile = tmpDir.resolve(s"bronze/l1-raw/crtm/$today/sample.csv")
