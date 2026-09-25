@@ -40,8 +40,9 @@ object RawUploader extends Logging {
         val fileName = fileNameFromLocalPath(localUri)
 
         val srcPath = new Path(localUri)
-        val destPath = new Path(BronzePaths.l1(bronzeRoot, source, LocalDate.now(), fileName))
-        ejecucion.tabla(source, origen = Some(localUri), destino = Some(destPath.toString)) { carga =>
+        val destUri = BronzePaths.l1(bronzeRoot, source, LocalDate.now(), fileName)
+        val destPath = new Path(destUri)
+        ejecucion.tabla(source, origen = Some(localUri), destino = Some(destUri)) { carga =>
           logger.debug(s"copiando '$srcPath' -> '$destPath' (fuente=$source)")
           FileUtil.copy(localFs, srcPath, destFs, destPath, false, hadoopConf)
 

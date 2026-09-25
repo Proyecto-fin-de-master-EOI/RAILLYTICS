@@ -11,7 +11,7 @@ deja donde ellos las dejarán (bucket Silver de MinIO, o SILVER_ROOT local):
                            llegada, retraso, estado, meteo y festivo.
 
 Cuando existan los jobs reales bastará con que escriban estas columnas en los
-mismos prefijos; Gold (raillytics.gold.build) y Superset no cambian.
+mismos prefijos; Gold (la app Spark GoldBuilderApp) y Superset no cambian.
 
 Los datos NO son reales: estaciones y líneas son un subconjunto ilustrativo
 con códigos inventados, y demanda y retrasos siguen un modelo simple

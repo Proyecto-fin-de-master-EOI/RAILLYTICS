@@ -21,8 +21,8 @@ x-airflow-common:
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     PYTHONPATH: /opt/airflow/python
     # Dentro de la red de compose MinIO es minio:9000; el MINIO_ENDPOINT del
-    # .env apunta al puerto publicado en el host y aquí no aplica. Lo usa el
-    # DAG gold_duckdb a través de raillytics.utils.lake.
+    # .env apunta al puerto publicado en el host y aquí no aplica. Lo usa la
+    # trazabilidad de la descarga Bronze (raillytics.utils.cargas).
     MINIO_ENDPOINT: http://minio:9000
     _PIP_ADDITIONAL_REQUIREMENTS: "requests~=2.32 PyYAML~=6.0 duckdb~=1.5.5"
   volumes:

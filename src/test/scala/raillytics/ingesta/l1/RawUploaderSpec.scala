@@ -42,6 +42,7 @@ class RawUploaderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
     // Trazabilidad: una fila por fichero subido, con su tamaño y su destino en Bronze.
     val traza = spark.read.parquet(cargasDir).select("proceso", "capa", "tabla", "bytes", "destino", "estado").collect()
     traza should have length 1
-    traza.head.toSeq shouldBe Seq("bronze_l1_raw_uploader", "bronze", "crtm", 28L, s"$bronzeRoot/l1-raw/crtm/$today/sample.csv", "ok")
+    traza.head.toSeq shouldBe Seq("bronze_l1_raw_uploader", "bronze", "crtm", Files.size(expectedRawFile),
+      s"$bronzeRoot/l1-raw/crtm/$today/sample.csv", "ok")
   }
 }
