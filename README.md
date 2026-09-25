@@ -46,40 +46,43 @@ Fuentes (Renfe, AEMET, BOE, INE)
 Qué mueve los datos entre capas y con qué target de `make` se lanza cada paso. Las líneas
 discontinuas hacia la trazabilidad indican que cada proceso registra sus cargas.
 
+
+
 ```mermaid
 flowchart LR
     subgraph fuentes[Fuentes públicas]
-        F1[Renfe GTFS-RT]
-        F2[CRTM]
+        F1["Renfe GTFS-RT"]
+        F2["CRTM"]
     end
     subgraph bronze[Bronze]
-        STG[data/bronze/ · staging local]
-        L1[(MinIO raillytics-bronze/l1-raw/ · ficheros tal cual)]
-        L2[(MinIO raillytics-bronze/l2/ · Parquet)]
+        STG["data/bronze/ - staging local"]
+        L1[("MinIO raillytics-bronze/l1-raw/ - ficheros")]
+        L2[("MinIO raillytics-bronze/l2/ - Parquet")]
     end
     subgraph silver[Silver]
-        SLV[(MinIO raillytics-silver/ · Parquet)]
+        SLV[("MinIO raillytics-silver/ - Parquet")]
     end
     subgraph gold[Gold]
-        GLD[(MinIO raillytics-gold/ · dim_* y fact_*)]
-        TRZ[(raillytics-gold/_trazabilidad/cargas/)]
+        GLD[("MinIO raillytics-gold/ - dim y fact")]
+        TRZ[("raillytics-gold/_trazabilidad/cargas/")]
     end
-    SUP[Superset · DuckDB en memoria]
-    GEN[silver_sample.py · Silver sintético]
+    SUP["Superset - DuckDB en memoria"]
+    GEN["silver_sample.py - Silver sintetico"]
 
-    F1 & F2 -- "make 00_ingest · DAG ingesta_data_sources (Airflow, Python)" --> STG
-    STG -- "make 01_raw-uploader · RawUploaderApp (Spark Streaming)" --> L1
-    L1 -- "make 02_parquet-converter · ParquetConverterApp (Spark Streaming)" --> L2
+    F1 -- "make 00_ingest - DAG ingesta_data_sources (Airflow, Python)" --> STG
+    F2 -- "make 00_ingest - DAG ingesta_data_sources (Airflow, Python)" --> STG
+    STG -- "make 01_raw-uploader - RawUploaderApp (Spark Streaming)" --> L1
+    L1 -- "make 02_parquet-converter - ParquetConverterApp (Spark Streaming)" --> L2
     L2 -. "jobs PySpark de Silver (pendientes)" .-> SLV
     GEN -- "make 03_silver-sample" --> SLV
-    SLV -- "make 04_gold · GoldBuilderApp (Spark batch)" --> GLD
-    GLD -- "make up · superset-init importa dashboards/superset/ (o make 05_superset-import)" --> SUP
+    SLV -- "make 04_gold - GoldBuilderApp (Spark batch)" --> GLD
+    GLD -- "make up - superset-init importa dashboards/superset/ (o make 05_superset-import)" --> SUP
     STG -.-> TRZ
     L1 -.-> TRZ
     L2 -.-> TRZ
     SLV -.-> TRZ
     GLD -.-> TRZ
-    TRZ -- "dashboard Trazabilidad de cargas · make cargas" --> SUP
+    TRZ -- "dashboard Trazabilidad de cargas - make cargas" --> SUP
 ```
 
 ---
