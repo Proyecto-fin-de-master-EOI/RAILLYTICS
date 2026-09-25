@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala raw-uploader parquet-converter ingest clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest 01_raw-uploader 02_parquet-converter 03_silver-sample 04_gold 05_superset-import clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -25,6 +25,10 @@ export
 # `python` apunte a otra. Se puede sobreescribir:
 #   make install-dev-env VENV_BASE_PYTHON=python3.11
 VENV := .venv
+
+# Los módulos de python/raillytics se lanzan con `python -m` (targets 03/04);
+# pytest ya resuelve python/ vía pyproject.toml, pero make tiene que exportarlo.
+PYTHONPATH := python
 
 ifeq ($(OS),Windows_NT)
   # Spark/Hadoop en Windows necesita winutils.exe; el `export` de arriba lo
@@ -50,7 +54,7 @@ COMPOSE = docker compose -f docker/docker-compose.yml --env-file .env
 
 help:
 	@echo "Targets disponibles:"
-	@echo "  up                 Levanta MinIO + Airflow + Postgres (docker compose)"
+	@echo "  up                 Levanta MinIO + Airflow + Postgres + Superset (docker compose)"
 	@echo "  down               Para el stack de docker compose"
 	@echo "  install-dev-env    Crea .venv, instala requirements.txt, git hooks y .env"
 	@echo "  install-hooks      Instala los git hooks de .githooks/ (core.hooksPath)"
@@ -60,6 +64,9 @@ help:
 	@echo "  00_ingest             Dispara manualmente el DAG de descarga en Airflow"
 	@echo "  01_raw-uploader       Lanza la app Spark L1 raw-uploader (primer plano)"
 	@echo "  02_parquet-converter  Lanza la app Spark L2 parquet-converter (primer plano)"
+	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
+	@echo "  04_gold               Construye la capa Gold con DuckDB (Silver -> Parquet en raillytics-gold)"
+	@echo "  05_superset-import    Reimporta los dashboards de dashboards/superset/ en Superset"
 	@echo "  clean              Borra directorios de staging/checkpoints generados"
 
 up:
@@ -108,6 +115,18 @@ test-scala:
 
 00_ingest:
 	$(COMPOSE) exec airflow-scheduler airflow dags trigger ingesta_data_sources
+
+# Silver y Gold corren en el host con el python del venv (como test-python) y
+# hablan con MinIO con las variables MINIO_* del .env. 04_gold deja además un
+# catálogo DuckDB local con vistas sobre Gold para notebooks (data/gold/).
+03_silver-sample: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.procesamiento.silver_sample
+
+04_gold: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.gold.build --catalog data/gold/raillytics_gold.duckdb
+
+05_superset-import:
+	$(COMPOSE) exec superset bash /app/raillytics/docker/superset-import-dashboards.sh
 
 clean:
 	$(PYTHON) -c "import shutil; [shutil.rmtree(p, ignore_errors=True) for p in ['data/bronze_l1_done', 'data/bronze_processed', 'data/checkpoints', 'target', 'project/target']]"

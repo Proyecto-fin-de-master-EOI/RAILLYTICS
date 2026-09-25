@@ -50,6 +50,10 @@ derby.log
 *.crc
 _delta_log/
 
+# === DuckDB (capa Gold) — catálogos/ficheros locales generados ===
+*.duckdb
+*.duckdb.wal
+
 # === dbt ===
 dbt/target/
 dbt/dbt_packages/

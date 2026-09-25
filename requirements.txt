@@ -8,7 +8,7 @@ PyYAML~=6.0              # Parseo de config/data_sources.yml
 # === Modelo dimensional (capa Gold) ===
 dbt-core~=1.8           # Transformaciones Silver → Gold
 dbt-snowflake~=1.8      # Adaptador dbt para Snowflake
-duckdb
+duckdb~=1.5.5           # Motor SQL de la capa Gold en local: lee Silver y escribe Gold (Parquet en MinIO)
 
 # === Machine Learning ===
 scikit-learn~=1.5       # Modelo predictivo de demanda
