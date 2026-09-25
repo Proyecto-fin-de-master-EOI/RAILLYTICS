@@ -6,12 +6,16 @@ package raillytics.common.lake
 // SILVER_ROOT / GOLD_ROOT / TRAZABILIDAD_ROOT para apuntar a directorios
 // locales (tests, desarrollo sin MinIO). Lo de Bronze sigue en BronzePaths.
 object LakePaths {
+  // Bucket Silver, o el directorio local de SILVER_ROOT si está definido.
   def silverRoot(env: Map[String, String]): String =
     env.getOrElse("SILVER_ROOT", s"s3a://${env.getOrElse("MINIO_BUCKET_SILVER", "raillytics-silver")}")
 
+  // Bucket Gold, o el directorio local de GOLD_ROOT si está definido.
   def goldRoot(env: Map[String, String]): String =
     env.getOrElse("GOLD_ROOT", s"s3a://${env.getOrElse("MINIO_BUCKET_GOLD", "raillytics-gold")}")
 
+  // Raíz del registro de cargas: por defecto un prefijo "técnico" dentro de Gold.
+  // El guion bajo inicial hace que Spark lo ignore si alguien lee el bucket entero.
   def trazabilidadRoot(env: Map[String, String]): String =
     env.getOrElse("TRAZABILIDAD_ROOT", s"${goldRoot(env)}/_trazabilidad")
 

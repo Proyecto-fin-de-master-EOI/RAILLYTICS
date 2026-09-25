@@ -32,6 +32,7 @@ import scala.util.control.NonFatal
 // queda constancia en el log, pero la carga no falla por eso.
 object Cargas extends Logging {
 
+  // Valores de la columna estado (los mismos que en Python).
   private val EstadoOk = "ok"
   private val EstadoError = "error"
 
@@ -58,25 +59,33 @@ object Cargas extends Logging {
     StructField("usuario", StringType)
   ))
 
+  // Prefijo del run_id: instante de inicio en UTC, legible y ordenable.
   private val RunIdFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
+  // Serializa `parametros` a JSON; Jackson ya viene en el classpath de Spark.
   private val Json = new ObjectMapper()
 
+  // Instante actual en UTC y sin zona horaria: es el convenio de inicio/fin
+  // (el dashboard de Superset los pasa a hora de Madrid al mostrarlos).
   private def ahora(): LocalDateTime = LocalDateTime.now(ZoneOffset.UTC)
 
+  // Quién lanzó la carga, deducido del entorno: una tarea de Airflow (que
+  // exporta su dag_id), `make` o la línea de comandos. Igual que en Python.
   def lanzadoPorDefecto(env: Map[String, String] = sys.env): String =
     env.get("AIRFLOW_CTX_DAG_ID").map(dag => s"airflow:$dag")
       .orElse(if (env.contains("MAKELEVEL")) Some("make") else None)  // GNU make lo exporta a sus subprocesos
       .getOrElse("cli")
 
+  // Tipo y mensaje de la excepción para la columna error, acotado en tamaño.
   private def describir(e: Throwable): String =
     s"${e.getClass.getSimpleName}: ${Option(e.getMessage).getOrElse("")}".take(2000)
 
   // Carga de una tabla dentro de una ejecución; los campos se rellenan en el bloque.
+  // tabla es None solo en la fila "de ejecución" que deja un error fuera de las tablas.
   final class CargaTabla(val tabla: Option[String], var origen: Option[String], var destino: Option[String],
                          val inicio: LocalDateTime = ahora()) {
-    var filas: Option[Long] = None
-    var bytes: Option[Long] = None
-    var fin: Option[LocalDateTime] = None
+    var filas: Option[Long] = None            // registros escritos (None si no aplica, p. ej. un fichero en bruto)
+    var bytes: Option[Long] = None            // tamaño en bytes cuando se conoce (ficheros de L1)
+    var fin: Option[LocalDateTime] = None     // lo fija tabla() al salir del bloque, con o sin error
     var estado: String = EstadoOk
     var error: Option[String] = None
   }
@@ -84,9 +93,13 @@ object Cargas extends Logging {
   // Una ejecución de un proceso de carga y las tablas que ha cargado.
   final class Ejecucion(val proceso: String, val capa: String, val parametros: Map[String, Any], val lanzadoPor: String) {
     val inicio: LocalDateTime = ahora()
+    // <AAAAMMDDTHHMMSS>-<proceso>-<6 hex>: único, y ordenable por fecha en cualquier listado.
     val runId: String = s"${inicio.format(RunIdFormatter)}-$proceso-${UUID.randomUUID().toString.take(6)}"
     private val tablas = ListBuffer.empty[CargaTabla]
 
+    // Ejecuta `bloque` como la carga de la tabla `nombre`: si lanza, la fila
+    // queda en estado error con el mensaje y la excepción sigue su curso; fin
+    // se fija siempre. Devuelve lo que devuelva el bloque.
     def tabla[T](nombre: String, origen: Option[String] = None, destino: Option[String] = None)
                 (bloque: CargaTabla => T): T = {
       val carga = new CargaTabla(Some(nombre), origen, destino)
@@ -111,6 +124,8 @@ object Cargas extends Logging {
       }
 
     // Filas en el orden de Schema; una ejecución sin tablas deja una fila sin tabla.
+    // ejecutor es el host y usuario quien corre el proceso: permiten saber desde
+    // qué máquina y cuenta se hizo cada carga (make en un portátil, contenedor...).
     def filasRegistro(): Seq[Row] = {
       val fin = ahora()
       val registradas = if (tablas.isEmpty) Seq(new CargaTabla(None, None, None, inicio)) else tablas.toSeq
@@ -136,6 +151,10 @@ object Cargas extends Logging {
     case other             => other
   }
 
+  // Registra una ejecución del proceso `proceso` (capa bronze/silver/gold) mientras
+  // corre `bloque`. cargasDir es el directorio del registro (LakePaths.cargasDir) y
+  // parametros lo que haga falta para reproducir la carga (umbrales, fuente...).
+  // Devuelve lo que devuelva el bloque; si el bloque lanza, se registra y se relanza.
   def registrar[T](proceso: String, capa: String, cargasDir: String, parametros: Map[String, Any] = Map.empty,
                    lanzadoPor: String = lanzadoPorDefecto())
                   (bloque: Ejecucion => T)(implicit spark: SparkSession): T = {
@@ -148,12 +167,16 @@ object Cargas extends Logging {
     } finally escribirBestEffort(ejecucion, cargasDir)
   }
 
-  // Un único fichero Parquet por ejecución, añadido al directorio compartido.
+  // Un único fichero Parquet por ejecución, añadido al directorio compartido
+  // (mode append: Spark le da un nombre único, así dos ejecuciones concurrentes
+  // no se pisan y en S3 no hace falta reescribir nada).
   private def escribir(ejecucion: Ejecucion, cargasDir: String)(implicit spark: SparkSession): Unit =
     spark.createDataFrame(ejecucion.filasRegistro().asJava, Schema)
       .coalesce(1)
       .write.mode("append").parquet(cargasDir)
 
+  // La trazabilidad nunca hace fallar la carga: si no se puede escribir (MinIO
+  // caído, ruta inválida...), queda en el log con la excepción y se sigue.
   private def escribirBestEffort(ejecucion: Ejecucion, cargasDir: String)(implicit spark: SparkSession): Unit =
     try {
       escribir(ejecucion, cargasDir)

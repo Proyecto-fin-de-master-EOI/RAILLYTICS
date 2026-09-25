@@ -18,8 +18,11 @@ object SourceFormat {
     "json" -> (_.option("multiLine", "true"))
   )
 
+  // Formatos válidos en el YAML: exactamente los que tienen entrada arriba.
   val Supported: Set[String] = readerOptions.keySet
 
+  // Lector de streaming ya configurado para el formato; la ruta la pone quien
+  // llama (.load), porque depende de la fuente.
   def streamReader(format: String)(implicit spark: SparkSession): DataStreamReader = {
     val reader = spark.readStream.format(format)
     readerOptions.get(format).fold(reader)(configure => configure(reader))

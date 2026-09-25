@@ -20,6 +20,7 @@ object DataSourceConfig extends Logging {
     sources
   }
 
+  // Separado de load() para poder probarlo con un YAML en memoria.
   def loadFromStream(is: InputStream): Seq[DataSource] = {
     // SafeConstructor: el YAML solo trae mapas/listas/escalares, no hace falta
     // (ni conviene) permitir tags !!  que instancien clases Java arbitrarias.
