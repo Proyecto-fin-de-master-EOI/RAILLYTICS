@@ -1,0 +1,52 @@
+slice_name: Historial de cargas
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: inicio
+  query_mode: raw
+  groupby: []
+  metrics: []
+  all_columns:
+  - inicio
+  - proceso
+  - capa
+  - tabla
+  - filas
+  - duracion_s
+  - estado
+  - lanzado_por
+  - error
+  - run_id
+  - destino
+  percent_metrics: []
+  order_by_cols:
+  - '["inicio", false]'
+  row_limit: 200
+  server_page_length: 10
+  include_search: true
+  show_totals: false
+  table_timestamp_format: '%Y-%m-%d %H:%M:%S'
+  show_cell_bars: false
+  color_pn: false
+  allow_render_html: false
+  column_config: {}
+  conditional_formatting: []
+  temporal_columns_lookup: {}
+  time_grain_sqla: null
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: c6248132-46a2-5cc5-8f8c-4af0f4c64b7c
+version: 1.0.0
+dataset_uuid: c7f7da85-6e7e-5476-b9b0-d10421629fdf
+is_managed_externally: false
+external_url: null

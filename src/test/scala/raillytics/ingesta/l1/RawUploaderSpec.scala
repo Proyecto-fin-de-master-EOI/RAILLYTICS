@@ -1,0 +1,48 @@
+package raillytics.ingesta.l1
+
+import org.apache.spark.sql.SparkSession
+import org.scalatest.BeforeAndAfterAll
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
+import raillytics.testutil.{TestPaths, TestSpark}
+
+import java.nio.file.{Files, Path}
+
+class RawUploaderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
+
+  private var spark: SparkSession = _
+
+  override def beforeAll(): Unit = {
+    spark = TestSpark.session("RawUploaderSpec")
+  }
+
+  override def afterAll(): Unit = spark.stop()
+
+  "RawUploader.processBatch" should "copy the file as-is to bronzeRoot and move it to l1DoneRoot" in {
+    val tmpDir: Path = Files.createTempDirectory("raw-uploader-spec")
+    val stagingDir = tmpDir.resolve("staging/crtm")
+    Files.createDirectories(stagingDir)
+    Files.writeString(stagingDir.resolve("sample.csv"), "estacion,viajeros\nAtocha,100\n")
+
+    val bronzeRoot = TestPaths.fileUri(tmpDir.resolve("bronze"))
+    val l1DoneRoot = tmpDir.resolve("l1_done").toString
+    val cargasDir = TestPaths.fileUri(tmpDir.resolve("cargas"))
+
+    val batch = spark.read.format("binaryFile").load(s"${tmpDir.resolve("staging")}/*/*")
+    RawUploader.processBatch(batch, spark.sparkContext.hadoopConfiguration, bronzeRoot, l1DoneRoot, cargasDir)
+
+    val today = java.time.LocalDate.now()
+    val expectedRawFile = tmpDir.resolve(s"bronze/l1-raw/crtm/$today/sample.csv")
+    Files.exists(expectedRawFile) shouldBe true
+    Files.readString(expectedRawFile) shouldBe "estacion,viajeros\nAtocha,100\n"
+
+    Files.exists(stagingDir.resolve("sample.csv")) shouldBe false
+    Files.exists(tmpDir.resolve("l1_done/crtm/sample.csv")) shouldBe true
+
+    // Trazabilidad: una fila por fichero subido, con su tamaño y su destino en Bronze.
+    val traza = spark.read.parquet(cargasDir).select("proceso", "capa", "tabla", "bytes", "destino", "estado").collect()
+    traza should have length 1
+    traza.head.toSeq shouldBe Seq("bronze_l1_raw_uploader", "bronze", "crtm", Files.size(expectedRawFile),
+      s"$bronzeRoot/l1-raw/crtm/$today/sample.csv", "ok")
+  }
+}

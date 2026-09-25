@@ -1,0 +1,143 @@
+table_name: frescura_tablas
+main_dttm_col: ultima_carga
+description: Última carga de cada tabla del lake y horas transcurridas desde entonces.
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: |-
+  -- Última carga de cada tabla y cuánto hace de ella (semáforo de frescura).
+  SELECT
+      capa,
+      proceso,
+      tabla,
+      timezone('Europe/Madrid', timezone('UTC', max(fin)))                    AS ultima_carga,
+      round(date_diff('minute', max(fin), timezone('UTC', now())) / 60.0, 1)  AS horas_desde_ultima_carga,
+      arg_max(estado, fin)                                                    AS ultimo_estado,
+      arg_max(filas, fin)                                                     AS ultimas_filas,
+      count(*)                                                                AS n_cargas,
+      count(*) FILTER (WHERE estado = 'error')                                AS n_errores
+  FROM read_parquet('s3://raillytics-gold/_trazabilidad/cargas/*.parquet', union_by_name = true)
+  WHERE tabla IS NOT NULL
+  GROUP BY capa, proceso, tabla
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: 01c91479-9176-5590-bd0d-564623f06aee
+metrics: []
+columns:
+- column_name: capa
+  verbose_name: Capa
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: proceso
+  verbose_name: Proceso
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: tabla
+  verbose_name: Tabla
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ultima_carga
+  verbose_name: Última carga
+  is_dttm: true
+  is_active: true
+  type: TIMESTAMP
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: horas_desde_ultima_carga
+  verbose_name: Horas desde la última carga
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ultimo_estado
+  verbose_name: Último estado
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ultimas_filas
+  verbose_name: Filas (última carga)
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: n_cargas
+  verbose_name: Cargas
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: n_errores
+  verbose_name: Errores
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

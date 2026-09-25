@@ -24,9 +24,18 @@ BRONZE_STAGING_ROOT = Path("/opt/airflow/raillytics_data/bronze")
 def ingesta_data_sources():
     @task
     def download_source(source_id: str) -> str:
+        # Import dentro de la tarea: el dag-processor no necesita duckdb para parsear el DAG.
+        from raillytics.utils.cargas import registrar_carga
+
         sources_by_id = {s.id: s for s in load_sources(CONFIG_PATH)}
         source = sources_by_id[source_id]
-        dest = download(source, BRONZE_STAGING_ROOT)
+        # Trazabilidad: una fila por descarga en <bucket gold>/_trazabilidad/cargas/
+        # (MinIO y credenciales salen de las variables MINIO_* del contenedor).
+        with registrar_carga("bronze_download", "bronze", parametros={"format": source.format}) as ejecucion:
+            with ejecucion.tabla(source.id, origen=source.url) as carga:
+                dest = download(source, BRONZE_STAGING_ROOT)
+                carga.destino = str(dest)
+                carga.bytes = dest.stat().st_size
         return str(dest)
 
     source_ids = [source.id for source in load_sources(CONFIG_PATH)]

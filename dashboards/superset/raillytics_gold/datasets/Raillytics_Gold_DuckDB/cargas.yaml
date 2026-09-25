@@ -1,0 +1,303 @@
+table_name: cargas
+main_dttm_col: inicio
+description: 'Trazabilidad de cargas del lake (raillytics.utils.cargas): una fila por ejecución y tabla cargada, leída de
+  s3://raillytics-gold/_trazabilidad/cargas/.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: |-
+  -- Trazabilidad de cargas (raillytics.utils.cargas): una fila por ejecución y tabla.
+  -- inicio y fin se guardan en UTC; aquí se muestran en hora de Madrid.
+  SELECT
+      run_id,
+      proceso,
+      capa,
+      tabla,
+      origen,
+      destino,
+      filas,
+      bytes,
+      timezone('Europe/Madrid', timezone('UTC', inicio)) AS inicio,
+      timezone('Europe/Madrid', timezone('UTC', fin))    AS fin,
+      duracion_s,
+      estado,
+      error,
+      parametros,
+      lanzado_por,
+      ejecutor,
+      usuario
+  FROM read_parquet('s3://raillytics-gold/_trazabilidad/cargas/*.parquet', union_by_name = true)
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: c7f7da85-6e7e-5476-b9b0-d10421629fdf
+metrics:
+- metric_name: n_ejecuciones
+  verbose_name: Ejecuciones
+  metric_type: null
+  expression: COUNT(DISTINCT run_id)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: n_cargas
+  verbose_name: Cargas de tabla
+  metric_type: null
+  expression: COUNT(*)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: n_ok
+  verbose_name: Cargas OK
+  metric_type: null
+  expression: SUM(CASE WHEN estado = 'ok' THEN 1 ELSE 0 END)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: n_errores
+  verbose_name: Errores
+  metric_type: null
+  expression: SUM(CASE WHEN estado = 'error' THEN 1 ELSE 0 END)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: total_filas
+  verbose_name: Filas cargadas
+  metric_type: null
+  expression: SUM(filas)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: duracion_media
+  verbose_name: Duración media (s)
+  metric_type: null
+  expression: AVG(duracion_s)
+  description: null
+  d3format: .1f
+  extra: null
+  warning_text: null
+- metric_name: ultima_carga
+  verbose_name: Última carga
+  metric_type: null
+  expression: MAX(fin)
+  description: null
+  d3format: null
+  extra: null
+  warning_text: null
+columns:
+- column_name: run_id
+  verbose_name: Ejecución
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: proceso
+  verbose_name: Proceso
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: capa
+  verbose_name: Capa
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: tabla
+  verbose_name: Tabla
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: origen
+  verbose_name: Origen
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: destino
+  verbose_name: Destino
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: filas
+  verbose_name: Filas
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: bytes
+  verbose_name: Bytes
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: inicio
+  verbose_name: Inicio
+  is_dttm: true
+  is_active: true
+  type: TIMESTAMP
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fin
+  verbose_name: Fin
+  is_dttm: true
+  is_active: true
+  type: TIMESTAMP
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: duracion_s
+  verbose_name: Duración (s)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: estado
+  verbose_name: Estado
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: error
+  verbose_name: Error
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: parametros
+  verbose_name: Parámetros
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: lanzado_por
+  verbose_name: Lanzado por
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ejecutor
+  verbose_name: Ejecutor
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: usuario
+  verbose_name: Usuario
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

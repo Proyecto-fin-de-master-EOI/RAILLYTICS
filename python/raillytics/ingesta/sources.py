@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-SUPPORTED_FORMATS = {"csv", "json"}
+from raillytics.ingesta.formats import SUPPORTED_FORMATS
 
 
 @dataclass(frozen=True)
