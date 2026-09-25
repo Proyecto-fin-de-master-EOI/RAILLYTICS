@@ -1,20 +1,22 @@
 package raillytics.gold
 
-import raillytics.common.lake.LakePaths
+import com.typesafe.config.Config
+import raillytics.common.config.AppConfig
+import raillytics.common.lake.LakeSettings
 
-// Rutas con las que trabaja GoldBuilder; todas salen del entorno vía LakePaths.
+// Lo que necesita GoldBuilder: las raíces del lake (de dónde lee Silver, dónde
+// escribe Gold y dónde registra la ejecución) y los parámetros del modelo.
 final case class GoldBuilderSettings(
-  silverRoot: String,   // de dónde se leen las tablas Silver (bucket o directorio local)
-  goldRoot: String,     // dónde se escriben las tablas Gold
-  cargasDir: String     // dónde se registra la ejecución (trazabilidad de cargas)
+  lake: LakeSettings,
+  umbralPuntualidadMin: Int   // un servicio es puntual si llega con este retraso o menos (minutos)
 )
 
 object GoldBuilderSettings {
-  // env es un parámetro (y no sys.env directamente) para poder probarlo con mapas fijos.
-  def fromEnv(env: Map[String, String] = sys.env): GoldBuilderSettings =
+  // config es un parámetro (y no AppConfig.load() a secas) para poder probarlo
+  // con AppConfig.defaults(...) sin depender del entorno.
+  def from(config: Config = AppConfig.load()): GoldBuilderSettings =
     GoldBuilderSettings(
-      silverRoot = LakePaths.silverRoot(env),
-      goldRoot = LakePaths.goldRoot(env),
-      cargasDir = LakePaths.cargasDir(LakePaths.trazabilidadRoot(env))
+      lake = LakeSettings.from(config),
+      umbralPuntualidadMin = config.getInt("raillytics.gold.umbral-puntualidad-min")
     )
 }

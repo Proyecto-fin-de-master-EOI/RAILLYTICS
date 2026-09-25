@@ -41,6 +41,49 @@ Fuentes (Renfe, AEMET, BOE, INE)
 
 ---
 
+## Flujo de datos y procesos
+
+Qué mueve los datos entre capas y con qué target de `make` se lanza cada paso. Las líneas
+discontinuas hacia la trazabilidad indican que cada proceso registra sus cargas.
+
+```mermaid
+flowchart LR
+    subgraph fuentes[Fuentes públicas]
+        F1[Renfe GTFS-RT]
+        F2[CRTM]
+    end
+    subgraph bronze[Bronze]
+        STG[data/bronze/ · staging local]
+        L1[(MinIO raillytics-bronze/l1-raw/ · ficheros tal cual)]
+        L2[(MinIO raillytics-bronze/l2/ · Parquet)]
+    end
+    subgraph silver[Silver]
+        SLV[(MinIO raillytics-silver/ · Parquet)]
+    end
+    subgraph gold[Gold]
+        GLD[(MinIO raillytics-gold/ · dim_* y fact_*)]
+        TRZ[(raillytics-gold/_trazabilidad/cargas/)]
+    end
+    SUP[Superset · DuckDB en memoria]
+    GEN[silver_sample.py · Silver sintético]
+
+    F1 & F2 -- "make 00_ingest · DAG ingesta_data_sources (Airflow, Python)" --> STG
+    STG -- "make 01_raw-uploader · RawUploaderApp (Spark Streaming)" --> L1
+    L1 -- "make 02_parquet-converter · ParquetConverterApp (Spark Streaming)" --> L2
+    L2 -. "jobs PySpark de Silver (pendientes)" .-> SLV
+    GEN -- "make 03_silver-sample" --> SLV
+    SLV -- "make 04_gold · GoldBuilderApp (Spark batch)" --> GLD
+    GLD -- "make up · superset-init importa dashboards/superset/ (o make 05_superset-import)" --> SUP
+    STG -.-> TRZ
+    L1 -.-> TRZ
+    L2 -.-> TRZ
+    SLV -.-> TRZ
+    GLD -.-> TRZ
+    TRZ -- "dashboard Trazabilidad de cargas · make cargas" --> SUP
+```
+
+---
+
 ## Estructura de directorios
 
 ```
@@ -85,15 +128,16 @@ RAILLYTICS/
 ├── project/                    # Metadatos del build SBT (build.properties)
 ├── src/
 │   ├── main/scala/raillytics/
-│   │   ├── common/             # Compartido: logging, spark (SparkSessionFactory), fs, lake (BronzePaths, LakePaths), trazabilidad (Cargas)
+│   │   ├── common/             # Compartido: config (AppConfig, DotEnv), logging, spark (SparkSessionFactory), fs, lake (BronzePaths, LakeSettings), trazabilidad (Cargas)
 │   │   ├── ingesta/
-│   │   │   ├── IngestaEnv      # Defaults de entorno comunes a L1 y L2
 │   │   │   ├── config/         # DataSource + DataSourceConfig (lectura de config/data_sources.yml)
 │   │   │   ├── formats/        # SourceFormat: formatos soportados y sus opciones de lectura
 │   │   │   ├── l1/             # RawUploaderApp (main) · RawUploader (lógica) · RawUploaderSettings (entorno)
 │   │   │   └── l2/             # ParquetConverterApp (main) · ParquetConverter (lógica) · ParquetConverterSettings (entorno)
 │   │   └── gold/               # GoldBuilderApp (main, batch) · GoldBuilder (lógica) · GoldBuilderSettings (entorno)
-│   ├── main/resources/gold/    # El modelo Gold en dialecto Spark SQL (una consulta por tabla)
+│   ├── main/resources/
+│   │   ├── application.conf    # Configuración de las apps Scala (Typesafe Config): claves, defaults y variables del .env
+│   │   └── gold/               # El modelo Gold en dialecto Spark SQL (una consulta por tabla)
 │   └── test/scala/raillytics/  # Tests ScalaTest (mismo árbol de paquetes que main)
 │
 ├── notebooks/                  # Notebooks de exploración y análisis (EDA, validación de fuentes)
@@ -166,6 +210,30 @@ Python 3.13+); se puede cambiar con `make install-dev-env VENV_BASE_PYTHON=pytho
 Los targets que necesitan dependencias Python (`test-python`, `03_silver-sample`,
 `cargas`) usan directamente el intérprete de `.venv`, así que no hace falta
 activarlo antes de llamar a `make`.
+
+### Configuración: `.env` y `application.conf`
+
+Todo lo que depende de la máquina (puertos, credenciales, rutas locales, buckets) vive en el
+`.env` de la raíz (plantilla en `.env.example`). Lo leen docker-compose (`env_file`), el Makefile
+(que lo exporta a todos los subprocesos) y el lado Python (`python-dotenv`). Las apps Scala usan
+[Typesafe Config](https://github.com/lightbend/config): las claves y sus valores por defecto están
+en `src/main/resources/application.conf` (HOCON), y `raillytics.common.config.AppConfig` monta la
+pila de fuentes con esta precedencia: propiedades de la JVM (`-Dclave=valor`) > variables de
+entorno > `.env` del proyecto > `application.conf`. Como las apps y los tests leen el `.env`
+directamente, funcionan igual desde `make`, desde `sbt` a secas o desde el IDE.
+
+| Clave de `application.conf` | Variable del `.env` | Valor por defecto |
+| --- | --- | --- |
+| `raillytics.minio.endpoint`, `.user`, `.password` | `MINIO_ENDPOINT`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` | `http://localhost:9000`, vacíos |
+| `raillytics.minio.buckets.{bronze,silver,gold}` | `MINIO_BUCKET_{BRONZE,SILVER,GOLD}` | `raillytics-bronze`, `-silver`, `-gold` |
+| `raillytics.lake.{silver,gold,trazabilidad}-root` | `SILVER_ROOT`, `GOLD_ROOT`, `TRAZABILIDAD_ROOT` | `s3a://<bucket>`; trazabilidad: `<gold>/_trazabilidad` |
+| `raillytics.ingesta.{data-sources,staging-root,l1-done-root,processed-root,checkpoint-root}` | `DATA_SOURCES_CONFIG`, `STAGING_ROOT`, `L1_DONE_ROOT`, `PROCESSED_ROOT`, `CHECKPOINT_ROOT` | `config/data_sources.yml`, `data/bronze`, `data/bronze_l1_done`, `data/bronze_processed`, `data/checkpoints` |
+| `raillytics.ingesta.l2.pending-retry` | — | `30 seconds` |
+| `raillytics.spark.master`, `raillytics.spark.s3a.*` | `SPARK_MASTER` | `local[*]`; path-style sí, TLS no |
+| `raillytics.gold.umbral-puntualidad-min` | — | `5` |
+
+Los prefijos `l1-raw/` y `l2/` de Bronze y los nombres de las tablas Gold no están en la
+configuración: son parte del contrato del lake, que también conocen Superset y el lado Python.
 
 ---
 

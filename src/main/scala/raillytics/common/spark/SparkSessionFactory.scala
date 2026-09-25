@@ -1,15 +1,24 @@
 package raillytics.common.spark
 
+import com.typesafe.config.Config
 import org.apache.spark.sql.SparkSession
+import raillytics.common.config.AppConfig
 import raillytics.common.logging.Logging
 
+// Crea las SparkSession de las apps con el acceso a MinIO (S3A) ya configurado
+// a partir de las claves raillytics.spark.* y raillytics.minio.* de
+// application.conf (que a su vez salen de las variables MINIO_* del .env).
+// Todas las apps (L1, L2, Gold) pasan por aquí para hablar con los buckets
+// de la misma manera.
 object SparkSessionFactory extends Logging {
 
-  def build(appName: String): SparkSession = {
-    val master = sys.env.getOrElse("SPARK_MASTER", "local[*]")
-    val endpoint = sys.env.getOrElse("MINIO_ENDPOINT", "")
-    val user = sys.env.getOrElse("MINIO_ROOT_USER", "")
-    val password = sys.env.getOrElse("MINIO_ROOT_PASSWORD", "")
+  def build(appName: String, config: Config = AppConfig.load()): SparkSession = {
+    val sparkConf = config.getConfig("raillytics.spark")
+    val minio = config.getConfig("raillytics.minio")
+    val master = sparkConf.getString("master")
+    val endpoint = minio.getString("endpoint")
+    val user = minio.getString("user")
+    val password = minio.getString("password")
 
     logger.info(s"creando SparkSession '$appName' (master=$master, s3a.endpoint=$endpoint)")
     // Nunca se loguean los valores de usuario/contraseña, solo si están
@@ -25,19 +34,17 @@ object SparkSessionFactory extends Logging {
       .config("spark.hadoop.fs.s3a.endpoint", endpoint)
       .config("spark.hadoop.fs.s3a.access.key", user)
       .config("spark.hadoop.fs.s3a.secret.key", password)
-      // MinIO expone los buckets como rutas (http://host:puerto/bucket), no como
-      // subdominios (bucket.host), que es lo que S3A asume por defecto.
-      .config("spark.hadoop.fs.s3a.path.style.access", "true")
-      // El MinIO de docker-compose va por http, sin TLS.
-      .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+      // Modo path-style y TLS: ver los comentarios de raillytics.spark.s3a en application.conf.
+      .config("spark.hadoop.fs.s3a.path.style.access", sparkConf.getBoolean("s3a.path-style-access").toString)
+      .config("spark.hadoop.fs.s3a.connection.ssl.enabled", sparkConf.getBoolean("s3a.ssl-enabled").toString)
       .getOrCreate()
   }
 
   // readStream sobre ficheros (binaryFile, csv, json...) exige un esquema
   // explícito o habilitar la inferencia antes de resolver la fuente -- incluso
   // binaryFile, cuyo esquema es fijo (path, modificationTime, length, content).
-  def buildForFileStreaming(appName: String): SparkSession = {
-    val spark = build(appName)
+  def buildForFileStreaming(appName: String, config: Config = AppConfig.load()): SparkSession = {
+    val spark = build(appName, config)
     spark.conf.set("spark.sql.streaming.schemaInference", "true")
     spark
   }

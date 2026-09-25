@@ -1,9 +1,9 @@
 package raillytics.testutil
 
 import org.apache.spark.sql.SparkSession
+import raillytics.common.config.{AppConfig, DotEnv}
 
-import java.nio.file.{Files, Path, Paths}
-import scala.jdk.CollectionConverters._
+import java.nio.file.{Files, Paths}
 
 object TestSpark {
 
@@ -14,13 +14,11 @@ object TestSpark {
   // por make. En ese caso se lee del .env directamente. Debe fijarse antes de que
   // Hadoop cargue su clase Shell (que lo lee una sola vez), es decir, antes de
   // crear la SparkSession.
-  val DotEnvFile: Path = Paths.get(".env")
-
   def configureHadoopHome(): Unit = {
     val isWindows = sys.props.getOrElse("os.name", "").startsWith("Windows")
     val unset = sys.props.get("hadoop.home.dir").isEmpty && sys.env.get("HADOOP_HOME").forall(_.isEmpty)
     if (isWindows && unset) {
-      dotEnv(DotEnvFile).get("HADOOP_HOME").filter(_.nonEmpty) match {
+      DotEnv.read(AppConfig.DotEnvFile).get("HADOOP_HOME").filter(_.nonEmpty) match {
         case Some(home) if Files.exists(Paths.get(home, "bin", "winutils.exe")) =>
           System.setProperty("hadoop.home.dir", home)
         case Some(home) =>
@@ -32,19 +30,6 @@ object TestSpark {
       }
     }
   }
-
-  // Lectura mínima de un .env (KEY=valor por línea; comentarios y líneas vacías se ignoran).
-  private def dotEnv(path: Path): Map[String, String] =
-    if (!Files.exists(path)) Map.empty
-    else
-      Files.readAllLines(path).asScala.iterator
-        .map(_.trim)
-        .filter(line => line.nonEmpty && !line.startsWith("#") && line.contains("="))
-        .map { line =>
-          val Array(key, value) = line.split("=", 2)
-          key.trim -> value.trim.stripPrefix("\"").stripSuffix("\"")
-        }
-        .toMap
 
   // SparkSession local para las suites; una por suite (se para en afterAll).
   def session(appName: String): SparkSession = {

@@ -5,7 +5,7 @@ import org.apache.spark.sql.functions.sum
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import raillytics.common.lake.LakePaths
+import raillytics.common.lake.LakeSettings
 import raillytics.testutil.{TestPaths, TestSpark}
 
 import java.nio.file.{Files, Path}
@@ -40,9 +40,13 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
     spark = TestSpark.session("GoldBuilderSpec")
     tmpDir = Files.createTempDirectory("gold-builder-spec")
     settings = GoldBuilderSettings(
-      silverRoot = TestPaths.fileUri(tmpDir.resolve("silver")),
-      goldRoot = TestPaths.fileUri(tmpDir.resolve("gold")),
-      cargasDir = TestPaths.fileUri(tmpDir.resolve("cargas"))
+      lake = LakeSettings(
+        bronzeRoot = TestPaths.fileUri(tmpDir.resolve("bronze")),
+        silverRoot = TestPaths.fileUri(tmpDir.resolve("silver")),
+        goldRoot = TestPaths.fileUri(tmpDir.resolve("gold")),
+        trazabilidadRoot = TestPaths.fileUri(tmpDir.resolve("traza"))
+      ),
+      umbralPuntualidadMin = 5
     )
     escribirSilver()
     counts = GoldBuilder.build(settings)
@@ -68,11 +72,11 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
       SilverPuntualidad(viernesSanto, "s2", "AVE-MAD-BCN", "MADPA", prevista.plusHours(2), Some(prevista.plusHours(2).plusMinutes(12)), Some(12), "realizado", 18.5, 0.0, "despejado", true),
       SilverPuntualidad(viernesSanto, "s3", "AVE-MAD-BCN", "MADCH", prevista.plusHours(4), None, None, "cancelado", 18.5, 0.0, "despejado", true)
     )
-    spark.createDataFrame(filasViajeros).write.parquet(LakePaths.silverTable(settings.silverRoot, "viajeros_enriquecidos"))
-    spark.createDataFrame(filasPuntualidad).write.parquet(LakePaths.silverTable(settings.silverRoot, "puntualidad_enriquecida"))
+    spark.createDataFrame(filasViajeros).write.parquet(settings.lake.silverTable("viajeros_enriquecidos"))
+    spark.createDataFrame(filasPuntualidad).write.parquet(settings.lake.silverTable("puntualidad_enriquecida"))
   }
 
-  private def gold(table: String) = spark.read.parquet(LakePaths.goldTable(settings.goldRoot, table))
+  private def gold(table: String) = spark.read.parquet(settings.lake.goldTable(table))
 
   "GoldBuilder.build" should "write every Gold table as a single parquet file and report its rows" in {
     counts shouldBe Map("dim_fecha" -> 2L, "dim_estacion" -> 2L, "dim_linea" -> 1L, "fact_viajeros" -> 4L, "fact_puntualidad" -> 3L)
@@ -111,7 +115,7 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
   }
 
   it should "leave one traceability row per Gold table" in {
-    val trazas = spark.read.parquet(settings.cargasDir)
+    val trazas = spark.read.parquet(settings.lake.cargasDir)
       .select("proceso", "capa", "tabla", "filas", "estado", "parametros")
       .collect().map(_.toSeq)
     trazas.map(t => (t(2), t(3), t(4))).toSet shouldBe GoldBuilder.GoldTables.map(table => (table, counts(table), "ok")).toSet

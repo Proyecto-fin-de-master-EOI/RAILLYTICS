@@ -83,7 +83,8 @@ class ParquetConverterSpec extends AnyFlatSpec with Matchers with BeforeAndAfter
       processedRoot = tmpDir.resolve("processed").toString,
       checkpointRoot = tmpDir.resolve("checkpoints").toString,
       bronzeRoot = bronzeRoot,
-      cargasDir = TestPaths.fileUri(tmpDir.resolve("cargas"))
+      cargasDir = TestPaths.fileUri(tmpDir.resolve("cargas")),
+      pendingRetryMs = 30000L
     )
     val source = DataSource("renfe_trip_updates", "Renfe test", "https://example.invalid", "json")
 
@@ -111,7 +112,8 @@ class ParquetConverterSpec extends AnyFlatSpec with Matchers with BeforeAndAfter
       processedRoot = tmpDir.resolve("processed").toString,
       checkpointRoot = tmpDir.resolve("checkpoints").toString,
       bronzeRoot = TestPaths.fileUri(tmpDir.resolve("bronze")),
-      cargasDir = TestPaths.fileUri(tmpDir.resolve("cargas"))
+      cargasDir = TestPaths.fileUri(tmpDir.resolve("cargas")),
+      pendingRetryMs = 30000L
     )
     val source = DataSource("renfe_vehicle_positions", "Renfe test", "https://example.invalid", "json")
     val hadoopConf = spark.sparkContext.hadoopConfiguration

@@ -12,6 +12,8 @@ lazy val root = (project in file("."))
       "org.apache.spark" %% "spark-sql"  % sparkVersion,
       "org.apache.hadoop" % "hadoop-aws" % "3.5.0",
       "org.yaml"          % "snakeyaml"  % "2.7",
+      // Configuración de las apps (src/main/resources/application.conf, HOCON).
+      "com.typesafe"      % "config"     % "1.4.3",
       "org.scalatest"    %% "scalatest"  % "3.2.20" % Test
     ),
     // Varias specs crean/paran su propio SparkSession; sbt corre las suites de test

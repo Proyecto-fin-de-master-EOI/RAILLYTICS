@@ -152,7 +152,7 @@ object Cargas extends Logging {
   }
 
   // Registra una ejecución del proceso `proceso` (capa bronze/silver/gold) mientras
-  // corre `bloque`. cargasDir es el directorio del registro (LakePaths.cargasDir) y
+  // corre `bloque`. cargasDir es el directorio del registro (LakeSettings.cargasDir) y
   // parametros lo que haga falta para reproducir la carga (umbrales, fuente...).
   // Devuelve lo que devuelva el bloque; si el bloque lanza, se registra y se relanza.
   def registrar[T](proceso: String, capa: String, cargasDir: String, parametros: Map[String, Any] = Map.empty,
