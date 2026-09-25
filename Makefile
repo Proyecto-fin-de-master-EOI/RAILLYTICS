@@ -52,9 +52,9 @@ help:
 	@echo "  test               Corre los tests de Python y de Scala"
 	@echo "  test-python        Corre solo los tests de Python (pytest)"
 	@echo "  test-scala         Corre solo los tests de Scala (sbt test)"
-	@echo "  raw-uploader       Lanza la app Spark L1 raw-uploader (primer plano)"
-	@echo "  parquet-converter  Lanza la app Spark L2 parquet-converter (primer plano)"
-	@echo "  ingest             Dispara manualmente el DAG de descarga en Airflow"
+	@echo "  00_ingest             Dispara manualmente el DAG de descarga en Airflow"
+	@echo "  01_raw-uploader       Lanza la app Spark L1 raw-uploader (primer plano)"
+	@echo "  02_parquet-converter  Lanza la app Spark L2 parquet-converter (primer plano)"
 	@echo "  clean              Borra directorios de staging/checkpoints generados"
 
 up:
@@ -95,13 +95,13 @@ test-python: $(VENV)/.deps-installed
 test-scala:
 	sbt -batch test
 
-raw-uploader:
+01_raw-uploader:
 	sbt -batch "runMain raillytics.ingesta.l1.RawUploaderApp"
 
-parquet-converter:
+02_parquet-converter:
 	sbt -batch "runMain raillytics.ingesta.l2.ParquetConverterApp"
 
-ingest:
+00_ingest:
 	$(COMPOSE) exec airflow-scheduler airflow dags trigger ingesta_data_sources
 
 clean:
