@@ -95,4 +95,33 @@ class ParquetConverterSpec extends AnyFlatSpec with Matchers with BeforeAndAfter
     Files.exists(l1DoneDir.resolve("sample.json")) shouldBe false
     Files.exists(tmpDir.resolve("processed/renfe_trip_updates/sample.json")) shouldBe true
   }
+
+  "ParquetConverter.startAll" should "keep a source without L1 files pending and start it once files arrive" in {
+    val tmpDir: Path = Files.createTempDirectory("parquet-converter-pending-spec")
+    val settings = ParquetConverterSettings(
+      configPath = "unused",
+      l1DoneRoot = tmpDir.resolve("l1_done").toString,
+      processedRoot = tmpDir.resolve("processed").toString,
+      checkpointRoot = tmpDir.resolve("checkpoints").toString,
+      bronzeRoot = TestPaths.fileUri(tmpDir.resolve("bronze"))
+    )
+    val source = DataSource("renfe_vehicle_positions", "Renfe test", "https://example.invalid", "json")
+    val hadoopConf = spark.sparkContext.hadoopConfiguration
+
+    // L2 arrancado antes que L1: ni siquiera existe el directorio de la fuente.
+    ParquetConverter.startAll(Seq(source), settings, hadoopConf) shouldBe Seq(source)
+    spark.streams.active shouldBe empty
+
+    val l1DoneDir = tmpDir.resolve("l1_done/renfe_vehicle_positions")
+    Files.createDirectories(l1DoneDir)
+    Files.writeString(l1DoneDir.resolve("sample.json"), """{ "entity": [ { "id": "a" } ] }""")
+
+    ParquetConverter.startAll(Seq(source), settings, hadoopConf) shouldBe empty
+    spark.streams.active should have length 1
+    spark.streams.active.foreach { query =>
+      query.processAllAvailable()
+      query.stop()
+    }
+    Files.exists(tmpDir.resolve("processed/renfe_vehicle_positions/sample.json")) shouldBe true
+  }
 }

@@ -20,19 +20,35 @@ object ParquetConverterApp extends Logging {
 
     implicit val spark: SparkSession = SparkSessionFactory.buildForFileStreaming("parquet-converter")
     val sources = DataSourceConfig.load(settings.configPath)
-    val startedQueries = ParquetConverter.startAll(sources, settings, spark.sparkContext.hadoopConfiguration)
+    val hadoopConf = spark.sparkContext.hadoopConfiguration
+    var pending = ParquetConverter.startAll(sources, settings, hadoopConf)
 
     // Si todas las fuentes fallan al arrancar, awaitAnyTermination() se queda
     // bloqueado indefinidamente sin ninguna query viva -- este aviso hace visible
     // ese estado en vez de que el proceso parezca "vivo" sin hacer nada.
-    if (startedQueries == 0) {
+    if (spark.streams.active.isEmpty && pending.isEmpty) {
       logger.warn("ninguna query se pudo iniciar; el proceso quedará bloqueado sin trabajo que hacer")
     } else {
-      logger.info(s"$startedQueries query(s) activa(s), esperando a que termine alguna")
+      logger.info(s"${spark.streams.active.length} query(s) activa(s), esperando a que termine alguna")
+    }
+    if (pending.nonEmpty) {
+      logger.info(
+        s"fuentes aún sin ficheros en L1 (${pending.map(_.id).mkString(", ")}): " +
+          s"se reintentará arrancarlas cada ${PendingRetryMs / 1000} s"
+      )
     }
 
     // Si una query muere (p.ej. fichero mal formado), todo el proceso termina en
-    // vez de quedarse a medias con unas fuentes vivas y otras muertas en silencio.
-    spark.streams.awaitAnyTermination()
+    // vez de quedarse a medias con unas fuentes vivas y otras muertas en silencio:
+    // awaitAnyTermination relanza su excepción, o devuelve true si paró sin error.
+    var anyTerminated = false
+    while (pending.nonEmpty && !anyTerminated) {
+      anyTerminated = spark.streams.awaitAnyTermination(PendingRetryMs)
+      if (!anyTerminated) pending = ParquetConverter.startAll(pending, settings, hadoopConf)
+    }
+    if (!anyTerminated) spark.streams.awaitAnyTermination()
   }
+
+  // Cada cuánto se reintenta arrancar las fuentes que aún no tenían ficheros en L1.
+  private val PendingRetryMs = 30000L
 }

@@ -34,17 +34,17 @@ ifeq ($(OS),Windows_NT)
   VENV_BASE_PYTHON ?= py -3.12
   VENV_PY = $(VENV)/Scripts/python
   INSTALL_HOOKS_CMD = powershell -ExecutionPolicy Bypass -File scripts/install-githooks.ps1
-  # sbt es sbt.bat: con Ctrl+C, cmd.exe se queda preguntando "¿Desea terminar
-  # el trabajo por lotes (S/N)?" y deja la terminal inservible. El wrapper
-  # espera a que java pare y cierra ese cmd sin preguntar.
-  SBT = $(PYTHON) scripts/run_sbt.py
 else
   PYTHON ?= python3
   VENV_BASE_PYTHON ?= python3
   VENV_PY = $(VENV)/bin/python
   INSTALL_HOOKS_CMD = ./scripts/install-githooks.sh
-  SBT = sbt
 endif
+
+# sbt siempre a través del wrapper: permite varios sbt a la vez en el proyecto
+# (01_ y 02_ en paralelo) sin el "Create a new server? y/n", y en Windows evita
+# que Ctrl+C deje colgado el "¿Desea terminar el trabajo por lotes (S/N)?".
+SBT = $(PYTHON) scripts/run_sbt.py
 
 COMPOSE = docker compose -f docker/docker-compose.yml --env-file .env
 

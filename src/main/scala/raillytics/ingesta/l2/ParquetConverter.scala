@@ -2,7 +2,7 @@ package raillytics.ingesta.l2
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.{AnalysisException, DataFrame, SparkSession}
 import org.apache.spark.sql.functions.input_file_name
 import org.apache.spark.sql.streaming.StreamingQuery
 import raillytics.common.fs.HadoopFs
@@ -59,18 +59,27 @@ object ParquetConverter extends Logging {
       .start()
   }
 
-  // Cada fuente arranca su query de forma independiente: si el directorio
-  // L1 de una fuente está vacío (su estado normal en reposo, o cualquier
-  // fuente recién registrada sin su primer fichero L1 todavía),
-  // schemaInference lanza una AnalysisException síncrona al arrancar --
-  // sin el Try, eso tumbaría main() entero y ninguna otra fuente (aunque
-  // esté sana) llegaría a arrancar su query. Devuelve cuántas arrancaron.
+  // Si el directorio L1 de una fuente está vacío (su estado normal en reposo,
+  // si L2 arranca antes que L1, o una fuente recién registrada), Spark no
+  // puede inferir el esquema y readStream falla al arrancar la query.
+  private def isWaitingForFiles(e: Throwable): Boolean = e match {
+    case ae: AnalysisException => ae.getCondition == "UNABLE_TO_INFER_SCHEMA"
+    case _                     => false
+  }
+
+  // Cada fuente arranca su query de forma independiente: sin el Try, el fallo
+  // de una tumbaría main() entero y ninguna otra fuente (aunque esté sana)
+  // llegaría a arrancar. Devuelve las fuentes que siguen sin ficheros en L1,
+  // para reintentarlas más tarde; las que fallan por otro motivo se descartan.
   def startAll(sources: Seq[DataSource], settings: ParquetConverterSettings, hadoopConf: Configuration)
-              (implicit spark: SparkSession): Int =
-    sources.count { source =>
+              (implicit spark: SparkSession): Seq[DataSource] =
+    sources.filter { source =>
       Try(startQuery(source, settings, hadoopConf)) match {
         case Success(_) =>
           logger.info(s"query iniciada para la fuente '${source.id}'")
+          false
+        case Failure(e) if isWaitingForFiles(e) =>
+          logger.debug(s"la fuente '${source.id}' aún no tiene ficheros en L1")
           true
         case Failure(e) =>
           logger.warn(s"no se pudo iniciar la query para '${source.id}': ${e.getMessage}", e)
