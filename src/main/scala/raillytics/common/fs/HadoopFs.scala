@@ -15,6 +15,7 @@ object HadoopFs {
   def local(hadoopConf: Configuration): FileSystem =
     FileSystem.get(new URI("file:///"), hadoopConf)
 
+
   // FileSystem que corresponde al esquema de root: s3a://bucket -> MinIO (con
   // las credenciales que SparkSessionFactory dejó en hadoopConf), file:// -> local.
   def forRoot(root: String, hadoopConf: Configuration): FileSystem =
