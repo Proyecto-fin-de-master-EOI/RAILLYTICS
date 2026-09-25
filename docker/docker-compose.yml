@@ -37,12 +37,18 @@ x-airflow-common:
 
 services:
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # MinIO ya no distribuye imágenes de la edición community (quay.io/minio y
+    # minio/* en Docker Hub devuelven 401). pgsty/* es el fork de la comunidad
+    # (Pigsty) que sigue publicando builds del mismo código, e incluye sh y mc
+    # (necesarios para el healthcheck y para init-buckets.sh).
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     container_name: raillytics-minio
     restart: unless-stopped
     ports:
-      - "9000:9000"   # API S3
-      - "9001:9001"   # Consola web
+      # Puertos del host configurables: en equipos con Zscaler (ZSATunnel) el
+      # 9000 ya está ocupado. Dentro de la red de compose sigue siendo minio:9000.
+      - "${MINIO_API_PORT:-9000}:9000"       # API S3
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"   # Consola web
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER debe definirse en .env}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD debe definirse en .env}
@@ -56,7 +62,7 @@ services:
       retries: 5
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-07-21T05-28-08Z
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
     container_name: raillytics-minio-init
     depends_on:
       minio:

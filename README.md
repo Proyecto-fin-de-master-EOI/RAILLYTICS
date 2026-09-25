@@ -221,3 +221,8 @@ Normas generales:
 - Nunca hacer `push` directo a `main` ni a `develop`.
 - PRs pequeñas y frecuentes: más fáciles de revisar que una PR gigante.
 - Resolver los conflictos en la rama de la feature (rebase o merge de `develop` hacia la rama), nunca en `develop`.
+
+Para descargar o levantar el entorno:
+   ```bash
+   docker compose -f docker/docker-compose.yml --env-file .env pull
+   ```
