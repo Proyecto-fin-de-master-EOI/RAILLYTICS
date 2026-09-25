@@ -26,9 +26,10 @@ class RawUploaderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
 
     val bronzeRoot = TestPaths.fileUri(tmpDir.resolve("bronze"))
     val l1DoneRoot = tmpDir.resolve("l1_done").toString
+    val cargasDir = TestPaths.fileUri(tmpDir.resolve("cargas"))
 
     val batch = spark.read.format("binaryFile").load(s"${tmpDir.resolve("staging")}/*/*")
-    RawUploader.processBatch(batch, spark.sparkContext.hadoopConfiguration, bronzeRoot, l1DoneRoot)
+    RawUploader.processBatch(batch, spark.sparkContext.hadoopConfiguration, bronzeRoot, l1DoneRoot, cargasDir)
 
     val today = java.time.LocalDate.now()
     val expectedRawFile = tmpDir.resolve(s"bronze/l1-raw/crtm/$today/sample.csv")
@@ -37,5 +38,10 @@ class RawUploaderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
 
     Files.exists(stagingDir.resolve("sample.csv")) shouldBe false
     Files.exists(tmpDir.resolve("l1_done/crtm/sample.csv")) shouldBe true
+
+    // Trazabilidad: una fila por fichero subido, con su tamaño y su destino en Bronze.
+    val traza = spark.read.parquet(cargasDir).select("proceso", "capa", "tabla", "bytes", "destino", "estado").collect()
+    traza should have length 1
+    traza.head.toSeq shouldBe Seq("bronze_l1_raw_uploader", "bronze", "crtm", 28L, s"$bronzeRoot/l1-raw/crtm/$today/sample.csv", "ok")
   }
 }

@@ -131,6 +131,23 @@ def test_silver_and_gold_loads_are_traced(gold):
     assert f'"umbral_puntualidad_min": {PUNTUALIDAD_UMBRAL_MIN}' in parametros["gold_build"]
 
 
+def test_build_refuses_to_mix_with_parquet_written_by_another_engine(tmp_path):
+    layout = LakeLayout(silver_root=(tmp_path / "silver").as_posix(), gold_root=(tmp_path / "gold").as_posix())
+    write_silver_sample(connect(), layout, generate_silver_sample(date(2025, 5, 5), date(2025, 5, 6), seed=1))
+    build_gold(connect(), layout)
+
+    # Un part-*.parquet como los que deja la app Spark (GoldBuilderApp).
+    spark_like = tmp_path / "gold" / "dim_linea" / "part-00000-abc.snappy.parquet"
+    spark_like.write_bytes((tmp_path / "gold" / "dim_linea" / "dim_linea.parquet").read_bytes())
+
+    with pytest.raises(RuntimeError, match="otra herramienta"):
+        build_gold(connect(), layout)
+    trazas = duckdb.connect().execute(
+        "SELECT tabla, estado FROM read_parquet(?) WHERE estado = 'error'", [layout.cargas_glob()]
+    ).fetchall()
+    assert trazas == [("dim_linea", "error")]
+
+
 def test_write_catalog_exposes_gold_tables_as_views(gold, tmp_path):
     layout, _, counts = gold
     catalog = tmp_path / "raillytics_gold.duckdb"

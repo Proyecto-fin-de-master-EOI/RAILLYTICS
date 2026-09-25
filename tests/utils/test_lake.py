@@ -25,8 +25,9 @@ def test_lake_layout_defaults_to_minio_buckets():
     assert layout == LakeLayout(silver_root="s3://raillytics-silver", gold_root="s3://raillytics-gold")
     assert layout.uses_s3
     assert layout.silver_glob("viajeros_enriquecidos") == "s3://raillytics-silver/viajeros_enriquecidos/*.parquet"
-    assert layout.gold_file("dim_fecha") == "s3://raillytics-gold/dim_fecha/dim_fecha.parquet"
+    assert layout.silver_file("viajeros_enriquecidos") == "s3://raillytics-silver/viajeros_enriquecidos/viajeros_enriquecidos.parquet"
     assert layout.gold_glob("dim_fecha") == "s3://raillytics-gold/dim_fecha/*.parquet"
+    assert layout.cargas_glob() == "s3://raillytics-gold/_trazabilidad/cargas/*.parquet"
 
 
 def test_lake_layout_honours_bucket_names_and_local_overrides():

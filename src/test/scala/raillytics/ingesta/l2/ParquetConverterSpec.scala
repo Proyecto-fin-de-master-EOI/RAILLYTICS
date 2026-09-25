@@ -33,13 +33,14 @@ class ParquetConverterSpec extends AnyFlatSpec with Matchers with BeforeAndAfter
 
     val bronzeRoot = TestPaths.fileUri(tmpDir.resolve("bronze"))
     val processedRoot = tmpDir.resolve("processed").toString
+    val cargasDir = TestPaths.fileUri(tmpDir.resolve("cargas"))
     val source = DataSource("crtm", "CRTM test", "https://example.invalid", "csv")
 
     val batch = spark.read.format("csv").option("header", "true")
       .load(s"${tmpDir.resolve("l1_done/crtm")}/*")
       .withColumn(ParquetConverter.SourceFileCol, input_file_name())
 
-    ParquetConverter.processBatch(source, batch, spark.sparkContext.hadoopConfiguration, bronzeRoot, processedRoot)
+    ParquetConverter.processBatch(source, batch, spark.sparkContext.hadoopConfiguration, bronzeRoot, processedRoot, cargasDir)
 
     val today = java.time.LocalDate.now()
     val parquetDir = tmpDir.resolve(s"bronze/l2/crtm/$today")
@@ -52,6 +53,11 @@ class ParquetConverterSpec extends AnyFlatSpec with Matchers with BeforeAndAfter
 
     Files.exists(l1DoneDir.resolve("sample.csv")) shouldBe false
     Files.exists(tmpDir.resolve("processed/crtm/sample.csv")) shouldBe true
+
+    // Trazabilidad: una fila por micro-batch y fuente, con las filas escritas en Parquet.
+    val traza = spark.read.parquet(cargasDir).select("proceso", "capa", "tabla", "filas", "destino", "estado").collect()
+    traza should have length 1
+    traza.head.toSeq shouldBe Seq("bronze_l2_parquet_converter", "bronze", "crtm", 2L, BronzePaths.l2(bronzeRoot, "crtm", today), "ok")
   }
 
   "ParquetConverter.startQuery" should "parse a multi-line JSON source (GTFS-RT-shaped) using multiLine=true" in {
@@ -76,7 +82,8 @@ class ParquetConverterSpec extends AnyFlatSpec with Matchers with BeforeAndAfter
       l1DoneRoot = tmpDir.resolve("l1_done").toString,
       processedRoot = tmpDir.resolve("processed").toString,
       checkpointRoot = tmpDir.resolve("checkpoints").toString,
-      bronzeRoot = bronzeRoot
+      bronzeRoot = bronzeRoot,
+      cargasDir = TestPaths.fileUri(tmpDir.resolve("cargas"))
     )
     val source = DataSource("renfe_trip_updates", "Renfe test", "https://example.invalid", "json")
 
@@ -103,7 +110,8 @@ class ParquetConverterSpec extends AnyFlatSpec with Matchers with BeforeAndAfter
       l1DoneRoot = tmpDir.resolve("l1_done").toString,
       processedRoot = tmpDir.resolve("processed").toString,
       checkpointRoot = tmpDir.resolve("checkpoints").toString,
-      bronzeRoot = TestPaths.fileUri(tmpDir.resolve("bronze"))
+      bronzeRoot = TestPaths.fileUri(tmpDir.resolve("bronze")),
+      cargasDir = TestPaths.fileUri(tmpDir.resolve("cargas"))
     )
     val source = DataSource("renfe_vehicle_positions", "Renfe test", "https://example.invalid", "json")
     val hadoopConf = spark.sparkContext.hadoopConfiguration

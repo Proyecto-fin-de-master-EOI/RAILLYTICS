@@ -1,5 +1,6 @@
 from datetime import date
 
+import duckdb
 import pandas as pd
 import pytest
 
@@ -11,7 +12,9 @@ from raillytics.procesamiento.silver_sample import (
     VIAJEROS_COLUMNS,
     festivos_nacionales,
     generate_silver_sample,
+    write_silver_sample,
 )
+from raillytics.utils.lake import LakeLayout, connect
 
 START, END = date(2025, 4, 14), date(2025, 5, 4)
 
@@ -67,6 +70,25 @@ def test_puntualidad_follows_the_silver_contract(sample):
     assert (realizados.retraso_min >= 0).all()
     esperado = realizados.hora_prevista + pd.to_timedelta(realizados.retraso_min.astype("int64"), unit="m")
     assert (realizados.hora_real == esperado).all()
+
+
+def test_write_leaves_parquet_and_a_trace_per_table(tmp_path, sample):
+    layout = LakeLayout(silver_root=(tmp_path / "silver").as_posix(), gold_root=(tmp_path / "gold").as_posix())
+
+    written = write_silver_sample(connect(), layout, sample)
+
+    assert set(written) == {"viajeros_enriquecidos", "puntualidad_enriquecida"}
+    con = duckdb.connect()
+    assert con.execute(f"SELECT count(*) FROM read_parquet('{written['viajeros_enriquecidos']}')").fetchone() == (len(sample.viajeros),)
+    assert con.execute(f"SELECT typeof(fecha), typeof(hora_prevista) FROM read_parquet('{written['puntualidad_enriquecida']}') LIMIT 1").fetchone() == ("DATE", "TIMESTAMP")
+    trazas = con.execute(
+        f"SELECT proceso, tabla, filas, estado, parametros FROM read_parquet('{layout.cargas_glob()}') ORDER BY tabla"
+    ).fetchall()
+    assert [(t[0], t[1], t[2], t[3]) for t in trazas] == [
+        ("silver_sample", "puntualidad_enriquecida", len(sample.puntualidad), "ok"),
+        ("silver_sample", "viajeros_enriquecidos", len(sample.viajeros), "ok"),
+    ]
+    assert '"seed": 7' in trazas[0][4]
 
 
 def test_festivos_nacionales_computes_good_friday():

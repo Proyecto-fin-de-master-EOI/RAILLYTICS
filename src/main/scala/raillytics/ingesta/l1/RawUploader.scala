@@ -7,6 +7,7 @@ import org.apache.spark.sql.streaming.StreamingQuery
 import raillytics.common.fs.HadoopFs
 import raillytics.common.lake.BronzePaths
 import raillytics.common.logging.Logging
+import raillytics.common.trazabilidad.Cargas
 
 import java.net.URI
 import java.nio.file.Paths
@@ -22,25 +23,34 @@ object RawUploader extends Logging {
   def fileNameFromLocalPath(uriString: String): String =
     Paths.get(new URI(uriString)).getFileName.toString
 
-  def processBatch(batch: DataFrame, hadoopConf: Configuration, bronzeRoot: String, l1DoneRoot: String): Unit = {
+  def processBatch(batch: DataFrame, hadoopConf: Configuration, bronzeRoot: String, l1DoneRoot: String,
+                   cargasDir: String): Unit = {
+    implicit val spark: SparkSession = batch.sparkSession
     val localFs = HadoopFs.local(hadoopConf)
     val destFs = HadoopFs.forRoot(bronzeRoot, hadoopConf)
 
-    val paths = batch.select("path").collect().map(_.getString(0))
-    logger.info(s"micro-batch de ${paths.length} fichero(s) recibido")
+    val files = batch.select("path", "length").collect().map(row => (row.getString(0), row.getLong(1)))
+    logger.info(s"micro-batch de ${files.length} fichero(s) recibido")
+    if (files.isEmpty) return
 
-    paths.foreach { localUri =>
-      val source = sourceIdFromLocalPath(localUri)
-      val fileName = fileNameFromLocalPath(localUri)
+    // Trazabilidad: una fila por fichero subido (tabla = fuente, bytes = tamaño).
+    Cargas.registrar("bronze_l1_raw_uploader", "bronze", cargasDir, Map("ficheros" -> files.length)) { ejecucion =>
+      files.foreach { case (localUri, length) =>
+        val source = sourceIdFromLocalPath(localUri)
+        val fileName = fileNameFromLocalPath(localUri)
 
-      val srcPath = new Path(localUri)
-      val destPath = new Path(BronzePaths.l1(bronzeRoot, source, LocalDate.now(), fileName))
-      logger.debug(s"copiando '$srcPath' -> '$destPath' (fuente=$source)")
-      FileUtil.copy(localFs, srcPath, destFs, destPath, false, hadoopConf)
+        val srcPath = new Path(localUri)
+        val destPath = new Path(BronzePaths.l1(bronzeRoot, source, LocalDate.now(), fileName))
+        ejecucion.tabla(source, origen = Some(localUri), destino = Some(destPath.toString)) { carga =>
+          logger.debug(s"copiando '$srcPath' -> '$destPath' (fuente=$source)")
+          FileUtil.copy(localFs, srcPath, destFs, destPath, false, hadoopConf)
 
-      // l1DoneRoot es HERMANO del staging (no subdirectorio) — un subdirectorio
-      // anidado sería recogido de nuevo por el glob de esta misma query.
-      HadoopFs.moveInto(localFs, srcPath, new Path(s"$l1DoneRoot/$source"), fileName)
+          // l1DoneRoot es HERMANO del staging (no subdirectorio) — un subdirectorio
+          // anidado sería recogido de nuevo por el glob de esta misma query.
+          HadoopFs.moveInto(localFs, srcPath, new Path(s"$l1DoneRoot/$source"), fileName)
+          carga.bytes = Some(length)
+        }
+      }
     }
   }
 
@@ -51,7 +61,7 @@ object RawUploader extends Logging {
       .load(s"${settings.stagingRoot}/*/*")   // data/bronze/<source>/<file> (plano, sin recursión)
       .writeStream
       .foreachBatch { (batch: DataFrame, _: Long) =>
-        processBatch(batch, hadoopConf, settings.bronzeRoot, settings.l1DoneRoot)
+        processBatch(batch, hadoopConf, settings.bronzeRoot, settings.l1DoneRoot, settings.cargasDir)
       }
       .option("checkpointLocation", s"${settings.checkpointRoot}/l1-raw")
       .start()

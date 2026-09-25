@@ -6,7 +6,8 @@ final case class RawUploaderSettings(
   stagingRoot: String,
   l1DoneRoot: String,
   checkpointRoot: String,
-  bronzeRoot: String
+  bronzeRoot: String,
+  cargasDir: String
 )
 
 object RawUploaderSettings {
@@ -15,6 +16,7 @@ object RawUploaderSettings {
       stagingRoot = env.getOrElse("STAGING_ROOT", "data/bronze"),
       l1DoneRoot = IngestaEnv.l1DoneRoot(env),
       checkpointRoot = IngestaEnv.checkpointRoot(env),
-      bronzeRoot = IngestaEnv.bronzeRoot(env)
+      bronzeRoot = IngestaEnv.bronzeRoot(env),
+      cargasDir = IngestaEnv.cargasDir(env)
     )
 }

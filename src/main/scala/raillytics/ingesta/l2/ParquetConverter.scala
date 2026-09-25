@@ -8,6 +8,7 @@ import org.apache.spark.sql.streaming.StreamingQuery
 import raillytics.common.fs.HadoopFs
 import raillytics.common.lake.BronzePaths
 import raillytics.common.logging.Logging
+import raillytics.common.trazabilidad.Cargas
 import raillytics.ingesta.config.DataSource
 import raillytics.ingesta.formats.SourceFormat
 
@@ -34,15 +35,31 @@ object ParquetConverter extends Logging {
     }
   }
 
-  def processBatch(source: DataSource, batch: DataFrame, hadoopConf: Configuration, bronzeRoot: String, processedRoot: String): Unit = {
-    val filesInBatch = batch.select(SourceFileCol).distinct().collect().map(_.getString(0)).toSeq
-    logger.info(s"micro-batch de la fuente '${source.id}': ${filesInBatch.size} fichero(s)")
+  def processBatch(source: DataSource, batch: DataFrame, hadoopConf: Configuration, bronzeRoot: String,
+                   processedRoot: String, cargasDir: String): Unit = {
+    implicit val spark: SparkSession = batch.sparkSession
+    // El batch se evalúa varias veces (ficheros, escritura, recuento): cacheado
+    // se leen y parsean los ficheros una sola vez.
+    batch.persist()
+    try {
+      val filesInBatch = batch.select(SourceFileCol).distinct().collect().map(_.getString(0)).toSeq
+      logger.info(s"micro-batch de la fuente '${source.id}': ${filesInBatch.size} fichero(s)")
+      if (filesInBatch.isEmpty) return
 
-    val destPath = BronzePaths.l2(bronzeRoot, source.id, LocalDate.now())
-    batch.drop(SourceFileCol).write.mode("append").parquet(destPath)
-    logger.debug(s"batch de '${source.id}' escrito en '$destPath'")
+      val destPath = BronzePaths.l2(bronzeRoot, source.id, LocalDate.now())
+      val parametros = Map("fuente" -> source.id, "formato" -> source.format, "ficheros" -> filesInBatch.size)
+      // Trazabilidad: una fila por micro-batch y fuente (filas = registros escritos en Parquet).
+      Cargas.registrar("bronze_l2_parquet_converter", "bronze", cargasDir, parametros) { ejecucion =>
+        val origen = filesInBatch.headOption.map(file => new Path(file).getParent.toString)
+        ejecucion.tabla(source.id, origen = origen, destino = Some(destPath)) { carga =>
+          batch.drop(SourceFileCol).write.mode("append").parquet(destPath)
+          logger.debug(s"batch de '${source.id}' escrito en '$destPath'")
 
-    moveProcessedFiles(filesInBatch, hadoopConf, source.id, processedRoot)
+          moveProcessedFiles(filesInBatch, hadoopConf, source.id, processedRoot)
+          carga.filas = Some(batch.count())
+        }
+      }
+    } finally batch.unpersist()
   }
 
   def startQuery(source: DataSource, settings: ParquetConverterSettings, hadoopConf: Configuration)
@@ -53,7 +70,7 @@ object ParquetConverter extends Logging {
       .withColumn(SourceFileCol, input_file_name())
       .writeStream
       .foreachBatch { (batch: DataFrame, _: Long) =>
-        processBatch(source, batch, hadoopConf, settings.bronzeRoot, settings.processedRoot)
+        processBatch(source, batch, hadoopConf, settings.bronzeRoot, settings.processedRoot, settings.cargasDir)
       }
       .option("checkpointLocation", s"${settings.checkpointRoot}/l2/${source.id}")
       .start()

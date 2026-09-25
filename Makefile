@@ -65,7 +65,7 @@ help:
 	@echo "  01_raw-uploader       Lanza la app Spark L1 raw-uploader (primer plano)"
 	@echo "  02_parquet-converter  Lanza la app Spark L2 parquet-converter (primer plano)"
 	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
-	@echo "  04_gold               Construye la capa Gold con DuckDB (Silver -> Parquet en raillytics-gold)"
+	@echo "  04_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold)"
 	@echo "  05_superset-import    Reimporta los dashboards de dashboards/superset/ en Superset"
 	@echo "  cargas             Muestra las últimas cargas registradas (trazabilidad del lake)"
 	@echo "  clean              Borra directorios de staging/checkpoints generados"
@@ -117,14 +117,14 @@ test-scala:
 00_ingest:
 	$(COMPOSE) exec airflow-scheduler airflow dags trigger ingesta_data_sources
 
-# Silver y Gold corren en el host con el python del venv (como test-python) y
-# hablan con MinIO con las variables MINIO_* del .env. 04_gold deja además un
-# catálogo DuckDB local con vistas sobre Gold para notebooks (data/gold/).
+# Silver sintético: corre en el host con el python del venv (como test-python)
+# y habla con MinIO con las variables MINIO_* del .env.
 03_silver-sample: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.procesamiento.silver_sample
 
-04_gold: $(VENV)/.deps-installed
-	$(VENV_PY) -m raillytics.gold.build --catalog data/gold/raillytics_gold.duckdb
+# Gold: app Spark batch en Scala (misma configuración s3a que L1/L2).
+04_gold:
+	sbt -batch "runMain raillytics.gold.GoldBuilderApp"
 
 05_superset-import:
 	$(COMPOSE) exec superset bash /app/raillytics/docker/superset-import-dashboards.sh

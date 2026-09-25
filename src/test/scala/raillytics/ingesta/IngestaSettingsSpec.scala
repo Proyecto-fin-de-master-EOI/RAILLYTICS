@@ -12,7 +12,8 @@ class IngestaSettingsSpec extends AnyFlatSpec with Matchers {
       stagingRoot = "data/bronze",
       l1DoneRoot = "data/bronze_l1_done",
       checkpointRoot = "data/checkpoints",
-      bronzeRoot = "s3a://raillytics-bronze"
+      bronzeRoot = "s3a://raillytics-bronze",
+      cargasDir = "s3a://raillytics-gold/_trazabilidad/cargas/"
     )
   }
 
@@ -22,7 +23,8 @@ class IngestaSettingsSpec extends AnyFlatSpec with Matchers {
       l1DoneRoot = "data/bronze_l1_done",
       processedRoot = "data/bronze_processed",
       checkpointRoot = "data/checkpoints",
-      bronzeRoot = "s3a://raillytics-bronze"
+      bronzeRoot = "s3a://raillytics-bronze",
+      cargasDir = "s3a://raillytics-gold/_trazabilidad/cargas/"
     )
   }
 
@@ -39,5 +41,12 @@ class IngestaSettingsSpec extends AnyFlatSpec with Matchers {
     l2.l1DoneRoot shouldBe l1.l1DoneRoot
     l2.checkpointRoot shouldBe l1.checkpointRoot
     l2.bronzeRoot shouldBe "s3a://otro-bucket"
+    l2.cargasDir shouldBe l1.cargasDir
+  }
+
+  it should "send the load records to the Gold bucket, where the Python side also writes them" in {
+    val env = Map("MINIO_BUCKET_GOLD" -> "otro-gold")
+    RawUploaderSettings.fromEnv(env).cargasDir shouldBe "s3a://otro-gold/_trazabilidad/cargas/"
+    ParquetConverterSettings.fromEnv(env + ("TRAZABILIDAD_ROOT" -> "file:///tmp/traza")).cargasDir shouldBe "file:///tmp/traza/cargas/"
   }
 }

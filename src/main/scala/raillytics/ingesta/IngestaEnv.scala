@@ -1,5 +1,7 @@
 package raillytics.ingesta
 
+import raillytics.common.lake.LakePaths
+
 // Defaults de las variables de entorno que comparten L1 (raw-uploader) y L2
 // (parquet-converter): el directorio "done" de L1 es la entrada de L2, así
 // que ambos deben resolverlo igual. Lo específico de cada app vive en su
@@ -13,4 +15,8 @@ object IngestaEnv {
 
   def bronzeRoot(env: Map[String, String]): String =
     s"s3a://${env.getOrElse("MINIO_BUCKET_BRONZE", "raillytics-bronze")}"
+
+  // Registro de cargas compartido con Gold y con el lado Python (raillytics.common.trazabilidad.Cargas).
+  def cargasDir(env: Map[String, String]): String =
+    LakePaths.cargasDir(LakePaths.trazabilidadRoot(env))
 }

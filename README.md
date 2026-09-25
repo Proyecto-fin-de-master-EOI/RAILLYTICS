@@ -4,7 +4,7 @@
 
 Proyecto de TFM (Máster en Ingeniería de Datos — Grupo 3). Plataforma end-to-end que integra, procesa y analiza datos ferroviarios públicos (Renfe Open Data, AEMET, festivos BOE, INE) para generar insights operativos y predicciones de demanda a 30 días.
 
-**Stack tecnológico:** Python (ingesta) · Apache Airflow (orquestación) · MinIO — S3-compatible (almacenamiento Bronze/Silver/Gold) · Spark Structured Streaming en Scala (subida a Bronze L1/L2) · PySpark (procesamiento Silver) · Delta Lake + Parquet (almacenamiento) · DuckDB (modelo dimensional Gold en local; dbt + Snowflake en el diseño objetivo) · Apache Superset (dashboards en local; Power BI en el diseño objetivo) · Scikit-learn (modelo predictivo).
+**Stack tecnológico:** Python (ingesta) · Apache Airflow (orquestación) · MinIO — S3-compatible (almacenamiento Bronze/Silver/Gold) · Spark Structured Streaming en Scala (subida a Bronze L1/L2) · PySpark (procesamiento Silver) · Delta Lake + Parquet (almacenamiento) · Spark en Scala, batch (modelo dimensional Gold; dbt + Snowflake en el diseño objetivo) · DuckDB (motor de consulta de Superset y notebooks sobre el Parquet del lake) · Apache Superset (dashboards en local; Power BI en el diseño objetivo) · Scikit-learn (modelo predictivo).
 
 **Arquitectura:** patrón Medallion — Bronze (datos brutos) → Silver (datos limpios y enriquecidos) → Gold (modelo dimensional listo para consumo analítico).
 
@@ -29,7 +29,7 @@ Fuentes (Renfe, AEMET, BOE, INE)
         │  ingesta Python
         ▼
 🥉 BRONZE ──► 🥈 SILVER ──► 🥇 GOLD ──────────────► Superset
-   datos        PySpark        DuckDB construye        (DuckDB lee el Parquet
+   datos        PySpark        Spark (Scala) construye  (DuckDB lee el Parquet
    en bruto     limpieza       el modelo dimensional    de Gold en MinIO)
    (MinIO)      (MinIO)        y lo deja en Parquet
                                (MinIO)         └─ diseño objetivo: dbt ► Snowflake ► Power BI
@@ -37,7 +37,7 @@ Fuentes (Renfe, AEMET, BOE, INE)
 
 - **🥉 Bronze — datos en bruto**: un [framework de ingesta](#framework-de-ingesta-bronze) descarga las fuentes públicas y las promueve a MinIO en dos subcapas — `l1-raw` (tal cual llegan, sin transformar) y `l2` (mismo dato convertido a Parquet) — particionadas por fuente y fecha. Si algo falla después, siempre se puede volver al dato original en `l1-raw`.
 - **🥈 Silver — datos limpios y enriquecidos**: jobs PySpark eliminan duplicados, tratan nulos, normalizan formatos (fechas, nombres de estaciones) y cruzan los viajeros con meteorología y festivos. Es la capa de "datos fiables".
-- **🥇 Gold — datos listos para el análisis**: el modelo dimensional (dimensiones `Dim_Estacion`, `Dim_Linea`, `Dim_Fecha` y hechos `Fact_Viajeros`, `Fact_Puntualidad`). En este repositorio lo construye [DuckDB](#capa-gold-con-duckdb-y-dashboards-en-superset) con SQL a partir de Silver y lo deja como Parquet en el bucket `raillytics-gold`; Superset lo consulta directamente desde ahí (también con DuckDB) y el modelo predictivo de Scikit-learn puede leerlo igual. En el diseño del TFM este paso es dbt → Snowflake → Power BI: el SQL es el mismo y puede migrarse a modelos dbt cuando toque.
+- **🥇 Gold — datos listos para el análisis**: el modelo dimensional (dimensiones `Dim_Estacion`, `Dim_Linea`, `Dim_Fecha` y hechos `Fact_Viajeros`, `Fact_Puntualidad`). En este repositorio lo construye la app Spark [`GoldBuilderApp`](#capa-gold-con-spark-y-dashboards-en-superset) (Scala, batch) con SQL a partir de Silver y lo deja como Parquet en el bucket `raillytics-gold`; Superset lo consulta directamente desde ahí con DuckDB y el modelo predictivo de Scikit-learn puede leerlo igual. En el diseño del TFM este paso es dbt → Snowflake → Power BI: el SQL es el mismo y puede migrarse a modelos dbt cuando toque.
 
 ---
 
@@ -61,8 +61,7 @@ RAILLYTICS/
 │   └── superset/               # Imagen de Superset con driver DuckDB, superset_config.py y scripts de arranque/importación
 │
 ├── dags/
-│   ├── ingesta_data_sources.py # DAG Airflow: descarga por fuente (dynamic task mapping sobre el YAML)
-│   └── gold_duckdb.py          # DAG Airflow: construye la capa Gold con DuckDB (disparo manual)
+│   └── ingesta_data_sources.py # DAG Airflow: descarga por fuente (dynamic task mapping sobre el YAML)
 │
 ├── dashboards/
 │   └── superset/raillytics_gold/  # Dashboards de Superset como código (Demanda, Puntualidad, Trazabilidad de cargas); se importan al arrancar
@@ -73,13 +72,12 @@ RAILLYTICS/
 │   ├── bronze_processed/       # Generado en runtime: ficheros que ya completaron L1 y L2
 │   ├── checkpoints/            # Generado en runtime: checkpoints de Spark Structured Streaming
 │   ├── silver/                 # Datos limpios, normalizados y enriquecidos (Delta Lake)
-│   └── gold/                   # Catálogo DuckDB local con vistas sobre Gold (make 04_gold), para notebooks
+│   └── gold/                   # Sin uso en local: Gold vive en el bucket raillytics-gold de MinIO
 │
 ├── python/
 │   └── raillytics/
 │       ├── ingesta/            # sources.py (registro YAML), formats.py, filenames.py, download.py (descarga a staging)
 │       ├── procesamiento/      # Jobs PySpark de limpieza y enriquecimiento (capa Silver); silver_sample.py: Silver sintético
-│       ├── gold/               # build.py (modelo dimensional con DuckDB), sql/ (una consulta por tabla Gold)
 │       ├── ml/                 # Modelo predictivo Scikit-learn (features, entrenamiento, evaluación)
 │       └── utils/              # Comunes: fs.py (escritura atómica), lake.py (DuckDB + MinIO), cargas.py (trazabilidad de cargas)
 │
@@ -87,13 +85,15 @@ RAILLYTICS/
 ├── project/                    # Metadatos del build SBT (build.properties)
 ├── src/
 │   ├── main/scala/raillytics/
-│   │   ├── common/             # Compartido entre jobs: logging, spark (SparkSessionFactory), fs, lake (BronzePaths)
-│   │   └── ingesta/
-│   │       ├── IngestaEnv      # Defaults de entorno comunes a L1 y L2
-│   │       ├── config/         # DataSource + DataSourceConfig (lectura de config/data_sources.yml)
-│   │       ├── formats/        # SourceFormat: formatos soportados y sus opciones de lectura
-│   │       ├── l1/             # RawUploaderApp (main) · RawUploader (lógica) · RawUploaderSettings (entorno)
-│   │       └── l2/             # ParquetConverterApp (main) · ParquetConverter (lógica) · ParquetConverterSettings (entorno)
+│   │   ├── common/             # Compartido: logging, spark (SparkSessionFactory), fs, lake (BronzePaths, LakePaths), trazabilidad (Cargas)
+│   │   ├── ingesta/
+│   │   │   ├── IngestaEnv      # Defaults de entorno comunes a L1 y L2
+│   │   │   ├── config/         # DataSource + DataSourceConfig (lectura de config/data_sources.yml)
+│   │   │   ├── formats/        # SourceFormat: formatos soportados y sus opciones de lectura
+│   │   │   ├── l1/             # RawUploaderApp (main) · RawUploader (lógica) · RawUploaderSettings (entorno)
+│   │   │   └── l2/             # ParquetConverterApp (main) · ParquetConverter (lógica) · ParquetConverterSettings (entorno)
+│   │   └── gold/               # GoldBuilderApp (main, batch) · GoldBuilder (lógica) · GoldBuilderSettings (entorno)
+│   ├── main/resources/gold/    # El modelo Gold en dialecto Spark SQL (una consulta por tabla)
 │   └── test/scala/raillytics/  # Tests ScalaTest (mismo árbol de paquetes que main)
 │
 ├── dbt/                        # Proyecto dbt: transformaciones Silver → Gold
@@ -108,8 +108,7 @@ RAILLYTICS/
 │
 ├── tests/
 │   ├── ingesta/                # Tests pytest del registro de fuentes, nombres de fichero y la descarga
-│   ├── procesamiento/          # Tests pytest del Silver sintético (contrato de columnas, festivos, determinismo)
-│   ├── gold/                   # Tests pytest del modelo Gold sobre un lake local (sin MinIO)
+│   ├── procesamiento/          # Tests pytest del Silver sintético (contrato de columnas, festivos, determinismo, traza)
 │   └── utils/                  # Tests pytest de utilidades comunes (fs, lake, trazabilidad de cargas)
 │
 └── docs/                       # Documentación técnica y memoria del TFM
@@ -159,7 +158,7 @@ make 00_ingest              # dispara el DAG de descarga una vez
 make 01_raw-uploader        # en una terminal aparte — app L1 (queda en primer plano)
 make 02_parquet-converter   # en otra terminal aparte — app L2 (queda en primer plano)
 make 03_silver-sample       # Silver sintético en MinIO (mientras no existan los jobs PySpark)
-make 04_gold                # construye la capa Gold con DuckDB -> Parquet en raillytics-gold
+make 04_gold                # construye la capa Gold con la app Spark -> Parquet en raillytics-gold
                             # Superset: http://localhost:8088 (SUPERSET_ADMIN_USER / _PASSWORD del .env)
 ```
 
@@ -171,25 +170,25 @@ dependencias si cambia `requirements.txt`. Por defecto crea el venv con `py -3.1
 Windows y `python3` en Linux/macOS (numpy 1.26 y pyarrow 16 no tienen wheels para
 Python 3.13+); se puede cambiar con `make install-dev-env VENV_BASE_PYTHON=python3.11`.
 Los targets que necesitan dependencias Python (`test-python`, `03_silver-sample`,
-`04_gold`) usan directamente el intérprete de `.venv`, así que no hace falta
+`cargas`) usan directamente el intérprete de `.venv`, así que no hace falta
 activarlo antes de llamar a `make`.
 
 ---
 
-## Capa Gold con DuckDB y dashboards en Superset
+## Capa Gold con Spark y dashboards en Superset
 
-En local la capa Gold no necesita un data warehouse: **DuckDB** construye el modelo
-dimensional leyendo Silver de MinIO y lo deja como Parquet en el bucket `raillytics-gold`,
-y **Superset** lo consulta directamente desde ahí (también con DuckDB, en memoria dentro
-del contenedor). Es el mismo modelo que en el diseño del TFM carga dbt en Snowflake; solo
-cambian el motor y el destino.
+En local la capa Gold no necesita un data warehouse: la app **Spark** `GoldBuilderApp`
+(Scala, batch) construye el modelo dimensional leyendo Silver de MinIO y lo deja como Parquet
+en el bucket `raillytics-gold`, y **Superset** lo consulta directamente desde ahí con
+**DuckDB** en memoria dentro del contenedor. Es el mismo modelo que en el diseño del TFM
+carga dbt en Snowflake; solo cambian el motor y el destino.
 
 ```
 Silver (Parquet en MinIO)              Gold (Parquet en MinIO)                Superset (http://localhost:8088)
 raillytics-silver/                     raillytics-gold/
-  viajeros_enriquecidos/    DuckDB       dim_fecha/       dim_estacion/       DuckDB en memoria + httpfs:
+  viajeros_enriquecidos/    Spark        dim_fecha/       dim_estacion/       DuckDB en memoria + httpfs:
   puntualidad_enriquecida/  ───────►     dim_linea/       fact_viajeros/  ◄── read_parquet('s3://raillytics-gold/...')
-                            build.py     fact_puntualidad/
+                         GoldBuilderApp  fact_puntualidad/
 ```
 
 ### Cómo se ejecuta
@@ -197,13 +196,14 @@ raillytics-silver/                     raillytics-gold/
 | Paso | Comando | Qué hace |
 | --- | --- | --- |
 | Silver de ejemplo | `make 03_silver-sample` | Genera un Silver sintético y determinista (365 días, semilla 42) en `raillytics-silver`. Sustituye a los jobs PySpark mientras no existan y produce exactamente las columnas que Gold espera (el contrato está en `python/raillytics/procesamiento/silver_sample.py`). Los datos no son reales. |
-| Gold | `make 04_gold` | `python -m raillytics.gold.build`: ejecuta `python/raillytics/gold/sql/<tabla>.sql` y escribe cada tabla en `s3://raillytics-gold/<tabla>/<tabla>.parquet` (full refresh). Además deja `data/gold/raillytics_gold.duckdb`, un catálogo con vistas sobre Gold para notebooks. |
+| Gold | `make 04_gold` | `sbt "runMain raillytics.gold.GoldBuilderApp"` (batch, con la misma configuración s3a que L1/L2): registra las tablas Silver como vistas, ejecuta `src/main/resources/gold/<tabla>.sql` y escribe cada tabla en `s3a://raillytics-gold/<tabla>/` (un `part-*.parquet` por tabla, full refresh). No es un stream como L1/L2 porque las dimensiones se recalculan sobre todo Silver. |
 | Dashboards | `make up` (o `make 05_superset-import`) | El servicio `superset-init` importa `dashboards/superset/raillytics_gold/` en cada arranque; `05_superset-import` repite la importación sin reiniciar. |
 
-Airflow incluye el DAG `gold_duckdb` (sin planificación: `airflow dags trigger gold_duckdb`),
-que ejecuta lo mismo que `make 04_gold` dentro del contenedor. Los dos comandos leen la
-configuración de MinIO de las variables `MINIO_*` del `.env`; con `SILVER_ROOT` y `GOLD_ROOT`
-se puede apuntar a directorios locales (así corren los tests de `tests/gold/`, sin MinIO).
+Gold no tiene DAG de Airflow: la app Spark corre fuera de los contenedores, como L1/L2
+(orquestarla desde Airflow requeriría un `SparkSubmitOperator` contra un clúster o una imagen
+con JDK y sbt). Los dos comandos leen la configuración de MinIO de las variables `MINIO_*` del
+`.env`; con `SILVER_ROOT`, `GOLD_ROOT` y `TRAZABILIDAD_ROOT` se puede apuntar a directorios
+locales (así corren los tests, sin MinIO).
 
 ### Modelo Gold
 
@@ -255,10 +255,13 @@ Cada proceso de carga deja constancia de lo que ha hecho en una tabla Parquet de
 cargada): `run_id`, `proceso`, `capa`, `tabla`, `origen`, `destino`, `filas`, `bytes`,
 `inicio`/`fin` (UTC), `duracion_s`, `estado` (`ok`/`error`), `error`, `parametros` (JSON),
 `lanzado_por` (`make`, `airflow:<dag>`, `cli`), `ejecutor` y `usuario`. Ya lo hacen la descarga
-Bronze del DAG `ingesta_data_sources`, el Silver sintético y la construcción de Gold; las apps
-Scala pueden sumarse escribiendo Parquet con las mismas columnas en ese prefijo.
+Bronze del DAG `ingesta_data_sources`, las apps Spark L1 (`bronze_l1_raw_uploader`: una fila por
+fichero subido, dentro de cada micro-batch de Structured Streaming) y L2
+(`bronze_l2_parquet_converter`: una fila por micro-batch y fuente), el Silver sintético
+(`silver_sample`) y la construcción de Gold (`gold_build`).
 
-Para instrumentar un proceso nuevo basta con envolverlo (`python/raillytics/utils/cargas.py`):
+Para instrumentar un proceso nuevo basta con envolverlo. En Python
+(`python/raillytics/utils/cargas.py`):
 
 ```python
 from raillytics.utils.cargas import registrar_carga
@@ -267,6 +270,18 @@ with registrar_carga("silver_viajeros", "silver", layout, con, parametros={...})
     with ejecucion.tabla("viajeros_enriquecidos", origen=..., destino=...) as carga:
         ...                 # la carga propiamente dicha
         carga.filas = n
+```
+
+Y en Scala (`raillytics.common.trazabilidad.Cargas`, mismo esquema Parquet; Spark añade sus
+`part-*.parquet` al mismo prefijo y DuckDB los lee junto a los de Python):
+
+```scala
+Cargas.registrar("silver_viajeros", "silver", settings.cargasDir, Map("particion" -> dia)) { ejecucion =>
+  ejecucion.tabla("viajeros_enriquecidos", origen = Some(...), destino = Some(...)) { carga =>
+    ...                   // la carga propiamente dicha
+    carga.filas = Some(n)
+  }
+}
 ```
 
 El registro se escribe al terminar, también si la carga falla (el error queda en la fila y la
@@ -279,17 +294,24 @@ del bucket Gold).
 
 ### Uso desde notebooks
 
+DuckDB lee el Parquet de Gold directamente de MinIO, sin catálogo intermedio:
+
 ```python
 from dotenv import find_dotenv, load_dotenv
-from raillytics.utils.lake import S3Settings, connect
+from raillytics.utils.lake import LakeLayout, S3Settings, connect
 
 load_dotenv(find_dotenv(usecwd=True))  # MINIO_* del .env (lo busca hacia arriba desde el directorio actual)
-con = connect(S3Settings.from_env(), database="../data/gold/raillytics_gold.duckdb", read_only=True)
-con.sql("SELECT tipo_tren, sum(viajeros) FROM fact_viajeros JOIN dim_linea USING (linea_id) GROUP BY 1").show()
+layout, con = LakeLayout.from_env(), connect(S3Settings.from_env())
+con.sql(f"""
+    SELECT l.tipo_tren, sum(f.viajeros) AS viajeros
+    FROM read_parquet('{layout.gold_glob("fact_viajeros")}') f
+    JOIN read_parquet('{layout.gold_glob("dim_linea")}') l USING (linea_id)
+    GROUP BY 1 ORDER BY 2 DESC
+""").show()
 ```
 
-(Rutas relativas a `notebooks/`; el kernel necesita `python/` en el `PYTHONPATH`, por ejemplo con
-`sys.path.insert(0, "../python")` o instalando el paquete en modo editable.)
+(El kernel necesita `python/` en el `PYTHONPATH`, por ejemplo con `sys.path.insert(0, "../python")`
+desde `notebooks/`, o instalando el paquete en modo editable.)
 
 ---
 

@@ -7,7 +7,8 @@ final case class ParquetConverterSettings(
   l1DoneRoot: String,
   processedRoot: String,
   checkpointRoot: String,
-  bronzeRoot: String
+  bronzeRoot: String,
+  cargasDir: String
 )
 
 object ParquetConverterSettings {
@@ -17,6 +18,7 @@ object ParquetConverterSettings {
       l1DoneRoot = IngestaEnv.l1DoneRoot(env),
       processedRoot = env.getOrElse("PROCESSED_ROOT", "data/bronze_processed"),
       checkpointRoot = IngestaEnv.checkpointRoot(env),
-      bronzeRoot = IngestaEnv.bronzeRoot(env)
+      bronzeRoot = IngestaEnv.bronzeRoot(env),
+      cargasDir = IngestaEnv.cargasDir(env)
     )
 }

@@ -57,6 +57,22 @@ def read_model_sql(table: str) -> str:
     return (SQL_DIR / f"{table}.sql").read_text(encoding="utf-8").strip().rstrip(";")
 
 
+def check_no_foreign_files(con: duckdb.DuckDBPyConnection, layout: LakeLayout, table: str) -> None:
+    """Falla si en el prefijo de la tabla hay Parquet que no escribió este módulo.
+
+    La app Spark (raillytics.gold.GoldBuilderApp) deja part-*.parquet y vacía el
+    prefijo antes de escribir; este módulo solo sobrescribe <tabla>.parquet, así
+    que si se ejecutara encima, Superset leería las dos copias y duplicaría filas.
+    """
+    files = [row[0] for row in con.execute("SELECT file FROM glob(?)", [layout.gold_glob(table)]).fetchall()]
+    foreign = [f for f in files if not f.replace("\\", "/").endswith(f"/{table}.parquet")]
+    if foreign:
+        raise RuntimeError(
+            f"{layout.gold_root}/{table}/ contiene Parquet escrito por otra herramienta ({', '.join(foreign)}); "
+            "bórralo o construye Gold siempre con el mismo motor (make 04_gold o make 04_gold-spark)"
+        )
+
+
 def build_gold(
     con: duckdb.DuckDBPyConnection,
     layout: LakeLayout,
@@ -69,13 +85,14 @@ def build_gold(
     """
     tables = list(tables)
     counts: dict[str, int] = {}
-    parametros = {"umbral_puntualidad_min": PUNTUALIDAD_UMBRAL_MIN, "tablas": tables}
+    parametros = {"umbral_puntualidad_min": PUNTUALIDAD_UMBRAL_MIN, "tablas": tables, "motor": "duckdb"}
     with registrar_carga("gold_build", "gold", layout, con, parametros=parametros) as ejecucion:
         register_silver(con, layout)
         con.execute(f"SET VARIABLE umbral_puntualidad_min = {PUNTUALIDAD_UMBRAL_MIN}")
         for table in tables:
             dest = layout.gold_file(table)
             with ejecucion.tabla(table, origen=layout.silver_root, destino=dest) as carga:
+                check_no_foreign_files(con, layout, table)
                 con.execute(f"CREATE OR REPLACE TABLE {table} AS {read_model_sql(table)}")
                 ensure_parent_dir(dest)
                 con.execute(f"COPY {table} TO '{dest}' (FORMAT PARQUET)")

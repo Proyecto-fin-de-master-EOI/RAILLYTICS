@@ -1,10 +1,10 @@
-"""Acceso con DuckDB al Data Lake (MinIO) para la capa Gold.
+"""Acceso con DuckDB al Data Lake (MinIO) desde Python.
 
-En local DuckDB hace el papel que en el diseño ocupa Snowflake: es el motor
-SQL que construye el modelo dimensional a partir de Silver (build.py) y el
-que usa Superset para consultar Gold. No hay servidor: cada proceso abre su
-propia conexión (normalmente en memoria) y lee/escribe Parquet directamente
-en los buckets de MinIO a través de la extensión httpfs.
+DuckDB es el motor con el que el lado Python lee y escribe Parquet en los
+buckets (Silver sintético, trazabilidad de cargas, notebooks) y con el que
+Superset consulta la capa Gold, que construye la app Spark GoldBuilderApp.
+No hay servidor: cada proceso abre su propia conexión (normalmente en
+memoria) y habla con MinIO a través de la extensión httpfs.
 
 La configuración sale de las mismas variables de entorno que ya usan las apps
 Spark de ingesta (MINIO_ENDPOINT, MINIO_ROOT_USER, MINIO_ROOT_PASSWORD,
@@ -92,9 +92,6 @@ class LakeLayout:
 
     def gold_glob(self, table: str) -> str:
         return f"{self.gold_root}/{table}/*.parquet"
-
-    def gold_file(self, table: str) -> str:
-        return f"{self.gold_root}/{table}/{table}.parquet"
 
     # Trazabilidad de cargas: un Parquet por ejecución (ver raillytics.utils.cargas).
     @property
