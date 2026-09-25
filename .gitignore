@@ -50,12 +50,6 @@ derby.log
 *.crc
 _delta_log/
 
-# === dbt ===
-dbt/target/
-dbt/dbt_packages/
-dbt/logs/
-logs/
-
 # === Airflow (docker-compose) — artefactos generados, no se versionan ===
 !docker/airflow/logs/
 docker/airflow/logs/**

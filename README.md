@@ -4,7 +4,7 @@
 
 Proyecto de TFM (Máster en Ingeniería de Datos — Grupo 3). Plataforma end-to-end que integra, procesa y analiza datos ferroviarios públicos (Renfe Open Data, AEMET, festivos BOE, INE) para generar insights operativos y predicciones de demanda a 30 días.
 
-**Stack tecnológico:** Python (ingesta) · Apache Airflow (orquestación) · MinIO — S3-compatible (almacenamiento Bronze/Silver/Gold) · Spark Structured Streaming en Scala (subida a Bronze L1/L2) · PySpark (procesamiento Silver) · Delta Lake + Parquet (almacenamiento) · Spark en Scala, batch (modelo dimensional Gold; dbt + Snowflake en el diseño objetivo) · DuckDB (motor de consulta de Superset y notebooks sobre el Parquet del lake) · Apache Superset (dashboards en local; Power BI en el diseño objetivo) · Scikit-learn (modelo predictivo).
+**Stack tecnológico:** Python (ingesta) · Apache Airflow (orquestación) · MinIO — S3-compatible (almacenamiento Bronze/Silver/Gold) · Spark Structured Streaming en Scala (subida a Bronze L1/L2) · PySpark (procesamiento Silver) · Delta Lake + Parquet (almacenamiento) · Spark en Scala, batch (modelo dimensional Gold; Snowflake en el diseño objetivo) · DuckDB (motor de consulta de Superset y notebooks sobre el Parquet del lake) · Apache Superset (dashboards en local; Power BI en el diseño objetivo) · Scikit-learn (modelo predictivo).
 
 **Arquitectura:** patrón Medallion — Bronze (datos brutos) → Silver (datos limpios y enriquecidos) → Gold (modelo dimensional listo para consumo analítico).
 
@@ -32,12 +32,12 @@ Fuentes (Renfe, AEMET, BOE, INE)
    datos        PySpark        Spark (Scala) construye  (DuckDB lee el Parquet
    en bruto     limpieza       el modelo dimensional    de Gold en MinIO)
    (MinIO)      (MinIO)        y lo deja en Parquet
-                               (MinIO)         └─ diseño objetivo: dbt ► Snowflake ► Power BI
+                               (MinIO)         └─ diseño objetivo: Snowflake ► Power BI
 ```
 
 - **🥉 Bronze — datos en bruto**: un [framework de ingesta](#framework-de-ingesta-bronze) descarga las fuentes públicas y las promueve a MinIO en dos subcapas — `l1-raw` (tal cual llegan, sin transformar) y `l2` (mismo dato convertido a Parquet) — particionadas por fuente y fecha. Si algo falla después, siempre se puede volver al dato original en `l1-raw`.
 - **🥈 Silver — datos limpios y enriquecidos**: jobs PySpark eliminan duplicados, tratan nulos, normalizan formatos (fechas, nombres de estaciones) y cruzan los viajeros con meteorología y festivos. Es la capa de "datos fiables".
-- **🥇 Gold — datos listos para el análisis**: el modelo dimensional (dimensiones `Dim_Estacion`, `Dim_Linea`, `Dim_Fecha` y hechos `Fact_Viajeros`, `Fact_Puntualidad`). En este repositorio lo construye la app Spark [`GoldBuilderApp`](#capa-gold-con-spark-y-dashboards-en-superset) (Scala, batch) con SQL a partir de Silver y lo deja como Parquet en el bucket `raillytics-gold`; Superset lo consulta directamente desde ahí con DuckDB y el modelo predictivo de Scikit-learn puede leerlo igual. En el diseño del TFM este paso es dbt → Snowflake → Power BI: el SQL es el mismo y puede migrarse a modelos dbt cuando toque.
+- **🥇 Gold — datos listos para el análisis**: el modelo dimensional (dimensiones `Dim_Estacion`, `Dim_Linea`, `Dim_Fecha` y hechos `Fact_Viajeros`, `Fact_Puntualidad`). En este repositorio lo construye la app Spark [`GoldBuilderApp`](#capa-gold-con-spark-y-dashboards-en-superset) (Scala, batch) con SQL a partir de Silver y lo deja como Parquet en el bucket `raillytics-gold`; Superset lo consulta directamente desde ahí con DuckDB y el modelo predictivo de Scikit-learn puede leerlo igual. En el diseño del TFM el destino de este paso es Snowflake → Power BI: el SQL es el mismo y podrá ejecutarse allí cuando toque.
 
 ---
 
@@ -95,12 +95,6 @@ RAILLYTICS/
 │   │   └── gold/               # GoldBuilderApp (main, batch) · GoldBuilder (lógica) · GoldBuilderSettings (entorno)
 │   ├── main/resources/gold/    # El modelo Gold en dialecto Spark SQL (una consulta por tabla)
 │   └── test/scala/raillytics/  # Tests ScalaTest (mismo árbol de paquetes que main)
-│
-├── dbt/                        # Proyecto dbt: transformaciones Silver → Gold
-│   ├── models/
-│   │   ├── staging/
-│   │   └── marts/              # Dimensiones (Dim_Estacion, Dim_Linea, Dim_Fecha) y hechos (Fact_Viajeros, Fact_Puntualidad)
-│   └── tests/                  # Tests de calidad dbt (unicidad, integridad referencial, rangos)
 │
 ├── notebooks/                  # Notebooks de exploración y análisis (EDA, validación de fuentes)
 │
@@ -181,7 +175,7 @@ En local la capa Gold no necesita un data warehouse: la app **Spark** `GoldBuild
 (Scala, batch) construye el modelo dimensional leyendo Silver de MinIO y lo deja como Parquet
 en el bucket `raillytics-gold`, y **Superset** lo consulta directamente desde ahí con
 **DuckDB** en memoria dentro del contenedor. Es el mismo modelo que en el diseño del TFM
-carga dbt en Snowflake; solo cambian el motor y el destino.
+se carga en Snowflake; solo cambia el destino.
 
 ```
 Silver (Parquet en MinIO)              Gold (Parquet en MinIO)                Superset (http://localhost:8088)
@@ -322,7 +316,7 @@ El repositorio incluye hooks versionados en `.githooks/` (no en `.git/hooks/`, q
 - **pre-commit**: si hay ficheros `.scala`/`.sbt`/`project/**` en staging, ejecuta `sbt compile` y bloquea el commit si falla.
 - **pre-push**: si el push incluye cambios en `.scala`/`.sbt`/`project/**`, ejecuta `sbt test` y bloquea el push si falla.
 
-Ambos se omiten (sin ejecutar sbt) si no hay cambios relevantes en Scala/SBT, para no ralentizar commits de Python/dbt/Airflow.
+Ambos se omiten (sin ejecutar sbt) si no hay cambios relevantes en Scala/SBT, para no ralentizar commits de Python/Airflow.
 
 Activación local (una sola vez por clon del repo): `make install-hooks`, o directamente:
 

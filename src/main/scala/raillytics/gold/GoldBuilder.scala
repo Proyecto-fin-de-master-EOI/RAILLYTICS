@@ -12,9 +12,9 @@ import scala.io.Source
 // (src/main/resources/gold/<tabla>.sql, dialecto Spark SQL) y escribe el
 // resultado como Parquet en el bucket Gold, una tabla por prefijo.
 //
-// Es el paso "dbt -> Snowflake" del diseño, con Spark como motor (por
-// coherencia con las apps L1/L2) y Parquet en MinIO como destino, que es lo
-// que Superset consulta con DuckDB. Gold se reconstruye entera en cada
+// Es el paso Silver -> Gold del diseño (allí con destino Snowflake), con Spark
+// como motor (por coherencia con las apps L1/L2) y Parquet en MinIO como
+// destino, que es lo que Superset consulta con DuckDB. Gold se reconstruye entera en cada
 // ejecución (full refresh): las dimensiones son agregaciones sobre todo
 // Silver, así que no tiene sentido como stream de micro-batches.
 object GoldBuilder extends Logging {
