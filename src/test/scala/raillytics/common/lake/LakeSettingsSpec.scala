@@ -13,6 +13,7 @@ class LakeSettingsSpec extends AnyFlatSpec with Matchers {
     lake.goldRoot shouldBe "s3a://raillytics-gold"
     lake.trazabilidadRoot shouldBe "s3a://raillytics-gold/_trazabilidad"
     lake.cargasDir shouldBe "s3a://raillytics-gold/_trazabilidad/cargas/"
+    lake.calidadDir shouldBe "s3a://raillytics-gold/_trazabilidad/calidad/"
     lake.goldTable("dim_fecha") shouldBe "s3a://raillytics-gold/dim_fecha/"
     lake.silverTable("viajeros_enriquecidos") shouldBe "s3a://raillytics-silver/viajeros_enriquecidos/"
   }

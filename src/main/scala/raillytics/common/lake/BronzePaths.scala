@@ -15,4 +15,9 @@ object BronzePaths {
   // para esa fecha; cada micro-batch añade sus part-*.parquet.
   def l2(bronzeRoot: String, source: String, date: LocalDate): String =
     s"$bronzeRoot/l2/$source/$date/"
+
+  // L2 de una fuente zip (p. ej. un GTFS): un prefijo por miembro del archivo
+  // (stops, routes, trips...), cada uno con su propio esquema.
+  def l2Member(bronzeRoot: String, source: String, date: LocalDate, member: String): String =
+    s"$bronzeRoot/l2/$source/$date/$member/"
 }

@@ -1,0 +1,56 @@
+slice_name: Quality gates (historial)
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: inicio
+  query_mode: raw
+  groupby: []
+  metrics: []
+  all_columns:
+  - inicio
+  - proceso
+  - capa
+  - tabla
+  - gate
+  - severidad
+  - resultado
+  - valor
+  - umbral
+  - detalle
+  - run_id
+  percent_metrics: []
+  order_by_cols:
+  - '["inicio", false]'
+  row_limit: 500
+  server_page_length: 10
+  include_search: true
+  show_totals: false
+  table_timestamp_format: '%Y-%m-%d %H:%M:%S'
+  show_cell_bars: false
+  color_pn: false
+  allow_render_html: false
+  column_config: {}
+  conditional_formatting:
+  - column: resultado
+    operator: '!='
+    targetValue: ok
+    colorScheme: '#EFA1AA'
+  temporal_columns_lookup: {}
+  time_grain_sqla: null
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 6ccfcd9c-b417-4ae9-bb94-51fbc80b0577
+version: 1.0.0
+dataset_uuid: e14d0798-cd51-4ffd-b44b-6a708fd16091
+is_managed_externally: false
+external_url: null

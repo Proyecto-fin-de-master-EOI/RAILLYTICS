@@ -1,0 +1,29 @@
+slice_name: '% quality gates OK'
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: inicio
+  metric: pct_gates_ok
+  header_font_size: 0.4
+  subheader: ''
+  subheader_font_size: 0.15
+  y_axis_format: .1f
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: ab05496b-99b4-425c-958f-dfd1b2769789
+version: 1.0.0
+dataset_uuid: e14d0798-cd51-4ffd-b44b-6a708fd16091
+is_managed_externally: false
+external_url: null

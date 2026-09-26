@@ -46,6 +46,13 @@ object SparkSessionFactory extends Logging {
   def buildForFileStreaming(appName: String, config: Config = AppConfig.load()): SparkSession = {
     val spark = build(appName, config)
     spark.conf.set("spark.sql.streaming.schemaInference", "true")
+    // Tras un reinicio, Spark vuelve a entregar el último micro-batch que no llegó a
+    // confirmarse en el checkpoint, con la MISMA lista de ficheros. Como L1 y L2
+    // mueven los ficheros al terminar con ellos, parte de esa lista puede haber
+    // desaparecido del origen: sin esta opción la query moriría con
+    // FileNotFoundException en cada arranque (batch envenenado); con ella, esos
+    // ficheros se omiten y el resto del batch se reprocesa.
+    spark.conf.set("spark.sql.files.ignoreMissingFiles", "true")
     spark
   }
 }

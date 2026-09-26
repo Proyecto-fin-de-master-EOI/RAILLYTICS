@@ -1,8 +1,16 @@
+# Registro de fuentes de la ingesta Bronze. Lo leen la descarga Python
+# (raillytics.ingesta.sources) y la app Scala L2 (DataSourceConfig).
+#
+# format: csv | json | zip (ver raillytics/ingesta/formats.py y SourceFormat.scala).
+# La descarga comprueba que el contenido recibido ES ese formato (quality gate
+# formato_declarado): un fichero que no lo cumple va a cuarentena, no al pipeline.
 sources:
   - id: crtm
-    name: "CRTM - Consorcio Regional de Transportes de Madrid"
+    name: "CRTM - Consorcio Regional de Transportes de Madrid (GTFS estático)"
     url: "https://crtm.maps.arcgis.com/sharing/rest/content/items/1a25440bf66f499bae2657ec7fb40144/data"
-    format: csv
+    # El servidor devuelve application/zip (google_transit_M5.zip): un GTFS con
+    # stops.txt, routes.txt, trips.txt... L2 deja un Parquet por miembro.
+    format: zip
   - id: renfe_trip_updates
     name: "Renfe GTFS-RT - Actualizaciones de viaje (Larga Distancia)"
     url: "https://gtfsrt.renfe.com/trip_updates_LD.json"

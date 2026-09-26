@@ -14,7 +14,8 @@ class IngestaSettingsSpec extends AnyFlatSpec with Matchers {
       l1DoneRoot = "data/bronze_l1_done",
       checkpointRoot = "data/checkpoints",
       bronzeRoot = "s3a://raillytics-bronze",
-      cargasDir = "s3a://raillytics-gold/_trazabilidad/cargas/"
+      cargasDir = "s3a://raillytics-gold/_trazabilidad/cargas/",
+      calidadDir = "s3a://raillytics-gold/_trazabilidad/calidad/"
     )
   }
 
@@ -23,9 +24,11 @@ class IngestaSettingsSpec extends AnyFlatSpec with Matchers {
       configPath = "config/data_sources.yml",
       l1DoneRoot = "data/bronze_l1_done",
       processedRoot = "data/bronze_processed",
+      rejectedRoot = "data/bronze_rejected",
       checkpointRoot = "data/checkpoints",
       bronzeRoot = "s3a://raillytics-bronze",
       cargasDir = "s3a://raillytics-gold/_trazabilidad/cargas/",
+      calidadDir = "s3a://raillytics-gold/_trazabilidad/calidad/",
       pendingRetryMs = 30000L
     )
   }

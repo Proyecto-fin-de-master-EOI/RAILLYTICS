@@ -5,6 +5,7 @@ import org.apache.spark.sql.functions.sum
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import raillytics.common.calidad.QualityGates
 import raillytics.common.lake.LakeSettings
 import raillytics.testutil.{TestPaths, TestSpark}
 
@@ -39,41 +40,45 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
   override def beforeAll(): Unit = {
     spark = TestSpark.session("GoldBuilderSpec")
     tmpDir = Files.createTempDirectory("gold-builder-spec")
-    settings = GoldBuilderSettings(
-      lake = LakeSettings(
-        bronzeRoot = TestPaths.fileUri(tmpDir.resolve("bronze")),
-        silverRoot = TestPaths.fileUri(tmpDir.resolve("silver")),
-        goldRoot = TestPaths.fileUri(tmpDir.resolve("gold")),
-        trazabilidadRoot = TestPaths.fileUri(tmpDir.resolve("traza"))
-      ),
-      umbralPuntualidadMin = 5
-    )
-    escribirSilver()
+    settings = settingsIn(tmpDir)
+    escribirSilver(settings, filasPuntualidad)
     counts = GoldBuilder.build(settings)
   }
 
   override def afterAll(): Unit = spark.stop()
+
+  private def settingsIn(dir: Path): GoldBuilderSettings = GoldBuilderSettings(
+    lake = LakeSettings(
+      bronzeRoot = TestPaths.fileUri(dir.resolve("bronze")),
+      silverRoot = TestPaths.fileUri(dir.resolve("silver")),
+      goldRoot = TestPaths.fileUri(dir.resolve("gold")),
+      trazabilidadRoot = TestPaths.fileUri(dir.resolve("traza"))
+    ),
+    umbralPuntualidadMin = 5,
+    calidadConfig = "config/quality_gates.yml"   // el YAML real del proyecto, desde la raíz del repo
+  )
 
   private def viajeros(fecha: LocalDate, estacion: (String, String), n: Long, festivo: Option[String]) =
     SilverViajeros(fecha, estacion._1, estacion._2, "Madrid", "Comunidad de Madrid", 40.4, -3.7,
       "AVE-MAD-BCN", "AVE Madrid – Barcelona", "AVE", "Madrid Puerta de Atocha", "Barcelona Sants",
       n, 18.5, 0.0, "despejado", festivo.isDefined, festivo)
 
-  private def escribirSilver(): Unit = {
-    val atocha = ("MADPA", "Madrid Puerta de Atocha")
-    val chamartin = ("MADCH", "Madrid Chamartín")
+  private val atocha = ("MADPA", "Madrid Puerta de Atocha")
+  private val chamartin = ("MADCH", "Madrid Chamartín")
+  private val prevista = LocalDateTime.of(2025, 4, 18, 9, 30)
+  private val filasPuntualidad = Seq(
+    SilverPuntualidad(viernesSanto, "s1", "AVE-MAD-BCN", "MADPA", prevista, Some(prevista.plusMinutes(3)), Some(3), "realizado", 18.5, 0.0, "despejado", true),
+    SilverPuntualidad(viernesSanto, "s2", "AVE-MAD-BCN", "MADPA", prevista.plusHours(2), Some(prevista.plusHours(2).plusMinutes(12)), Some(12), "realizado", 18.5, 0.0, "despejado", true),
+    SilverPuntualidad(viernesSanto, "s3", "AVE-MAD-BCN", "MADCH", prevista.plusHours(4), None, None, "cancelado", 18.5, 0.0, "despejado", true)
+  )
+
+  private def escribirSilver(settings: GoldBuilderSettings, puntualidad: Seq[SilverPuntualidad]): Unit = {
     val filasViajeros = Seq(
       viajeros(jueves, atocha, 1000L, None), viajeros(jueves, chamartin, 500L, None),
       viajeros(viernesSanto, atocha, 1500L, Some("Viernes Santo")), viajeros(viernesSanto, chamartin, 700L, Some("Viernes Santo"))
     )
-    val prevista = LocalDateTime.of(2025, 4, 18, 9, 30)
-    val filasPuntualidad = Seq(
-      SilverPuntualidad(viernesSanto, "s1", "AVE-MAD-BCN", "MADPA", prevista, Some(prevista.plusMinutes(3)), Some(3), "realizado", 18.5, 0.0, "despejado", true),
-      SilverPuntualidad(viernesSanto, "s2", "AVE-MAD-BCN", "MADPA", prevista.plusHours(2), Some(prevista.plusHours(2).plusMinutes(12)), Some(12), "realizado", 18.5, 0.0, "despejado", true),
-      SilverPuntualidad(viernesSanto, "s3", "AVE-MAD-BCN", "MADCH", prevista.plusHours(4), None, None, "cancelado", 18.5, 0.0, "despejado", true)
-    )
     spark.createDataFrame(filasViajeros).write.parquet(settings.lake.silverTable("viajeros_enriquecidos"))
-    spark.createDataFrame(filasPuntualidad).write.parquet(settings.lake.silverTable("puntualidad_enriquecida"))
+    spark.createDataFrame(puntualidad).write.parquet(settings.lake.silverTable("puntualidad_enriquecida"))
   }
 
   private def gold(table: String) = spark.read.parquet(settings.lake.goldTable(table))
@@ -121,5 +126,39 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
     trazas.map(t => (t(2), t(3), t(4))).toSet shouldBe GoldBuilder.GoldTables.map(table => (table, counts(table), "ok")).toSet
     trazas.map(_(0)).toSet shouldBe Set("gold_build")
     trazas.head(5).asInstanceOf[String] should include (""""umbral_puntualidad_min":5""")
+  }
+
+  it should "record the Silver (entrada) and Gold (salida) quality gates under the same run_id, all passing" in {
+    val runId = spark.read.parquet(settings.lake.cargasDir).select("run_id").distinct().collect().map(_.getString(0)).toSeq
+    runId should have length 1
+    val calidad = spark.read.parquet(settings.lake.calidadDir).select("run_id", "proceso", "capa", "tabla", "gate", "resultado").collect().map(_.toSeq)
+    calidad.map(_(0)).toSet shouldBe runId.toSet
+    calidad.map(_(1)).toSet shouldBe Set("gold_build")
+    calidad.map(_(2)).toSet shouldBe Set("silver", "gold")
+    calidad.map(_(3)).toSet shouldBe Set("silver_viajeros_enriquecidos", "silver_puntualidad_enriquecida") ++ GoldBuilder.GoldTables.map("gold_" + _)
+    calidad.filterNot(_(5) == "ok") shouldBe empty
+  }
+
+  it should "abort before writing anything when a blocking quality gate fails" in {
+    val dir = Files.createTempDirectory("gold-builder-gate-spec")
+    val ajustes = settingsIn(dir)
+    // Un servicio de una línea que no existe en viajeros: dim_linea no la tendría y el
+    // dashboard perdería el servicio. El gate silver_puntualidad_enriquecida.lineas_en_viajeros
+    // (bloqueante) debe parar la construcción antes de escribir Gold.
+    val huerfano = SilverPuntualidad(viernesSanto, "s9", "LD-NO-EXISTE", "MADPA", prevista, Some(prevista), Some(0), "realizado", 18.5, 0.0, "despejado", true)
+    escribirSilver(ajustes, filasPuntualidad :+ huerfano)
+
+    val thrown = the[QualityGates.QualityGateException] thrownBy GoldBuilder.build(ajustes)
+
+    thrown.fallidos.map(r => (r.tabla, r.gate)) shouldBe Seq(("silver_puntualidad_enriquecida", "lineas_en_viajeros"))
+    Files.exists(dir.resolve("gold")) shouldBe false
+    val carga = spark.read.parquet(ajustes.lake.cargasDir).select("tabla", "estado", "error").collect().map(_.toSeq)
+    carga should have length 1
+    Option(carga.head(0)) shouldBe None   // fila de ejecución, sin tabla
+    carga.head(1) shouldBe "error"
+    carga.head(2).asInstanceOf[String] should include("lineas_en_viajeros")
+    val calidad = spark.read.parquet(ajustes.lake.calidadDir).select("capa", "gate", "resultado").collect().map(_.toSeq)
+    calidad.map(_(0)).toSet shouldBe Set("silver")   // los gates de Gold nunca llegaron a evaluarse
+    calidad.filter(_(2) == "fallo").map(_(1)) shouldBe Array("lineas_en_viajeros")
   }
 }
