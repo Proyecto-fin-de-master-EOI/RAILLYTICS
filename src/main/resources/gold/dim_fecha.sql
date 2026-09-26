@@ -1,6 +1,8 @@
 -- Dim_Fecha: una fila por día presente en Silver (viajeros o puntualidad); fecha_id
 -- (entero AAAAMMDD) es la clave que usan las tablas de hechos. El festivo
--- llega ya cruzado desde Silver (enriquecimiento con el BOE).
+-- llega ya cruzado desde Silver (enriquecimiento con el BOE): se toma de las
+-- dos tablas, porque un día que solo tenga servicios (sin viajeros) también
+-- puede ser festivo; el nombre solo lo trae viajeros.
 WITH fechas AS (
     SELECT fecha FROM silver_viajeros_enriquecidos
     UNION
@@ -11,7 +13,11 @@ festivos AS (
         fecha,
         bool_or(es_festivo)  AS es_festivo,
         max(festivo_nombre)  AS festivo_nombre
-    FROM silver_viajeros_enriquecidos
+    FROM (
+        SELECT fecha, es_festivo, festivo_nombre FROM silver_viajeros_enriquecidos
+        UNION ALL
+        SELECT fecha, es_festivo, CAST(NULL AS STRING) AS festivo_nombre FROM silver_puntualidad_enriquecida
+    ) f
     GROUP BY fecha
 )
 SELECT
