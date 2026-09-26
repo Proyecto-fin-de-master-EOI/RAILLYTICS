@@ -3,14 +3,10 @@ requests~=2.32          # Descarga de APIs REST (Renfe Open Data, AEMET, BOE)
 python-dotenv~=1.0      # Carga de variables de entorno desde .env
 pandas~=2.2             # Manipulación de datos en la ingesta
 pyarrow~=16.1           # Lectura/escritura Parquet
+PyYAML~=6.0              # Parseo de config/data_sources.yml
 
-# === Procesamiento (capa Silver) ===
-pyspark~=3.5            # Limpieza, normalización y enriquecimiento
-delta-spark~=3.2        # Delta Lake sobre Spark (versionado, ACID) — compatible con PySpark 3.5
-
-# === Modelo dimensional (capa Gold) ===
-dbt-core~=1.8           # Transformaciones Silver → Gold
-dbt-snowflake~=1.8      # Adaptador dbt para Snowflake
+# === Data Lake (DuckDB) ===
+duckdb~=1.5.5           # Acceso al lake desde Python (Silver sintético, trazabilidad, notebooks) y motor de consulta de Superset
 
 # === Machine Learning ===
 scikit-learn~=1.5       # Modelo predictivo de demanda
@@ -22,3 +18,4 @@ matplotlib~=3.9         # Visualización en notebooks
 
 # === Testing ===
 pytest~=8.2             # Tests unitarios de ingesta y transformaciones
+requests-mock~=1.12      # Mock de requests para tests de descarga

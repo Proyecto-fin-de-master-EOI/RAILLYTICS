@@ -1,0 +1,418 @@
+table_name: viajeros_diarios
+main_dttm_col: fecha
+description: Viajeros diarios por estación y línea (Fact_Viajeros ⋈ Dim_Fecha, Dim_Estacion, Dim_Linea), leídos con DuckDB
+  del Parquet de s3://raillytics-gold.
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: |-
+  -- Fact_Viajeros con sus dimensiones (modelo en estrella de la capa Gold).
+  SELECT
+      f.fecha,
+      d.anio,
+      d.trimestre,
+      d.mes,
+      d.nombre_mes,
+      d.dia_semana,
+      d.nombre_dia,
+      d.dia_semana || '. ' || d.nombre_dia AS dia_semana_etiqueta,
+      d.es_fin_de_semana,
+      d.es_festivo,
+      d.festivo_nombre,
+      CASE
+          WHEN d.es_festivo THEN 'festivo'
+          WHEN d.es_fin_de_semana THEN 'fin de semana'
+          ELSE 'laborable'
+      END AS tipo_dia,
+      d.estacion_anio,
+      e.nombre AS estacion,
+      e.provincia,
+      e.comunidad,
+      e.latitud,
+      e.longitud,
+      l.nombre AS linea,
+      l.tipo_tren,
+      l.origen,
+      l.destino,
+      f.viajeros,
+      f.temperatura_media,
+      f.precipitacion_mm,
+      f.condicion_meteo
+  FROM read_parquet('s3://raillytics-gold/fact_viajeros/*.parquet') AS f
+  JOIN read_parquet('s3://raillytics-gold/dim_fecha/*.parquet') AS d USING (fecha_id)
+  JOIN read_parquet('s3://raillytics-gold/dim_estacion/*.parquet') AS e USING (estacion_id)
+  JOIN read_parquet('s3://raillytics-gold/dim_linea/*.parquet') AS l USING (linea_id)
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: 96722fb6-8e32-5c11-a4ed-d77abe207f92
+metrics:
+- metric_name: total_viajeros
+  verbose_name: Viajeros
+  metric_type: null
+  expression: SUM(viajeros)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: media_viajeros_dia
+  verbose_name: Viajeros por día
+  metric_type: null
+  expression: SUM(viajeros) / COUNT(DISTINCT fecha)
+  description: null
+  d3format: ',.0f'
+  extra: null
+  warning_text: null
+- metric_name: n_estaciones
+  verbose_name: Estaciones
+  metric_type: null
+  expression: COUNT(DISTINCT estacion)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: n_lineas
+  verbose_name: Líneas
+  metric_type: null
+  expression: COUNT(DISTINCT linea)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: temp_media
+  verbose_name: Temperatura media (°C)
+  metric_type: null
+  expression: AVG(temperatura_media)
+  description: null
+  d3format: .1f
+  extra: null
+  warning_text: null
+- metric_name: precip_media
+  verbose_name: Precipitación media (mm)
+  metric_type: null
+  expression: AVG(precipitacion_mm)
+  description: null
+  d3format: .1f
+  extra: null
+  warning_text: null
+columns:
+- column_name: fecha
+  verbose_name: Fecha
+  is_dttm: true
+  is_active: true
+  type: DATE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: anio
+  verbose_name: Año
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: trimestre
+  verbose_name: Trimestre
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: mes
+  verbose_name: Mes
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: nombre_mes
+  verbose_name: Nombre del mes
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: dia_semana
+  verbose_name: Día de la semana (1 = lunes)
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: nombre_dia
+  verbose_name: Nombre del día
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: dia_semana_etiqueta
+  verbose_name: Día de la semana
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: es_fin_de_semana
+  verbose_name: Fin de semana
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: es_festivo
+  verbose_name: Festivo
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: tipo_dia
+  verbose_name: Tipo de día
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: festivo_nombre
+  verbose_name: Festivo (nombre)
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: estacion_anio
+  verbose_name: Estación del año
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: estacion
+  verbose_name: Estación
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: provincia
+  verbose_name: Provincia
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: comunidad
+  verbose_name: Comunidad autónoma
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: latitud
+  verbose_name: Latitud
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: longitud
+  verbose_name: Longitud
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: linea
+  verbose_name: Línea
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: tipo_tren
+  verbose_name: Tipo de tren
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: origen
+  verbose_name: Origen
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: destino
+  verbose_name: Destino
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: viajeros
+  verbose_name: Viajeros
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: condicion_meteo
+  verbose_name: Condición meteorológica
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: temperatura_media
+  verbose_name: Temperatura media (°C)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: precipitacion_mm
+  verbose_name: Precipitación (mm)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

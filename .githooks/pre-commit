@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Compila el proyecto SBT antes de commitear, solo si hay cambios en Scala/SBT staged.
+set -euo pipefail
+
+changed=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '(^|/)([^/]+\.(scala|sbt)|project/.*)$' || true)
+
+if [ -z "$changed" ]; then
+  exit 0
+fi
+
+if ! command -v sbt >/dev/null 2>&1; then
+  echo "⚠ sbt no está en el PATH, se omite la comprobación de compilación." >&2
+  exit 0
+fi
+
+echo "→ Cambios en Scala/SBT detectados, compilando (sbt compile)..."
+if ! sbt -batch compile; then
+  echo "✗ sbt compile ha fallado. Commit abortado." >&2
+  exit 1
+fi
+echo "✓ sbt compile OK"
