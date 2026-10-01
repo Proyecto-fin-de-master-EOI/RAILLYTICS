@@ -61,7 +61,9 @@ def test_airflow_ve_ollama_en_la_red_de_compose_y_las_rutas_montadas_para_la_pre
     assert entorno["OLLAMA_URL"] == "http://ollama:11434"
     assert entorno["PREDICCION_CONFIG"] == "/opt/airflow/raillytics_config/prediccion.yml"
     assert entorno["PROMPTS_DIR"] == "/opt/airflow/raillytics_config/prompts"
-    assert entorno["PREDICCIONES_ROOT"] == "/opt/airflow/raillytics_data/predicciones"
+    # los CSV van a un directorio del repo que está en git (no a data/, que se ignora), montado desde el anfitrión
+    assert entorno["PREDICCIONES_ROOT"] == "/opt/airflow/resultados/predicciones"
+    assert "../resultados/predicciones:/opt/airflow/resultados/predicciones" in COMPOSE["x-airflow-common"]["volumes"]
     # la caché de resultados del LLM vive en data/ (montado), así que sobrevive a recrear el contenedor
     assert entorno["PREDICCION_CACHE_DIR"] == "/opt/airflow/raillytics_data/cache/prediccion"
 

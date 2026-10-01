@@ -13,6 +13,9 @@ from raillytics.prediccion.trimestre import Trimestre
 from raillytics.utils.fs import atomic_write_bytes
 
 CORREDOR = "AVE-MAD-BCN"
+# Dónde se escribe el CSV si no hay PREDICCIONES_ROOT (relativa a donde se lanza; `make` lo hace desde la raíz del repo).
+# Es un directorio del repo que está en git, a propósito fuera de data/ (que se ignora): los resultados se versionan.
+RAIZ_POR_DEFECTO = Path("resultados/predicciones")
 COLUMNAS_CSV = (
     "fecha", "corredor", "viajeros_previstos", "indice", "motivo", "trimestre",
     "modelo", "version_prompt", "run_id", "generado_en",

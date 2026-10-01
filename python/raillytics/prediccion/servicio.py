@@ -28,6 +28,7 @@ from raillytics.prediccion.prompt import cargar_plantilla, construir_prompt
 from raillytics.prediccion.publicacion import GOLD_TABLA, construir_gold, publicar_gold
 from raillytics.prediccion.salida import (
     CORREDOR,
+    RAIZ_POR_DEFECTO,
     construir_dataframe,
     escribir_csv,
     formatear_resumen,
@@ -151,7 +152,7 @@ def ejecutar(
         "num_ctx": s.num_ctx,
         "total_manual": total_manual,
     }
-    raiz = Path(env.get("PREDICCIONES_ROOT") or "data/predicciones")
+    raiz = Path(env.get("PREDICCIONES_ROOT") or RAIZ_POR_DEFECTO)
     with registrar_carga(PROCESO, CAPA, layout, con, parametros=parametros) as ejecucion:
         with ejecucion.tabla(TABLA, origen=f"{s.modelo} · {version_prompt}") as carga:
             entradas, publicados, nivel, total, sinteticas = _preparar(trimestre, total_manual, env, layout, con, imprimir)

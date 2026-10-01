@@ -349,3 +349,12 @@ def test_si_falla_la_publicacion_en_gold_no_se_escribe_el_csv(entorno, monkeypat
         _lanzar(entorno, ClienteFalso())
 
     assert _csvs(entorno) == [] and _cargas(entorno)[0][5] == "error"
+
+
+def test_sin_PREDICCIONES_ROOT_el_csv_va_a_resultados_predicciones_que_esta_en_git(entorno, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)  # la ruta por defecto es relativa a donde se lanza (make la lanza desde la raíz del repo)
+    del entorno.env["PREDICCIONES_ROOT"]
+
+    resultado, _ = _lanzar(entorno, ClienteFalso())
+
+    assert resultado.ruta.parts[:3] == ("resultados", "predicciones", "AVE-MAD-BCN") and (tmp_path / resultado.ruta).is_file()

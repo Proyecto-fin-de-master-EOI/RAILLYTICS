@@ -155,7 +155,7 @@ test-scala:
 
 # Predicción diaria de demanda del corredor AVE Madrid-Barcelona: el código fija el total del
 # trimestre y un LLM de Ollama reparte ese total entre los días. Escribe un CSV en
-# PREDICCIONES_ROOT (data/predicciones por defecto). Necesita Ollama arriba: make llm-up.
+# PREDICCIONES_ROOT (resultados/predicciones por defecto, un directorio del repo que está en git). Necesita Ollama arriba: make llm-up.
 TRIMESTRE ?=
 PRED_PROMPT ?= demanda_v2
 PRED_ARGS ?=

@@ -138,8 +138,10 @@ RAILLYTICS/
 │   ├── bronze_rejected/        # Generado en runtime: cuarentena (ficheros que no pasan un quality gate + .rechazo.txt)
 │   ├── checkpoints/            # Generado en runtime: checkpoints de Spark Structured Streaming
 │   ├── silver/                 # Datos limpios, normalizados y enriquecidos (Delta Lake)
-│   ├── gold/                   # Sin uso en local: Gold vive en el bucket raillytics-gold de MinIO
-│   └── predicciones/           # CSV de la predicción de demanda: <corredor>/<trimestre>/demanda_diaria_*.csv
+│   └── gold/                   # Sin uso en local: Gold vive en el bucket raillytics-gold de MinIO
+│
+├── resultados/                 # Resultados generados que SÍ se versionan en git (a diferencia de data/)
+│   └── predicciones/           # CSV de `make 07_prediccion`: <corredor>/<trimestre>/demanda_diaria_*.csv
 │
 ├── python/
 │   └── raillytics/
@@ -662,10 +664,11 @@ make 00_ingest TRIMESTRE=2026-T4 PRED_PROMPT=demanda_v3
 - **No espera a L1/L2.** Esas apps Spark corren fuera de Airflow, así que la predicción usa lo que ya esté procesado en
   el lake, no las descargas de esta misma ejecución. La tarea corre aunque falle la descarga de alguna fuente.
 - **Trimestre:** `TRIMESTRE=` o, si falta, el trimestre en curso según la fecha de ejecución.
-- **Salida:** `data/predicciones/AVE-MAD-BCN/<trimestre>/…csv`, escrito desde el contenedor de Airflow.
+- **Salida:** `resultados/predicciones/AVE-MAD-BCN/<trimestre>/…csv` (en git), escrito desde el contenedor de Airflow.
 - **Antes de usarlo** (una sola vez): Airflow necesita las variables nuevas del compose (`make up` recrea los servicios
-  cuyo `docker-compose.yml` cambió) y poder escribir en `data/`: pon `AIRFLOW_UID=$(id -u)` en el `.env` y recrea el
-  stack (`make down && make up`); sin eso la tarea falla con un mensaje que lo explica.
+  cuyo `docker-compose.yml` cambió) y poder escribir en `data/` y en `resultados/predicciones/` (este directorio ya existe en el repo: si faltara,
+  Docker lo crearía como root): pon `AIRFLOW_UID=$(id -u)` en el `.env` y recrea el stack (`make down && make up`);
+  sin eso la tarea falla con un mensaje que lo explica.
 - **Las fuentes:** `00_ingest` solo descarga lo que esté en `config/data_sources.yml`. Da de alta ahí las cuatro de la
   predicción (demanda trimestral, festivos, eventos y meteo) cuando tengas sus URLs; el DAG descarga URLs directas en
   `csv`, `json` o `zip`. Sin esos datos en el lake, la tarea falla cerrada diciendo qué origen no se pudo leer.
@@ -705,8 +708,13 @@ se usa la **climatología** (promedio histórico del mes y la ciudad) y el promp
 ### Salida
 
 `<PREDICCIONES_ROOT>/AVE-MAD-BCN/<trimestre>/demanda_diaria_<trimestre>_<prompt>_<AAAAMMDDThhmmssZ>.csv`
-(`PREDICCIONES_ROOT` = `data/predicciones` por defecto). Un fichero por ejecución: nunca se sobrescribe otro.
+(`PREDICCIONES_ROOT` = `resultados/predicciones` por defecto). Un fichero por ejecución: nunca se sobrescribe otro.
 UTF-8, cabecera, separador `,`, decimal `.`.
+
+**Los resultados se versionan en git**: `resultados/predicciones/` es un directorio del repo (a propósito fuera de `data/`,
+que se ignora), así que cada CSV nuevo aparece en `git status` y se commitea como cualquier otro fichero. Lo que *no* se
+versiona es la caché del LLM (`data/cache/prediccion`): es una caché, no un resultado. Los CSV de ejecuciones con la
+muestra sintética siguen siendo sintéticos aunque estén en git (la columna `datos_sinteticos` de Gold y el dashboard los marcan).
 
 | Columna | Contenido |
 | --- | --- |
