@@ -1,4 +1,6 @@
+import io
 import re
+import zipfile
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
@@ -16,13 +18,22 @@ SOURCE = DataSource(
 )
 
 _TIMESTAMP_PREFIX_RE = re.compile(r"^\d{8}_\d{6}_")
+CSV = b"estacion,viajeros\nAtocha,100\n"
+
+
+def _zip(*miembros: tuple[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for nombre, contenido in miembros:
+            zf.writestr(nombre, contenido)
+    return buf.getvalue()
 
 
 def test_download_writes_file_using_content_disposition_name(tmp_path, requests_mock):
     requests_mock.get(
         SOURCE.url,
-        content=b"estacion,viajeros\nAtocha,100\n",
-        headers={"Content-Disposition": 'attachment; filename="crtm_export.csv"'},
+        content=CSV,
+        headers={"Content-Disposition": 'attachment; filename="crtm_export.csv"', "Content-Type": "text/csv"},
     )
 
     result = download(SOURCE, tmp_path)
@@ -30,20 +41,23 @@ def test_download_writes_file_using_content_disposition_name(tmp_path, requests_
     # El nombre de Content-Disposition se conserva para trazabilidad, pero
     # siempre va prefijado con un timestamp para que cada descarga produzca
     # un nombre distinto (ver test_download_produces_unique_filenames_across_calls).
-    assert result.name.endswith("_crtm_export.csv")
-    assert _TIMESTAMP_PREFIX_RE.match(result.name)
-    assert result.parent == tmp_path / "crtm"
-    assert result.read_bytes() == b"estacion,viajeros\nAtocha,100\n"
+    assert result.aceptada and result.motivo_rechazo is None
+    assert result.path.name.endswith("_crtm_export.csv")
+    assert _TIMESTAMP_PREFIX_RE.match(result.path.name)
+    assert result.path.parent == tmp_path / "crtm"
+    assert result.path.read_bytes() == CSV
+    assert result.bytes == len(CSV)
+    assert [g.resultado for g in result.gates] == ["ok", "ok", "ok"]
 
 
 def test_download_falls_back_to_generated_name_without_content_disposition(tmp_path, requests_mock):
-    requests_mock.get(SOURCE.url, content=b"data")
+    requests_mock.get(SOURCE.url, content=CSV)
 
     result = download(SOURCE, tmp_path)
 
-    assert result.parent == tmp_path / "crtm"
-    assert _TIMESTAMP_PREFIX_RE.match(result.name)
-    assert result.name.endswith("_crtm.csv")
+    assert result.path.parent == tmp_path / "crtm"
+    assert _TIMESTAMP_PREFIX_RE.match(result.path.name)
+    assert result.path.name.endswith("_crtm.csv")
 
 
 def test_download_raises_on_http_error(tmp_path, requests_mock):
@@ -57,35 +71,35 @@ def test_download_sanitizes_path_traversal_in_content_disposition(tmp_path, requ
     """Verify that malicious Content-Disposition with path traversal falls back to timestamp name."""
     requests_mock.get(
         SOURCE.url,
-        content=b"data",
+        content=CSV,
         headers={"Content-Disposition": 'attachment; filename="../../../etc/passwd"'},
     )
 
     result = download(SOURCE, tmp_path)
 
     # Result should still be under source.id directory, not escaped
-    assert result.parent == tmp_path / "crtm"
+    assert result.path.parent == tmp_path / "crtm"
     # Should have used fallback timestamp name, not the malicious filename
-    assert _TIMESTAMP_PREFIX_RE.match(result.name)
-    assert result.name.endswith("_crtm.csv")
-    assert ".." not in str(result)
+    assert _TIMESTAMP_PREFIX_RE.match(result.path.name)
+    assert result.path.name.endswith("_crtm.csv")
+    assert ".." not in str(result.path)
 
 
 def test_download_strips_trailing_parameters_from_content_disposition_filename(tmp_path, requests_mock):
     """Regression test: a trailing '; size=...' parameter must not leak into the filename."""
     requests_mock.get(
         SOURCE.url,
-        content=b"data",
+        content=CSV,
         headers={
-            "Content-Disposition": 'attachment; filename="google_transit_M5.zip"; size=6042'
+            "Content-Disposition": 'attachment; filename="google_transit_M5.csv"; size=6042'
         },
     )
 
     result = download(SOURCE, tmp_path)
 
-    assert result.name.endswith("_google_transit_M5.zip")
-    assert "size=6042" not in result.name
-    assert '"' not in result.name
+    assert result.path.name.endswith("_google_transit_M5.csv")
+    assert "size=6042" not in result.path.name
+    assert '"' not in result.path.name
 
 
 def test_download_produces_unique_filenames_across_calls(tmp_path, requests_mock):
@@ -95,8 +109,8 @@ def test_download_produces_unique_filenames_across_calls(tmp_path, requests_mock
     download after the first forever."""
     requests_mock.get(
         SOURCE.url,
-        content=b"data",
-        headers={"Content-Disposition": 'attachment; filename="google_transit_M5.zip"; size=6042'},
+        content=CSV,
+        headers={"Content-Disposition": 'attachment; filename="google_transit_M5.csv"; size=6042'},
     )
 
     # Fuerza timestamps distintos entre llamadas para que el test no dependa
@@ -108,5 +122,42 @@ def test_download_produces_unique_filenames_across_calls(tmp_path, requests_mock
         first = download(SOURCE, tmp_path)
         second = download(SOURCE, tmp_path)
 
-    assert first != second
-    assert first.name != second.name
+    assert first.path != second.path
+    assert first.path.name != second.path.name
+
+
+def test_download_quarantines_a_zip_declared_as_csv(tmp_path, requests_mock):
+    """Regression test: the real CRTM URL serves a GTFS zip. Declared as csv, it used to
+    land in staging and L2 converted the binary bytes to Parquet without complaint."""
+    gtfs = _zip(("stops.txt", b"stop_id,stop_name\n1,Atocha\n"))
+    requests_mock.get(
+        SOURCE.url,
+        content=gtfs,
+        headers={"Content-Disposition": 'attachment; filename="google_transit_M5.zip"; size=6042', "Content-Type": "application/zip"},
+    )
+
+    result = download(SOURCE, tmp_path / "bronze")
+
+    assert not result.aceptada
+    assert "formato_declarado" in result.motivo_rechazo and "parece ZIP" in result.motivo_rechazo
+    # El fichero va a la cuarentena hermana del staging, con su motivo al lado, y el staging queda limpio.
+    assert result.path.parent == tmp_path / "bronze_rejected" / "crtm"
+    assert result.path.read_bytes() == gtfs
+    assert (result.path.parent / f"{result.path.name}.rechazo.txt").read_text(encoding="utf-8").startswith("formato_declarado:")
+    assert not (tmp_path / "bronze" / "crtm").exists()
+    assert {g.gate: g.resultado for g in result.gates} == {
+        "contenido_no_vacio": "ok", "formato_declarado": "fallo", "content_type": "fallo"}
+
+
+def test_download_accepts_the_zip_when_the_source_declares_zip_and_honours_rejected_root(tmp_path, requests_mock):
+    zip_source = DataSource(id="crtm", name="CRTM zip", url=SOURCE.url, format="zip")
+    requests_mock.get(SOURCE.url, content=_zip(("stops.txt", b"a,b\n1,2\n")), headers={"Content-Type": "application/zip"})
+    requests_mock.get("https://empty.example.invalid/", content=b"")
+    empty_source = DataSource(id="vacio", name="Vacío", url="https://empty.example.invalid/", format="json")
+
+    ok = download(zip_source, tmp_path / "bronze", rejected_root=tmp_path / "cuarentena")
+    rejected = download(empty_source, tmp_path / "bronze", rejected_root=tmp_path / "cuarentena")
+
+    assert ok.aceptada and ok.path.parent == tmp_path / "bronze" / "crtm"
+    assert not rejected.aceptada and rejected.path.parent == tmp_path / "cuarentena" / "vacio"
+    assert rejected.motivo_rechazo == "contenido_no_vacio: el servidor devolvió 0 bytes"

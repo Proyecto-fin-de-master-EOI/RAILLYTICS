@@ -9,9 +9,11 @@ final case class ParquetConverterSettings(
   configPath: String,      // config/data_sources.yml: una query por fuente
   l1DoneRoot: String,      // entrada: lo que L1 ya subió a MinIO (por fuente)
   processedRoot: String,   // a dónde se mueven los ficheros ya convertidos a Parquet
+  rejectedRoot: String,    // cuarentena: ficheros que no pasan los quality gates de L2 (por fuente)
   checkpointRoot: String,  // checkpoints de streaming (uno por fuente, bajo l2/)
   bronzeRoot: String,      // bucket Bronze en MinIO (s3a://)
   cargasDir: String,       // registro de cargas (trazabilidad)
+  calidadDir: String,      // registro de quality gates (trazabilidad)
   pendingRetryMs: Long     // cada cuánto se reintenta arrancar las fuentes aún sin ficheros en L1
 )
 
@@ -25,9 +27,11 @@ object ParquetConverterSettings {
       configPath = ingesta.getString("data-sources"),
       l1DoneRoot = ingesta.getString("l1-done-root"),
       processedRoot = ingesta.getString("processed-root"),
+      rejectedRoot = ingesta.getString("rejected-root"),
       checkpointRoot = ingesta.getString("checkpoint-root"),
       bronzeRoot = lake.bronzeRoot,
       cargasDir = lake.cargasDir,
+      calidadDir = lake.calidadDir,
       pendingRetryMs = ingesta.getDuration("l2.pending-retry").toMillis
     )
   }

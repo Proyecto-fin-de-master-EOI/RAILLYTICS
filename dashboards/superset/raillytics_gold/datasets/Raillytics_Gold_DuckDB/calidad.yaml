@@ -1,0 +1,301 @@
+table_name: calidad
+main_dttm_col: inicio
+description: 'Resultados de los quality gates del lake (raillytics.common.calidad.QualityGates en Scala y
+  raillytics.calidad en Python): una fila por gate evaluado, con el run_id de la carga a la que pertenece,
+  leída de s3://raillytics-gold/_trazabilidad/calidad/.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: |-
+  -- Quality gates: una fila por ejecución, tabla y gate. Se cruza con la
+  -- trazabilidad de cargas por run_id. inicio y fin se guardan en UTC.
+  SELECT
+      run_id,
+      proceso,
+      capa,
+      tabla,
+      gate,
+      tipo,
+      severidad,
+      resultado,
+      CASE WHEN resultado <> 'ok' AND severidad = 'bloqueante' THEN 1 ELSE 0 END AS bloqueante_fallido,
+      valor,
+      umbral,
+      detalle,
+      timezone('Europe/Madrid', timezone('UTC', inicio)) AS inicio,
+      timezone('Europe/Madrid', timezone('UTC', fin))    AS fin,
+      duracion_s,
+      lanzado_por,
+      ejecutor,
+      usuario
+  FROM read_parquet('s3://raillytics-gold/_trazabilidad/calidad/*.parquet', union_by_name = true)
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: e14d0798-cd51-4ffd-b44b-6a708fd16091
+metrics:
+- metric_name: n_gates
+  verbose_name: Gates evaluados
+  metric_type: null
+  expression: COUNT(*)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: n_gates_ok
+  verbose_name: Gates OK
+  metric_type: null
+  expression: SUM(CASE WHEN resultado = 'ok' THEN 1 ELSE 0 END)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: n_fallos_bloqueantes
+  verbose_name: Fallos bloqueantes
+  metric_type: null
+  expression: SUM(bloqueante_fallido)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: n_avisos
+  verbose_name: Avisos
+  metric_type: null
+  expression: SUM(CASE WHEN resultado <> 'ok' AND severidad = 'aviso' THEN 1 ELSE 0 END)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: pct_gates_ok
+  verbose_name: '% gates OK'
+  metric_type: null
+  expression: 100.0 * SUM(CASE WHEN resultado = 'ok' THEN 1 ELSE 0 END) / COUNT(*)
+  description: null
+  d3format: .1f
+  extra: null
+  warning_text: null
+columns:
+- column_name: run_id
+  verbose_name: Ejecución
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: proceso
+  verbose_name: Proceso
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: capa
+  verbose_name: Capa
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: tabla
+  verbose_name: Tabla
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: gate
+  verbose_name: Gate
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: tipo
+  verbose_name: Tipo
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: severidad
+  verbose_name: Severidad
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: resultado
+  verbose_name: Resultado
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: bloqueante_fallido
+  verbose_name: Fallo bloqueante (1/0)
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: valor
+  verbose_name: Valor
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: umbral
+  verbose_name: Umbral
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: detalle
+  verbose_name: Detalle
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: inicio
+  verbose_name: Inicio
+  is_dttm: true
+  is_active: true
+  type: TIMESTAMP
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fin
+  verbose_name: Fin
+  is_dttm: true
+  is_active: true
+  type: TIMESTAMP
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: duracion_s
+  verbose_name: Duración (s)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: lanzado_por
+  verbose_name: Lanzado por
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ejecutor
+  verbose_name: Ejecutor
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: usuario
+  verbose_name: Usuario
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

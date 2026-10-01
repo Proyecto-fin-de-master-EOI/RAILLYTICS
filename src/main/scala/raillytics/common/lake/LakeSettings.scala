@@ -23,6 +23,10 @@ final case class LakeSettings(
   // Registro de cargas (raillytics.common.trazabilidad.Cargas); el mismo
   // directorio en el que escribe el lado Python.
   def cargasDir: String = s"$trazabilidadRoot/cargas/"
+
+  // Resultados de quality gates (raillytics.common.calidad.QualityGates), hermano
+  // de cargas/ y con el mismo run_id; también lo escribe el lado Python.
+  def calidadDir: String = s"$trazabilidadRoot/calidad/"
 }
 
 object LakeSettings {

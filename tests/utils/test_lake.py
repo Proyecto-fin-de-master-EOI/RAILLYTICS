@@ -28,6 +28,9 @@ def test_lake_layout_defaults_to_minio_buckets():
     assert layout.silver_file("viajeros_enriquecidos") == "s3://raillytics-silver/viajeros_enriquecidos/viajeros_enriquecidos.parquet"
     assert layout.gold_glob("dim_fecha") == "s3://raillytics-gold/dim_fecha/*.parquet"
     assert layout.cargas_glob() == "s3://raillytics-gold/_trazabilidad/cargas/*.parquet"
+    assert layout.calidad_glob() == "s3://raillytics-gold/_trazabilidad/calidad/*.parquet"
+    assert layout.calidad_file("run-1") == "s3://raillytics-gold/_trazabilidad/calidad/run-1.parquet"
+    assert LakeLayout.from_env({"TRAZABILIDAD_ROOT": "C:/traza"}).calidad_dir == "C:/traza/calidad"
 
 
 def test_lake_layout_honours_bucket_names_and_local_overrides():

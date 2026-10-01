@@ -75,15 +75,23 @@ flowchart LR
     L1 -- "make 02_parquet-converter - ParquetConverterApp (Spark Streaming)" --> L2
     L2 -. "jobs PySpark de Silver (pendientes)" .-> SLV
     GEN -- "make 03_silver-sample" --> SLV
-    SLV -- "make 04_gold - GoldBuilderApp (Spark batch)" --> GLD
+    SLV -- "make 04_gold - GoldBuilderApp (Spark batch, quality gates de entrada y salida)" --> GLD
+    QG["make quality-gates - QualityGatesApp (Spark batch)"] -.-> SLV
+    QG -.-> GLD
     GLD -- "make up - superset-init importa dashboards/superset/ (o make 05_superset-import)" --> SUP
     STG -.-> TRZ
     L1 -.-> TRZ
     L2 -.-> TRZ
     SLV -.-> TRZ
     GLD -.-> TRZ
-    TRZ -- "dashboard Trazabilidad de cargas - make cargas" --> SUP
+    QG -.-> TRZ
+    TRZ -- "dashboard Trazabilidad de cargas - make cargas / make calidad" --> SUP
 ```
+
+Cada proceso aplica además sus [Quality Gates](#quality-gates): la descarga valida el fichero recibido, L1
+comprueba los bytes subidos, L2 la cabecera y los registros corruptos (lo que no pasa va a cuarentena en
+`data/bronze_rejected/`), y `GoldBuilderApp` valida Silver antes de construir y Gold antes de escribir.
+Los resultados quedan en `raillytics-gold/_trazabilidad/calidad/`, junto a las cargas.
 
 ---
 
@@ -98,7 +106,8 @@ RAILLYTICS/
 ├── .env.example                # Plantilla de variables de entorno (API keys, credenciales, MinIO, Airflow)
 │
 ├── config/
-│   └── data_sources.yml        # Registro de fuentes (id, url, formato) — lo leen Python y Scala
+│   ├── data_sources.yml        # Registro de fuentes (id, url, formato csv|json|zip) — lo leen Python y Scala
+│   └── quality_gates.yml       # Quality gates declarativos de Silver y Gold — los evalúa Spark (Scala)
 │
 ├── docker/
 │   ├── docker-compose.yml      # MinIO + Postgres + Airflow (LocalExecutor) + Superset, local/desarrollo
@@ -116,13 +125,15 @@ RAILLYTICS/
 │   ├── bronze/                 # Staging local por fuente — aquí escribe la descarga Python
 │   ├── bronze_l1_done/         # Generado en runtime: ficheros ya subidos a MinIO L1, pendientes de L2
 │   ├── bronze_processed/       # Generado en runtime: ficheros que ya completaron L1 y L2
+│   ├── bronze_rejected/        # Generado en runtime: cuarentena (ficheros que no pasan un quality gate + .rechazo.txt)
 │   ├── checkpoints/            # Generado en runtime: checkpoints de Spark Structured Streaming
 │   ├── silver/                 # Datos limpios, normalizados y enriquecidos (Delta Lake)
 │   └── gold/                   # Sin uso en local: Gold vive en el bucket raillytics-gold de MinIO
 │
 ├── python/
 │   └── raillytics/
-│       ├── ingesta/            # sources.py (registro YAML), formats.py, filenames.py, download.py (descarga a staging)
+│       ├── ingesta/            # sources.py (registro YAML), formats.py, filenames.py, download.py (descarga a staging o cuarentena)
+│       ├── calidad/            # Lado Python de los quality gates: ficheros.py (valida la descarga), registro.py (escribe resultados)
 │       ├── procesamiento/      # Jobs PySpark de limpieza y enriquecimiento (capa Silver); silver_sample.py: Silver sintético
 │       ├── ml/                 # Modelo predictivo Scikit-learn (features, entrenamiento, evaluación)
 │       └── utils/              # Comunes: fs.py (escritura atómica), lake.py (DuckDB + MinIO), cargas.py (trazabilidad de cargas)
@@ -131,13 +142,15 @@ RAILLYTICS/
 ├── project/                    # Metadatos del build SBT (build.properties)
 ├── src/
 │   ├── main/scala/raillytics/
-│   │   ├── common/             # Compartido: config (AppConfig, DotEnv), logging, spark (SparkSessionFactory), fs, lake (BronzePaths, LakeSettings), trazabilidad (Cargas)
+│   │   ├── common/             # Compartido: config (AppConfig, DotEnv), logging, spark (SparkSessionFactory), fs, lake (BronzePaths, LakeSettings, LakeViews),
+│   │   │                       #   trazabilidad (Cargas), calidad (QualityGates: el framework de quality gates)
 │   │   ├── ingesta/
 │   │   │   ├── config/         # DataSource + DataSourceConfig (lectura de config/data_sources.yml)
-│   │   │   ├── formats/        # SourceFormat: formatos soportados y sus opciones de lectura
+│   │   │   ├── formats/        # SourceFormat: formatos soportados (csv, json, zip) y sus opciones de lectura
 │   │   │   ├── l1/             # RawUploaderApp (main) · RawUploader (lógica) · RawUploaderSettings (entorno)
 │   │   │   └── l2/             # ParquetConverterApp (main) · ParquetConverter (lógica) · ParquetConverterSettings (entorno)
-│   │   └── gold/               # GoldBuilderApp (main, batch) · GoldBuilder (lógica) · GoldBuilderSettings (entorno)
+│   │   ├── gold/               # GoldBuilderApp (main, batch) · GoldBuilder (lógica) · GoldBuilderSettings (entorno)
+│   │   └── calidad/            # QualityGatesApp (main, batch): evalúa config/quality_gates.yml sobre el lake · QualityGatesSettings
 │   ├── main/resources/
 │   │   ├── application.conf    # Configuración de las apps Scala (Typesafe Config): claves, defaults y variables del .env
 │   │   └── gold/               # El modelo Gold en dialecto Spark SQL (una consulta por tabla)
@@ -148,7 +161,8 @@ RAILLYTICS/
 ├── dashboards/                 # Ficheros Power BI (.pbix) y documentación de los 4 dashboards
 │
 ├── tests/
-│   ├── ingesta/                # Tests pytest del registro de fuentes, nombres de fichero y la descarga
+│   ├── ingesta/                # Tests pytest del registro de fuentes, nombres de fichero y la descarga (incluida la cuarentena)
+│   ├── calidad/                # Tests pytest de los gates de fichero y del registro de resultados
 │   ├── procesamiento/          # Tests pytest del Silver sintético (contrato de columnas, festivos, determinismo, traza)
 │   └── utils/                  # Tests pytest de utilidades comunes (fs, lake, trazabilidad de cargas)
 │
@@ -160,31 +174,50 @@ RAILLYTICS/
 ## Framework de ingesta Bronze
 
 Para dar de alta una fuente nueva basta con añadir una entrada a `config/data_sources.yml`
-(`id`, `name`, `url`, `format` — `csv` o `json`). El resto del pipeline no necesita cambios:
+(`id`, `name`, `url`, `format` — `csv`, `json` o `zip`). El resto del pipeline no necesita cambios:
 
 ```
 config/data_sources.yml
         │
         ▼
 DAG Airflow "ingesta_data_sources"  (una tarea de descarga por fuente)
+        │   quality gates de fichero: no vacío, el contenido ES el formato declarado
+        ├──► data/bronze_rejected/<source>/   ← cuarentena (+ <fichero>.rechazo.txt); la tarea falla
         ▼
 data/bronze/<source>/                  ← Python escribe aquí (staging local)
         │
         ▼  App Scala "raw-uploader" (Spark Structured Streaming)
         │   copia el fichero tal cual a MinIO: raillytics-bronze/l1-raw/<source>/<fecha>/
+        │   quality gate: bytes subidos = bytes del fichero local
         ▼
 data/bronze_l1_done/<source>/
         │
         ▼  App Scala "parquet-converter" (Spark Structured Streaming, 1 query por fuente)
-        │   convierte a Parquet en MinIO: raillytics-bronze/l2/<source>/<fecha>/
+        │   convierte a Parquet en MinIO: raillytics-bronze/l2/<source>/<fecha>/  (zip: .../<fecha>/<miembro>/)
+        │   quality gates: cabecera csv = esquema de la query, sin registros corruptos, zip válido
+        ├──► data/bronze_rejected/<source>/   ← cuarentena; el resto del micro-batch se convierte
         ▼
 data/bronze_processed/<source>/
 ```
 
-Los tres directorios de `data/` son **hermanos, no anidados** — es un detalle de diseño
+Los formatos: `csv` (texto con cabecera), `json` (un único documento, como los feeds GTFS-RT
+de Renfe) y `zip` (archivo cuyos miembros `.txt`/`.csv` se leen como CSV: es lo que sirve
+CRTM, un GTFS estático con `stops.txt`, `routes.txt`, `trips.txt`...; L2 deja un prefijo
+Parquet por miembro). La descarga comprueba que lo recibido es realmente ese formato:
+antes, con CRTM declarado como `csv`, L2 convertía los bytes del ZIP a Parquet sin que
+nada avisara.
+
+Los directorios de `data/` son **hermanos, no anidados** — es un detalle de diseño
 deliberado: Spark recorre recursivamente cualquier subdirectorio alcanzable bajo una ruta
 que ya haya hecho *match* con un glob, así que anidarlos reintroduciría una carrera entre
 las dos apps (cada una movería ficheros que la otra todavía no ha procesado).
+
+Las dos apps son **idempotentes frente a reinicios**: si el proceso muere a mitad de un
+micro-batch, Spark vuelve a entregar el mismo batch al arrancar. L1 omite los ficheros ya
+movidos y vuelve a subir (sobrescribiendo) los que siguen en el staging; L2 deja un
+marcador por batch en su checkpoint (`raillytics-batches/<batchId>`) y, si lo encuentra,
+solo termina de mover ficheros sin volver a escribir Parquet (sin duplicados en `l2`).
+Borrar `data/checkpoints/` reprocesa todo, marcadores incluidos.
 
 ### Arranque rápido (local)
 
@@ -199,12 +232,20 @@ make 00_ingest              # dispara el DAG de descarga una vez
 make 01_raw-uploader        # en una terminal aparte — app L1 (queda en primer plano)
 make 02_parquet-converter   # en otra terminal aparte — app L2 (queda en primer plano)
 make 03_silver-sample       # Silver sintético en MinIO (mientras no existan los jobs PySpark)
+make quality-gates          # (opcional) valida Silver/Gold del lake con config/quality_gates.yml; falla si hay gates bloqueantes
 make 04_gold                # construye la capa Gold con la app Spark -> Parquet en raillytics-gold
+                            # (valida Silver a la entrada y Gold a la salida, antes de escribir)
                             # Superset: http://localhost:8088 (SUPERSET_ADMIN_USER / _PASSWORD del .env)
+make cargas                 # últimas cargas registradas      make calidad   # últimos quality gates
 ```
 
 `make help` lista todos los targets disponibles (`up`/`down`, `test`, `test-python`,
 `test-scala`, `clean`, etc.).
+
+Detrás de un proxy TLS corporativo (Zscaler) las descargas del DAG fallan dentro del
+contenedor con `CERTIFICATE_VERIFY_FAILED`: deja el certificado raíz en `config/certs/`
+(ignorado por git) y apunta `AIRFLOW_CA_BUNDLE` del `.env` a su ruta dentro del contenedor
+(ver `.env.example`).
 
 `install-dev-env` es idempotente: solo recrea el venv si no existe y solo reinstala
 dependencias si cambia `requirements.txt`. Por defecto crea el venv con `py -3.12` en
@@ -230,10 +271,12 @@ directamente, funcionan igual desde `make`, desde `sbt` a secas o desde el IDE.
 | `raillytics.minio.endpoint`, `.user`, `.password` | `MINIO_ENDPOINT`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` | `http://localhost:9000`, vacíos |
 | `raillytics.minio.buckets.{bronze,silver,gold}` | `MINIO_BUCKET_{BRONZE,SILVER,GOLD}` | `raillytics-bronze`, `-silver`, `-gold` |
 | `raillytics.lake.{silver,gold,trazabilidad}-root` | `SILVER_ROOT`, `GOLD_ROOT`, `TRAZABILIDAD_ROOT` | `s3a://<bucket>`; trazabilidad: `<gold>/_trazabilidad` |
-| `raillytics.ingesta.{data-sources,staging-root,l1-done-root,processed-root,checkpoint-root}` | `DATA_SOURCES_CONFIG`, `STAGING_ROOT`, `L1_DONE_ROOT`, `PROCESSED_ROOT`, `CHECKPOINT_ROOT` | `config/data_sources.yml`, `data/bronze`, `data/bronze_l1_done`, `data/bronze_processed`, `data/checkpoints` |
+| `raillytics.ingesta.{data-sources,staging-root,l1-done-root,processed-root,rejected-root,checkpoint-root}` | `DATA_SOURCES_CONFIG`, `STAGING_ROOT`, `L1_DONE_ROOT`, `PROCESSED_ROOT`, `REJECTED_ROOT`, `CHECKPOINT_ROOT` | `config/data_sources.yml`, `data/bronze`, `data/bronze_l1_done`, `data/bronze_processed`, `data/bronze_rejected`, `data/checkpoints` |
 | `raillytics.ingesta.l2.pending-retry` | — | `30 seconds` |
 | `raillytics.spark.master`, `raillytics.spark.s3a.*` | `SPARK_MASTER` | `local[*]`; path-style sí, TLS no |
 | `raillytics.gold.umbral-puntualidad-min` | — | `5` |
+| `raillytics.calidad.config` | `QUALITY_GATES_CONFIG` | `config/quality_gates.yml` |
+| — (solo docker-compose, contenedor de Airflow) | `AIRFLOW_CA_BUNDLE` | vacío (certificados del sistema) |
 
 Los prefijos `l1-raw/` y `l2/` de Bronze y los nombres de las tablas Gold no están en la
 configuración: son parte del contrato del lake, que también conocen Superset y el lado Python.
@@ -261,7 +304,8 @@ raillytics-silver/                     raillytics-gold/
 | Paso | Comando | Qué hace |
 | --- | --- | --- |
 | Silver de ejemplo | `make 03_silver-sample` | Genera un Silver sintético y determinista (365 días, semilla 42) en `raillytics-silver`. Sustituye a los jobs PySpark mientras no existan y produce exactamente las columnas que Gold espera (el contrato está en `python/raillytics/procesamiento/silver_sample.py`). Los datos no son reales. |
-| Gold | `make 04_gold` | `sbt "runMain raillytics.gold.GoldBuilderApp"` (batch, con la misma configuración s3a que L1/L2): registra las tablas Silver como vistas, ejecuta `src/main/resources/gold/<tabla>.sql` y escribe cada tabla en `s3a://raillytics-gold/<tabla>/` (un `part-*.parquet` por tabla, full refresh). No es un stream como L1/L2 porque las dimensiones se recalculan sobre todo Silver. |
+| Quality gates | `make quality-gates` | `sbt "runMain raillytics.calidad.QualityGatesApp"` (batch): evalúa `config/quality_gates.yml` sobre lo que hay en Silver y Gold, registra los resultados y termina con error si falla algún gate bloqueante. No escribe datos: es la barrera entre pasos. `QG_ARGS=silver`, `gold` o el nombre de una tabla acotan la evaluación. |
+| Gold | `make 04_gold` | `sbt "runMain raillytics.gold.GoldBuilderApp"` (batch, con la misma configuración s3a que L1/L2): registra las tablas Silver como vistas, aplica los gates `silver_*` (entrada), ejecuta `src/main/resources/gold/<tabla>.sql` para todas las tablas en memoria, aplica los gates `gold_*` (salida) y solo entonces escribe cada tabla en `s3a://raillytics-gold/<tabla>/` (un `part-*.parquet` por tabla, full refresh). Si un gate bloqueante falla, Gold se queda como estaba. No es un stream como L1/L2 porque las dimensiones se recalculan sobre todo Silver. |
 | Dashboards | `make up` (o `make 05_superset-import`) | El servicio `superset-init` importa `dashboards/superset/raillytics_gold/` en cada arranque; `05_superset-import` repite la importación sin reiniciar. |
 
 Gold no tiene DAG de Airflow: la app Spark corre fuera de los contenedores, como L1/L2
@@ -322,8 +366,9 @@ cargada): `run_id`, `proceso`, `capa`, `tabla`, `origen`, `destino`, `filas`, `b
 `lanzado_por` (`make`, `airflow:<dag>`, `cli`), `ejecutor` y `usuario`. Ya lo hacen la descarga
 Bronze del DAG `ingesta_data_sources`, las apps Spark L1 (`bronze_l1_raw_uploader`: una fila por
 fichero subido, dentro de cada micro-batch de Structured Streaming) y L2
-(`bronze_l2_parquet_converter`: una fila por micro-batch y fuente), el Silver sintético
-(`silver_sample`) y la construcción de Gold (`gold_build`).
+(`bronze_l2_parquet_converter`: una fila por micro-batch y fuente, más una en `error` por cada
+fichero enviado a cuarentena), el Silver sintético (`silver_sample`), la construcción de Gold
+(`gold_build`) y la validación del lake (`quality_gates`).
 
 Para instrumentar un proceso nuevo basta con envolverlo. En Python
 (`python/raillytics/utils/cargas.py`):
@@ -353,9 +398,68 @@ El registro se escribe al terminar, también si la carga falla (el error queda e
 excepción se propaga); si el registro no se puede escribir, se avisa en el log pero la carga no
 falla por eso. `make cargas` lista las últimas ejecuciones desde la terminal, y el dashboard
 *Trazabilidad de cargas* de Superset muestra ejecuciones, errores, filas cargadas por día y
-tabla, duración por proceso, la última carga de cada tabla (en rojo si hace más de 24 h) y el
-historial completo. `TRAZABILIDAD_ROOT` cambia la ubicación del registro (por defecto, dentro
-del bucket Gold).
+tabla, duración por proceso, la última carga de cada tabla (en rojo si hace más de 24 h), los
+quality gates de cada carga y el historial completo. `TRAZABILIDAD_ROOT` cambia la ubicación
+del registro (por defecto, dentro del bucket Gold).
+
+Junto a `cargas/` vive `_trazabilidad/calidad/`, con una fila por quality gate evaluado y el
+**mismo `run_id`** que la carga a la que pertenece (ver [Quality Gates](#quality-gates)).
+
+---
+
+## Quality Gates
+
+Un *quality gate* es una comprobación que decide si una carga se promociona o no. El
+framework vive en Scala (`raillytics.common.calidad.QualityGates`) y usa Spark SQL como
+motor: los gates se declaran por tabla en `config/quality_gates.yml`, se traducen a una
+consulta que devuelve un número y se comparan con un umbral. Cada gate tiene una severidad:
+
+- **bloqueante**: si falla (o no se puede evaluar: fail closed), el proceso lanza
+  `QualityGateException`, la carga queda con `estado = error` en la trazabilidad y **no se
+  escribe nada** en la capa destino.
+- **aviso**: se registra y la carga sigue.
+
+Las tablas se nombran `<capa>_<tabla>` (`silver_viajeros_enriquecidos`, `gold_dim_fecha`...),
+que son las vistas que registran las apps (`LakeViews`). Tipos disponibles:
+
+| Tipo | Parámetros | Pasa si |
+| --- | --- | --- |
+| `filas_min` | `minimo` | `count(*) >= minimo` |
+| `no_nulos` | `columnas` | ninguna fila tiene nulos en esas columnas |
+| `unico` | `columnas` | no hay filas duplicadas por esas columnas (clave o grano) |
+| `dominio` | `columna`, `valores` | ningún valor fuera de la lista |
+| `rango` | `columna`, `minimo` y/o `maximo` | ningún valor fuera de `[minimo, maximo]` |
+| `referencia` | `columnas`, `tabla`, `columnas_destino?` | toda clave existe en la tabla destino (integridad referencial) |
+| `sql` | `sql`, `maximo` (0 por defecto), `minimo?` | la consulta (que devuelve un número) queda dentro del umbral; sirve para cruzar tablas, p. ej. conciliar filas y sumas de Gold con Silver |
+
+```yaml
+tablas:
+  gold_fact_viajeros:
+    - {nombre: grano_unico,         tipo: unico,      columnas: [fecha_id, estacion_id, linea_id], severidad: bloqueante}
+    - {nombre: lineas_en_dim_linea, tipo: referencia, columnas: [linea_id], tabla: gold_dim_linea,  severidad: bloqueante}
+    - {nombre: viajeros_conciliados, tipo: sql, severidad: bloqueante,
+       sql: "SELECT abs((SELECT sum(viajeros) FROM gold_fact_viajeros) - (SELECT sum(viajeros) FROM silver_viajeros_enriquecidos))"}
+```
+
+Dónde se aplican:
+
+| Paso | Gates | Qué pasa si fallan |
+| --- | --- | --- |
+| Descarga (Python, DAG) | `contenido_no_vacio`, `formato_declarado` (el contenido es realmente csv/json/zip), `content_type` (aviso) | el fichero va a `data/bronze_rejected/<fuente>/` con un `.rechazo.txt`; la tarea de Airflow falla |
+| L1 `RawUploaderApp` | `bytes_subidos` (lo que hay en MinIO pesa lo mismo que el fichero local) | se borra el objeto de Bronze y el micro-batch falla; al reiniciar se vuelve a subir |
+| L2 `ParquetConverterApp` | `cabecera_csv`, `registros_corruptos`, `zip_valido` (bloqueantes por fichero), `filas_convertidas` (aviso) | el fichero va a cuarentena con `estado = error` en la trazabilidad; el resto del micro-batch se convierte |
+| `GoldBuilderApp` | gates `silver_*` a la entrada, gates `gold_*` a la salida (antes de escribir) | no se escribe ninguna tabla Gold; la carga queda en error |
+| `QualityGatesApp` (`make quality-gates`) | todos los del YAML (o `QG_ARGS=silver`, `gold`, `<tabla>`) | el proceso termina con código de error: sirve como barrera entre `make 03_silver-sample` y `make 04_gold`, o para auditar el lake |
+
+Los resultados se guardan en `s3://raillytics-gold/_trazabilidad/calidad/` (Parquet: `run_id`,
+`proceso`, `capa`, `tabla`, `gate`, `tipo`, `severidad`, `resultado` (`ok`/`fallo`/`error`),
+`valor`, `umbral`, `detalle`, `inicio`/`fin`, `duracion_s`, `lanzado_por`, `ejecutor`,
+`usuario`), con el `run_id` de la carga. `make calidad` los lista desde la terminal y el
+dashboard *Trazabilidad de cargas* tiene una fila de KPIs (gates bloqueantes fallidos, % OK,
+gates por tabla) y el historial. Para añadir un gate basta con una línea en el YAML; para
+un tipo nuevo, una rama en `QualityGates.Gate.consulta`. El lado Python
+(`raillytics.calidad`) solo aporta los gates de fichero de la descarga y escribe el mismo
+esquema Parquet.
 
 ### Uso desde notebooks
 

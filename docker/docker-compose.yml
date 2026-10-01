@@ -24,6 +24,10 @@ x-airflow-common:
     # .env apunta al puerto publicado en el host y aquí no aplica. Lo usa la
     # trazabilidad de la descarga Bronze (raillytics.utils.cargas).
     MINIO_ENDPOINT: http://minio:9000
+    # Proxy TLS corporativo: `requests` usa este bundle para verificar las
+    # descargas si AIRFLOW_CA_BUNDLE apunta a un .pem (ver .env.example);
+    # vacío = certificados del sistema.
+    REQUESTS_CA_BUNDLE: ${AIRFLOW_CA_BUNDLE:-}
     _PIP_ADDITIONAL_REQUIREMENTS: "requests~=2.32 PyYAML~=6.0 duckdb~=1.5.5"
   volumes:
     - ../dags:/opt/airflow/dags

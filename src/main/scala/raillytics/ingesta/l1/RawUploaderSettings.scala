@@ -10,7 +10,8 @@ final case class RawUploaderSettings(
   l1DoneRoot: String,      // a dónde se mueven una vez subidos (es la entrada de L2)
   checkpointRoot: String,  // checkpoints de la query de streaming
   bronzeRoot: String,      // bucket Bronze en MinIO (s3a://)
-  cargasDir: String        // registro de cargas (trazabilidad)
+  cargasDir: String,       // registro de cargas (trazabilidad)
+  calidadDir: String       // registro de quality gates (trazabilidad)
 )
 
 object RawUploaderSettings {
@@ -24,7 +25,8 @@ object RawUploaderSettings {
       l1DoneRoot = ingesta.getString("l1-done-root"),
       checkpointRoot = ingesta.getString("checkpoint-root"),
       bronzeRoot = lake.bronzeRoot,
-      cargasDir = lake.cargasDir
+      cargasDir = lake.cargasDir,
+      calidadDir = lake.calidadDir
     )
   }
 }

@@ -32,9 +32,11 @@ import scala.util.control.NonFatal
 // queda constancia en el log, pero la carga no falla por eso.
 object Cargas extends Logging {
 
-  // Valores de la columna estado (los mismos que en Python).
-  private val EstadoOk = "ok"
-  private val EstadoError = "error"
+  // Valores de la columna estado (los mismos que en Python). Públicos para que un
+  // proceso pueda dejar una fila en error sin abortar (p. ej. un fichero que L2
+  // manda a cuarentena mientras el resto del micro-batch se convierte).
+  val EstadoOk = "ok"
+  val EstadoError = "error"
 
   // Mismo esquema que CARGAS_COLUMNS en Python. TimestampNTZ se guarda en
   // Parquet como TIMESTAMP sin zona horaria, que es como DuckDB escribe

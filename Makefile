@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest 01_raw-uploader 02_parquet-converter 03_silver-sample 04_gold 05_superset-import cargas clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest 01_raw-uploader 02_parquet-converter 03_silver-sample 04_gold 05_superset-import quality-gates cargas calidad clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -46,8 +46,9 @@ else
 endif
 
 # sbt siempre a través del wrapper: permite varios sbt a la vez en el proyecto
-# (01_ y 02_ en paralelo) sin el "Create a new server? y/n", y en Windows evita
-# que Ctrl+C deje colgado el "¿Desea terminar el trabajo por lotes (S/N)?".
+# (01_ y 02_ en paralelo, o 04_/quality-gates con ellos en marcha) sin el
+# "Create a new server? y/n", y en Windows evita que Ctrl+C deje colgado el
+# "¿Desea terminar el trabajo por lotes (S/N)?".
 SBT = $(PYTHON) scripts/run_sbt.py
 
 COMPOSE = docker compose -f docker/docker-compose.yml --env-file .env
@@ -65,13 +66,19 @@ help:
 	@echo "  01_raw-uploader       Lanza la app Spark L1 raw-uploader (primer plano)"
 	@echo "  02_parquet-converter  Lanza la app Spark L2 parquet-converter (primer plano)"
 	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
-	@echo "  04_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold)"
+	@echo "  04_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold), con quality gates"
 	@echo "  05_superset-import    Reimporta los dashboards de dashboards/superset/ en Superset"
+	@echo "  quality-gates      Evalúa config/quality_gates.yml sobre Silver y Gold del lake (app Spark; falla si hay gates bloqueantes)"
+	@echo "                     (make quality-gates QG_ARGS=silver | gold | <tabla> para acotar)"
 	@echo "  cargas             Muestra las últimas cargas registradas (trazabilidad del lake)"
+	@echo "  calidad            Muestra los últimos resultados de quality gates registrados"
 	@echo "  clean              Borra directorios de staging/checkpoints generados"
 
 up:
 	$(COMPOSE) up -d
+
+stop:
+	$(COMPOSE) stop
 
 down:
 	$(COMPOSE) down
@@ -108,29 +115,41 @@ test-python: $(VENV)/.deps-installed
 test-scala:
 	$(SBT) -batch test
 
+00_ingest:
+	$(COMPOSE) exec airflow-scheduler airflow dags trigger ingesta_data_sources
+
 01_raw-uploader:
 	$(SBT) -batch "runMain raillytics.ingesta.l1.RawUploaderApp"
 
 02_parquet-converter:
 	$(SBT) -batch "runMain raillytics.ingesta.l2.ParquetConverterApp"
 
-00_ingest:
-	$(COMPOSE) exec airflow-scheduler airflow dags trigger ingesta_data_sources
-
 # Silver sintético: corre en el host con el python del venv (como test-python)
 # y habla con MinIO con las variables MINIO_* del .env.
 03_silver-sample: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.procesamiento.silver_sample
 
-# Gold: app Spark batch en Scala (misma configuración s3a que L1/L2).
+# Gold: app Spark batch en Scala (misma configuración s3a que L1/L2). Aplica los
+# quality gates de config/quality_gates.yml a Silver (entrada) y a Gold (salida,
+# antes de escribir): si falla uno bloqueante, termina con error y no toca Gold.
 04_gold:
-	sbt -batch "runMain raillytics.gold.GoldBuilderApp"
+	$(SBT) -batch "runMain raillytics.gold.GoldBuilderApp"
 
 05_superset-import:
 	$(COMPOSE) exec superset bash /app/raillytics/docker/superset-import-dashboards.sh
 
+# Quality gate independiente sobre el lake: no escribe datos, solo evalúa y
+# registra. Termina con error si falla algún gate bloqueante, así sirve de
+# barrera entre pasos (p. ej. tras 03_silver-sample y antes de 04_gold).
+QG_ARGS ?=
+quality-gates:
+	$(SBT) -batch "runMain raillytics.calidad.QualityGatesApp $(QG_ARGS)"
+
 cargas: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.utils.cargas
 
+calidad: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.calidad
+
 clean:
-	$(PYTHON) -c "import shutil; [shutil.rmtree(p, ignore_errors=True) for p in ['data/bronze_l1_done', 'data/bronze_processed', 'data/checkpoints', 'target', 'project/target']]"
+	$(PYTHON) -c "import shutil; [shutil.rmtree(p, ignore_errors=True) for p in ['data/bronze_l1_done', 'data/bronze_processed', 'data/bronze_rejected', 'data/checkpoints', 'target', 'project/target']]"

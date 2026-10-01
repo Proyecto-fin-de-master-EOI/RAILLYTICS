@@ -104,6 +104,18 @@ class LakeLayout:
     def cargas_file(self, run_id: str) -> str:
         return f"{self.cargas_dir}/{run_id}.parquet"
 
+    # Resultados de quality gates (raillytics.calidad.registro en Python,
+    # raillytics.common.calidad.QualityGates en Scala): hermana de cargas/, mismo run_id.
+    @property
+    def calidad_dir(self) -> str:
+        return f"{self.trazabilidad_root or self.gold_root + '/_trazabilidad'}/calidad"
+
+    def calidad_glob(self) -> str:
+        return f"{self.calidad_dir}/*.parquet"
+
+    def calidad_file(self, run_id: str) -> str:
+        return f"{self.calidad_dir}/{run_id}.parquet"
+
 
 def is_s3(uri: str) -> bool:
     return uri.startswith("s3://")

@@ -3,6 +3,7 @@ package raillytics.common.fs
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
 
+import java.io.IOException
 import java.net.URI
 
 // Ayudas sobre la API FileSystem de Hadoop, la que usan L1 y L2 para copiar y
@@ -20,14 +21,22 @@ object HadoopFs {
   def forRoot(root: String, hadoopConf: Configuration): FileSystem =
     FileSystem.get(new URI(root), hadoopConf)
 
-  // Mueve srcPath dentro de destDir (creándolo si no existe) con el nombre fileName.
-  // En disco local rename es atómico: el fichero nunca está "a medias" en destino.
-  def moveInto(fs: FileSystem, srcPath: Path, destDir: Path, fileName: String): Unit = {
+  // Mueve srcPath dentro de destDir (creándolo si no existe) con el nombre fileName
+  // y devuelve la ruta destino. En disco local rename es atómico: el fichero nunca
+  // está "a medias" en destino. rename() devuelve false en vez de lanzar cuando no
+  // puede (destino ya existente, origen desaparecido): se convierte en excepción
+  // para que un fichero que no se ha movido no pase desapercibido (volvería a
+  // entrar en el siguiente glob o se quedaría huérfano en silencio).
+  def moveInto(fs: FileSystem, srcPath: Path, destDir: Path, fileName: String): Path = {
     fs.mkdirs(destDir)
-    fs.rename(srcPath, new Path(destDir, fileName))
+    val dest = new Path(destDir, fileName)
+    if (!fs.rename(srcPath, dest)) {
+      throw new IOException(s"no se pudo mover '$srcPath' a '$dest' (¿existe ya el destino o ha desaparecido el origen?)")
+    }
+    dest
   }
 
   // Igual que la anterior conservando el nombre original del fichero.
-  def moveInto(fs: FileSystem, srcPath: Path, destDir: Path): Unit =
+  def moveInto(fs: FileSystem, srcPath: Path, destDir: Path): Path =
     moveInto(fs, srcPath, destDir, srcPath.getName)
 }

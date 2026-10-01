@@ -35,6 +35,8 @@ htmlcov/
 .env
 *.local.yml
 secrets/
+# Certificado raíz del proxy TLS corporativo (AIRFLOW_CA_BUNDLE): específico de cada máquina
+config/certs/
 
 # === Data Lake (Bronze/Silver/Gold) — datos generados, no se versionan ===
 # Se ignora el contenido de data/ pero se conserva el esqueleto de carpetas (.gitkeep)
