@@ -34,7 +34,7 @@ object GoldBuilder extends Logging {
 
   // Dimensiones antes que hechos: un fallo en una dimensión aborta antes de
   // escribir hechos que no podrían resolverse.
-  val GoldTables: Seq[String] = Seq("dim_fecha", "dim_estacion", "dim_linea", "fact_viajeros", "fact_puntualidad")
+  val GoldTables: Seq[String] = Seq("dim_fecha", "dim_estacion", "dim_linea", "dim_operador", "fact_viajeros", "fact_puntualidad")
 
   private def silverViews: Seq[String] = SilverTables.map(LakeViews.SilverPrefix + _)
   private def goldViews: Seq[String] = GoldTables.map(LakeViews.GoldPrefix + _)

@@ -39,7 +39,7 @@ def test_viajeros_follow_the_silver_contract(sample):
     assert tuple(viajeros.columns) == VIAJEROS_COLUMNS
     assert viajeros.fecha.min().date() == START and viajeros.fecha.max().date() == END
     assert not viajeros.drop(columns="festivo_nombre").isna().any().any()
-    assert not viajeros.duplicated(["fecha", "estacion_id", "linea_id"]).any()
+    assert not viajeros.duplicated(["fecha", "estacion_id", "linea_id", "operador_id"]).any()
     assert (viajeros.viajeros > 0).all()
     assert set(viajeros.tipo_tren) == set(TIPOS_TREN)
     assert set(viajeros.condicion_meteo) <= set(CONDICIONES_METEO)
@@ -54,6 +54,43 @@ def test_the_sample_covers_only_the_ave_madrid_barcelona_corridor(sample):
     assert set(sample.viajeros.tipo_tren) == {"AVE"}
     assert set(sample.viajeros.provincia) == {"Madrid", "Zaragoza", "Tarragona", "Barcelona"}
     assert TIPOS_TREN == ("AVE",)
+
+
+OPERADORES = {"RENFE": "Renfe", "IRYO": "Iryo", "OUIGO": "Ouigo", "AVLO": "Avlo"}
+
+
+def test_the_corridor_has_the_four_operators_with_consistent_attributes(sample):
+    viajeros, puntualidad = sample.viajeros, sample.puntualidad
+
+    assert set(viajeros.operador_id) == set(puntualidad.operador_id) == set(OPERADORES)
+    assert viajeros.groupby("operador_id").operador_nombre.first().to_dict() == OPERADORES
+    for columna in ("operador_nombre", "operador_empresa", "operador_segmento"):
+        assert (viajeros.groupby("operador_id")[columna].nunique() == 1).all()  # cada operador, un solo valor
+    assert set(viajeros.operador_segmento) == {"Alta velocidad", "Low cost"}
+    assert viajeros.groupby("operador_id").operador_empresa.first()["AVLO"] == "Renfe Viajeros"  # Avlo es de Renfe
+
+
+def test_market_shares_follow_the_model(sample):
+    cuota = sample.viajeros.groupby("operador_id").viajeros.sum()
+    cuota = (cuota / cuota.sum()).to_dict()
+
+    assert cuota["RENFE"] == pytest.approx(0.40, abs=0.03) and cuota["AVLO"] == pytest.approx(0.15, abs=0.03)
+    assert cuota["RENFE"] > cuota["IRYO"] > cuota["OUIGO"] > cuota["AVLO"]
+
+
+def test_each_operator_runs_its_own_number_of_services_per_day(sample):
+    por_dia = sample.puntualidad.groupby(["fecha", "operador_id"]).size().unstack()
+
+    assert (por_dia["RENFE"] == 12).all() and (por_dia["IRYO"] == 7).all()
+    assert (por_dia["OUIGO"] == 5).all() and (por_dia["AVLO"] == 4).all()
+    assert (por_dia.sum(axis=1) == 28).all()
+    assert sample.puntualidad.servicio_id.is_unique and sample.puntualidad.servicio_id.str.contains("AVE-MAD-BCN-").all()
+
+
+def test_operators_differ_in_punctuality(sample):
+    retraso = sample.puntualidad.groupby("operador_id").retraso_min.mean()
+
+    assert retraso["OUIGO"] > retraso["IRYO"]  # el más lento y el más puntual del modelo
 
 
 def test_holidays_are_flagged_with_their_name(sample):

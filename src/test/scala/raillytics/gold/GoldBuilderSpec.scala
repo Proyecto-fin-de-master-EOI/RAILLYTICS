@@ -17,12 +17,13 @@ import scala.jdk.CollectionConverters._
 case class SilverViajeros(
   fecha: LocalDate, estacion_id: String, estacion_nombre: String, provincia: String, comunidad: String,
   latitud: Double, longitud: Double, linea_id: String, linea_nombre: String, tipo_tren: String,
-  origen: String, destino: String, viajeros: Long, temperatura_media: Double, precipitacion_mm: Double,
+  origen: String, destino: String, operador_id: String, operador_nombre: String, operador_empresa: String,
+  operador_segmento: String, viajeros: Long, temperatura_media: Double, precipitacion_mm: Double,
   condicion_meteo: String, es_festivo: Boolean, festivo_nombre: Option[String]
 )
 
 case class SilverPuntualidad(
-  fecha: LocalDate, servicio_id: String, linea_id: String, estacion_id: String,
+  fecha: LocalDate, servicio_id: String, linea_id: String, operador_id: String, estacion_id: String,
   hora_prevista: LocalDateTime, hora_real: Option[LocalDateTime], retraso_min: Option[Int], estado: String,
   temperatura_media: Double, precipitacion_mm: Double, condicion_meteo: String, es_festivo: Boolean
 )
@@ -58,24 +59,30 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
     calidadConfig = "config/quality_gates.yml"   // el YAML real del proyecto, desde la raíz del repo
   )
 
-  private def viajeros(fecha: LocalDate, estacion: (String, String), n: Long, festivo: Option[String]) =
+  private val renfe = ("RENFE", "Renfe", "Renfe Viajeros", "Alta velocidad")
+  private val ouigo = ("OUIGO", "Ouigo", "SNCF Voyageurs España", "Low cost")
+
+  private def viajeros(fecha: LocalDate, estacion: (String, String), n: Long, festivo: Option[String],
+                       operador: (String, String, String, String) = renfe) =
     SilverViajeros(fecha, estacion._1, estacion._2, "Madrid", "Comunidad de Madrid", 40.4, -3.7,
       "AVE-MAD-BCN", "AVE Madrid – Barcelona", "AVE", "Madrid Puerta de Atocha", "Barcelona Sants",
+      operador._1, operador._2, operador._3, operador._4,
       n, 18.5, 0.0, "despejado", festivo.isDefined, festivo)
 
   private val atocha = ("MADPA", "Madrid Puerta de Atocha")
   private val chamartin = ("MADCH", "Madrid Chamartín")
   private val prevista = LocalDateTime.of(2025, 4, 18, 9, 30)
   private val filasPuntualidad = Seq(
-    SilverPuntualidad(viernesSanto, "s1", "AVE-MAD-BCN", "MADPA", prevista, Some(prevista.plusMinutes(3)), Some(3), "realizado", 18.5, 0.0, "despejado", true),
-    SilverPuntualidad(viernesSanto, "s2", "AVE-MAD-BCN", "MADPA", prevista.plusHours(2), Some(prevista.plusHours(2).plusMinutes(12)), Some(12), "realizado", 18.5, 0.0, "despejado", true),
-    SilverPuntualidad(viernesSanto, "s3", "AVE-MAD-BCN", "MADCH", prevista.plusHours(4), None, None, "cancelado", 18.5, 0.0, "despejado", true)
+    SilverPuntualidad(viernesSanto, "s1", "AVE-MAD-BCN", "RENFE", "MADPA", prevista, Some(prevista.plusMinutes(3)), Some(3), "realizado", 18.5, 0.0, "despejado", true),
+    SilverPuntualidad(viernesSanto, "s2", "AVE-MAD-BCN", "RENFE", "MADPA", prevista.plusHours(2), Some(prevista.plusHours(2).plusMinutes(12)), Some(12), "realizado", 18.5, 0.0, "despejado", true),
+    SilverPuntualidad(viernesSanto, "s3", "AVE-MAD-BCN", "OUIGO", "MADCH", prevista.plusHours(4), None, None, "cancelado", 18.5, 0.0, "despejado", true)
   )
 
   private def escribirSilver(settings: GoldBuilderSettings, puntualidad: Seq[SilverPuntualidad]): Unit = {
     val filasViajeros = Seq(
       viajeros(jueves, atocha, 1000L, None), viajeros(jueves, chamartin, 500L, None),
-      viajeros(viernesSanto, atocha, 1500L, Some("Viernes Santo")), viajeros(viernesSanto, chamartin, 700L, Some("Viernes Santo"))
+      viajeros(viernesSanto, atocha, 1500L, Some("Viernes Santo")), viajeros(viernesSanto, chamartin, 700L, Some("Viernes Santo")),
+      viajeros(jueves, atocha, 300L, None, ouigo)   // otro operador en la misma estación y día
     )
     spark.createDataFrame(filasViajeros).write.parquet(settings.lake.silverTable("viajeros_enriquecidos"))
     spark.createDataFrame(puntualidad).write.parquet(settings.lake.silverTable("puntualidad_enriquecida"))
@@ -84,7 +91,7 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
   private def gold(table: String) = spark.read.parquet(settings.lake.goldTable(table))
 
   "GoldBuilder.build" should "write every Gold table as a single parquet file and report its rows" in {
-    counts shouldBe Map("dim_fecha" -> 2L, "dim_estacion" -> 2L, "dim_linea" -> 1L, "fact_viajeros" -> 4L, "fact_puntualidad" -> 3L)
+    counts shouldBe Map("dim_fecha" -> 2L, "dim_estacion" -> 2L, "dim_linea" -> 1L, "dim_operador" -> 2L, "fact_viajeros" -> 5L, "fact_puntualidad" -> 3L)
     GoldBuilder.GoldTables.foreach { table =>
       val dir = tmpDir.resolve(s"gold/$table")
       Files.list(dir).iterator().asScala.count(_.toString.endsWith(".parquet")) shouldBe 1
@@ -105,9 +112,24 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
   it should "resolve fact_viajeros against the dimensions" in {
     gold("fact_viajeros").join(gold("dim_fecha"), Seq("fecha_id"), "left_anti").count() shouldBe 0
     gold("fact_viajeros").join(gold("dim_estacion"), Seq("estacion_id"), "left_anti").count() shouldBe 0
-    gold("fact_viajeros").agg(sum("viajeros")).collect().head.getLong(0) shouldBe 3700L
+    gold("fact_viajeros").agg(sum("viajeros")).collect().head.getLong(0) shouldBe 4000L
     gold("dim_linea").select("nombre", "tipo_tren", "origen", "destino").collect().head.toSeq shouldBe
       Seq("AVE Madrid – Barcelona", "AVE", "Madrid Puerta de Atocha", "Barcelona Sants")
+  }
+
+  it should "build dim_operador from Silver with the company and segment of each operator" in {
+    gold("dim_operador").orderBy("operador_id").select("operador_id", "nombre", "empresa", "segmento").collect().map(_.toSeq) shouldBe Array(
+      Seq("OUIGO", "Ouigo", "SNCF Voyageurs España", "Low cost"),
+      Seq("RENFE", "Renfe", "Renfe Viajeros", "Alta velocidad")
+    )
+  }
+
+  it should "resolve both fact tables against dim_operador" in {
+    gold("fact_viajeros").join(gold("dim_operador"), Seq("operador_id"), "left_anti").count() shouldBe 0
+    gold("fact_puntualidad").join(gold("dim_operador"), Seq("operador_id"), "left_anti").count() shouldBe 0
+    gold("fact_viajeros").groupBy("operador_id").agg(sum("viajeros")).collect().map(f => (f.getString(0), f.getLong(1))).toMap shouldBe
+      Map("RENFE" -> 3700L, "OUIGO" -> 300L)
+    gold("fact_puntualidad").filter("operador_id = 'OUIGO'").select("servicio_id").collect().map(_.getString(0)) shouldBe Array("s3")
   }
 
   it should "flag punctuality and cancellations in fact_puntualidad" in {
@@ -145,7 +167,7 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
     // Un servicio de una línea que no existe en viajeros: dim_linea no la tendría y el
     // dashboard perdería el servicio. El gate silver_puntualidad_enriquecida.lineas_en_viajeros
     // (bloqueante) debe parar la construcción antes de escribir Gold.
-    val huerfano = SilverPuntualidad(viernesSanto, "s9", "LD-NO-EXISTE", "MADPA", prevista, Some(prevista), Some(0), "realizado", 18.5, 0.0, "despejado", true)
+    val huerfano = SilverPuntualidad(viernesSanto, "s9", "LD-NO-EXISTE", "RENFE", "MADPA", prevista, Some(prevista), Some(0), "realizado", 18.5, 0.0, "despejado", true)
     escribirSilver(ajustes, filasPuntualidad :+ huerfano)
 
     val thrown = the[QualityGates.QualityGateException] thrownBy GoldBuilder.build(ajustes)
@@ -160,5 +182,18 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
     val calidad = spark.read.parquet(ajustes.lake.calidadDir).select("capa", "gate", "resultado").collect().map(_.toSeq)
     calidad.map(_(0)).toSet shouldBe Set("silver")   // los gates de Gold nunca llegaron a evaluarse
     calidad.filter(_(2) == "fallo").map(_(1)) shouldBe Array("lineas_en_viajeros")
+  }
+
+  it should "abort when a service references an operator that has no viajeros" in {
+    val dir = Files.createTempDirectory("gold-builder-operador-spec")
+    val ajustes = settingsIn(dir)
+    // dim_operador sale de viajeros: un operador que solo aparezca en puntualidad se perdería en los joins del dashboard.
+    val huerfano = SilverPuntualidad(viernesSanto, "s9", "AVE-MAD-BCN", "FANTASMA", "MADPA", prevista, Some(prevista), Some(0), "realizado", 18.5, 0.0, "despejado", true)
+    escribirSilver(ajustes, filasPuntualidad :+ huerfano)
+
+    val thrown = the[QualityGates.QualityGateException] thrownBy GoldBuilder.build(ajustes)
+
+    thrown.fallidos.map(r => (r.tabla, r.gate)) shouldBe Seq(("silver_puntualidad_enriquecida", "operadores_en_viajeros"))
+    Files.exists(dir.resolve("gold")) shouldBe false
   }
 }

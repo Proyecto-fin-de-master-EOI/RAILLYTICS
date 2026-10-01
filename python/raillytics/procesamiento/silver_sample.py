@@ -5,17 +5,19 @@ festivos) todavía no existen. Este módulo genera, de forma determinista, las
 dos tablas Silver con el contrato de columnas que producirán esos jobs, y las
 deja donde ellos las dejarán (bucket Silver de MinIO, o SILVER_ROOT local):
 
-  viajeros_enriquecidos    grano (fecha, estación, línea): viajeros del día,
-                           meteo de la provincia y festivo nacional.
-  puntualidad_enriquecida  grano servicio (tren): hora prevista/real de
-                           llegada, retraso, estado, meteo y festivo.
+  viajeros_enriquecidos    grano (fecha, estación, línea, operador): viajeros
+                           del día, meteo de la provincia y festivo nacional.
+  puntualidad_enriquecida  grano servicio (tren): operador, hora prevista/real
+                           de llegada, retraso, estado, meteo y festivo.
 
 Cuando existan los jobs reales bastará con que escriban estas columnas en los
 mismos prefijos; Gold (la app Spark GoldBuilderApp) y Superset no cambian.
 
 Los datos NO son reales y cubren SOLO el corredor AVE Madrid–Barcelona (una
 línea, AVE-MAD-BCN, y sus cuatro estaciones: Madrid Puerta de Atocha, Zaragoza
-Delicias, Camp de Tarragona y Barcelona Sants), con códigos inventados. Demanda
+Delicias, Camp de Tarragona y Barcelona Sants) y sus cuatro operadores (Renfe,
+Iryo, Ouigo y Avlo), con códigos inventados. Cuotas, servicios y retrasos de cada
+operador son inventados. Demanda
 y retrasos siguen un modelo simple (estacionalidad, día de la semana, festivos,
 lluvia, hora punta) para que los dashboards tengan algo que contar.
 
@@ -44,10 +46,11 @@ SILVER_PUNTUALIDAD = "puntualidad_enriquecida"
 VIAJEROS_COLUMNS = (
     "fecha", "estacion_id", "estacion_nombre", "provincia", "comunidad", "latitud", "longitud",
     "linea_id", "linea_nombre", "tipo_tren", "origen", "destino",
+    "operador_id", "operador_nombre", "operador_empresa", "operador_segmento",
     "viajeros", "temperatura_media", "precipitacion_mm", "condicion_meteo", "es_festivo", "festivo_nombre",
 )
 PUNTUALIDAD_COLUMNS = (
-    "fecha", "servicio_id", "linea_id", "estacion_id", "hora_prevista", "hora_real", "retraso_min", "estado",
+    "fecha", "servicio_id", "linea_id", "operador_id", "estacion_id", "hora_prevista", "hora_real", "retraso_min", "estado",
     "temperatura_media", "precipitacion_mm", "condicion_meteo", "es_festivo",
 )
 
@@ -69,13 +72,25 @@ class Estacion:
 
 
 @dataclass(frozen=True)
+class Operador:
+    id: str
+    nombre: str
+    empresa: str
+    segmento: str
+    cuota: float              # parte de la demanda del corredor
+    servicios_dia: int        # trenes por día (filas de puntualidad)
+    retraso_medio_min: float  # retraso medio en llegada antes de aplicar factores
+    p_cancelacion: float      # probabilidad de cancelar un servicio un día normal
+    factor_finde: float       # demanda en fin de semana y festivo respecto a un laborable (el low cost sube más)
+
+
+@dataclass(frozen=True)
 class Linea:
     id: str
     nombre: str
     tipo_tren: str
     paradas: tuple[str, ...]  # códigos de estación en orden origen -> destino
     demanda_base: int         # viajeros/día por parada antes de aplicar factores
-    servicios_dia: int        # trenes por día (filas de puntualidad)
 
 
 # Códigos inventados (no son los de Adif); coordenadas aproximadas de la ciudad.
@@ -87,7 +102,15 @@ ESTACIONES = (
 )
 
 LINEAS = (
-    Linea("AVE-MAD-BCN", "AVE Madrid – Barcelona", "AVE", ("MADPA", "ZARDE", "TARRA", "BCNSA"), 3200, 28),
+    Linea("AVE-MAD-BCN", "AVE Madrid – Barcelona", "AVE", ("MADPA", "ZARDE", "TARRA", "BCNSA"), 3200),
+)
+
+# Operadores del corredor: cuotas que suman 1 y 28 servicios al día en total. Avlo es la marca low cost de Renfe.
+OPERADORES = (
+    Operador("RENFE", "Renfe", "Renfe Viajeros", "Alta velocidad", 0.40, 12, 2.5, 0.004, 1.00),
+    Operador("IRYO", "Iryo", "ILSA (Trenitalia, Air Nostrum)", "Alta velocidad", 0.25, 7, 2.2, 0.003, 1.00),
+    Operador("OUIGO", "Ouigo", "SNCF Voyageurs España", "Low cost", 0.20, 5, 3.4, 0.008, 1.08),
+    Operador("AVLO", "Avlo", "Renfe Viajeros", "Low cost", 0.15, 4, 2.8, 0.006, 1.06),
 )
 
 # Factores de demanda del AVE. Índice 0 = lunes ... 6 = domingo.
@@ -102,8 +125,7 @@ _FACTOR_FESTIVO = {"AVE": 1.15}
 # (tipo de tren, condición meteorológica) -> factor sobre la demanda; el resto, 1.0.
 _FACTOR_METEO_VIAJEROS: dict[tuple[str, str], float] = {}  # el AVE no varía con el tiempo en este modelo
 
-# Retraso medio en llegada (minutos) del AVE y factores sobre él.
-_RETRASO_MEDIO_MIN = {"AVE": 2.5}
+# Factores sobre el retraso medio de cada operador.
 _FACTOR_METEO_RETRASO = {"despejado": 1.0, "nuboso": 1.05, "lluvia": 1.5, "tormenta": 2.5}
 _HORAS_PUNTA = (7, 8, 9, 17, 18, 19, 20)
 
@@ -268,10 +290,16 @@ def _viajeros(
                 "comunidad": est.comunidad,
                 "latitud": est.latitud,
                 "longitud": est.longitud,
-                "demanda_base": linea.demanda_base * est.peso,
+                "operador_id": op.id,
+                "operador_nombre": op.nombre,
+                "operador_empresa": op.empresa,
+                "operador_segmento": op.segmento,
+                "factor_finde": op.factor_finde,
+                "demanda_base": linea.demanda_base * est.peso * op.cuota,
             }
             for linea in LINEAS
             for est in (estaciones[parada] for parada in linea.paradas)
+            for op in OPERADORES
         ]
     )
     df = pd.merge(pd.DataFrame({"fecha": fechas}), pares, how="cross")
@@ -287,11 +315,12 @@ def _viajeros(
         _lookup(_FACTOR_DIA_SEMANA, tipo_tren, df.fecha.dt.dayofweek.to_numpy())
         * _lookup(_FACTOR_MES, tipo_tren, df.fecha.dt.month.to_numpy() - 1)
         * np.where(df.es_festivo, df.tipo_tren.map(_FACTOR_FESTIVO), 1.0)
+        * np.where(df.es_festivo | (df.fecha.dt.dayofweek >= 5), df.factor_finde, 1.0)
         * factor_meteo
         * rng.lognormal(0.0, 0.08, len(df))
     )
     df["viajeros"] = np.rint(df.demanda_base.to_numpy() * factor).astype("int64")
-    return df[list(VIAJEROS_COLUMNS)].sort_values(["fecha", "linea_id", "estacion_id"], ignore_index=True)
+    return df[list(VIAJEROS_COLUMNS)].sort_values(["fecha", "linea_id", "estacion_id", "operador_id"], ignore_index=True)
 
 
 def _puntualidad(
@@ -299,8 +328,8 @@ def _puntualidad(
 ) -> pd.DataFrame:
     estaciones = {e.id: e for e in ESTACIONES}
     partes = []
-    for linea in LINEAS:
-        servicios_dia = np.full(len(fechas), linea.servicios_dia)
+    for linea, op in ((linea, op) for linea in LINEAS for op in OPERADORES):
+        servicios_dia = np.full(len(fechas), op.servicios_dia)
         fecha = np.repeat(fechas.to_numpy(), servicios_dia)
         n = len(fecha)
         orden = np.concatenate([np.arange(k) for k in servicios_dia])
@@ -316,10 +345,12 @@ def _puntualidad(
                 {
                     "fecha": fecha,
                     "servicio_id": (
-                        linea.id + "-" + pd.Series(fecha).dt.strftime("%Y%m%d") + "-" + pd.Series(orden).map("{:03d}".format)
+                        linea.id + "-" + op.id + "-" + pd.Series(fecha).dt.strftime("%Y%m%d") + "-" + pd.Series(orden).map("{:03d}".format)
                     ),
                     "linea_id": linea.id,
-                    "tipo_tren": linea.tipo_tren,
+                    "operador_id": op.id,
+                    "retraso_medio_op": op.retraso_medio_min,
+                    "p_cancelacion_op": op.p_cancelacion,
                     "estacion_id": rng.choice(llegadas, size=n, p=pesos / pesos.sum()),
                     "hora_prevista": fecha + minutos.astype("timedelta64[m]"),
                 }
@@ -334,14 +365,14 @@ def _puntualidad(
     n = len(df)
     hora_punta = np.isin(df.hora_prevista.dt.hour.to_numpy(), _HORAS_PUNTA)
     retraso_medio = (
-        df.tipo_tren.map(_RETRASO_MEDIO_MIN).to_numpy()
+        df.retraso_medio_op.to_numpy()
         * np.where(hora_punta, 1.2, 1.0)
         * df.condicion_meteo.map(_FACTOR_METEO_RETRASO).to_numpy()
         * np.where(df.es_festivo, 0.85, 1.0)
         * (1.0 + 0.12 * df.peso_estacion.to_numpy())
     )
     retraso = np.clip(np.rint(rng.gamma(1.2, retraso_medio / 1.2)), 0, 180).astype("int64")
-    p_cancelacion = np.where(df.condicion_meteo == "tormenta", 0.025, 0.004)
+    p_cancelacion = df.p_cancelacion_op.to_numpy() * np.where(df.condicion_meteo == "tormenta", 6.0, 1.0)
     cancelado = rng.random(n) < p_cancelacion
 
     df["retraso_min"] = pd.array(retraso, dtype="Int64")
@@ -349,7 +380,7 @@ def _puntualidad(
     df["hora_real"] = df.hora_prevista + pd.to_timedelta(retraso, unit="m")
     df.loc[cancelado, "hora_real"] = pd.NaT
     df["estado"] = np.where(cancelado, "cancelado", "realizado")
-    return df[list(PUNTUALIDAD_COLUMNS)].sort_values(["fecha", "hora_prevista", "linea_id"], ignore_index=True)
+    return df[list(PUNTUALIDAD_COLUMNS)].sort_values(["fecha", "hora_prevista", "linea_id", "operador_id"], ignore_index=True)
 
 
 def main(argv: list[str] | None = None) -> int:

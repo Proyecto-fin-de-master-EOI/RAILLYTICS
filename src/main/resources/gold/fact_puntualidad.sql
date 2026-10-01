@@ -6,6 +6,7 @@ SELECT
     CAST(date_format(p.fecha, 'yyyyMMdd') AS INT)                       AS fecha_id,
     p.fecha,
     p.linea_id,
+    p.operador_id,
     p.estacion_id,
     p.servicio_id,
     p.hora_prevista,

@@ -1,0 +1,41 @@
+slice_name: Cuota de viajeros por operador
+description: null
+certified_by: null
+certification_details: null
+viz_type: pie
+params:
+  viz_type: pie
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  groupby:
+  - operador
+  metric: total_viajeros
+  row_limit: 100
+  sort_by_metric: true
+  color_scheme: supersetColors
+  show_labels_threshold: 5
+  show_legend: true
+  legendType: scroll
+  legendOrientation: top
+  label_type: key_value_percent
+  number_format: SMART_NUMBER
+  date_format: smart_date
+  show_labels: true
+  labels_outside: true
+  label_line: true
+  outerRadius: 70
+  donut: true
+  innerRadius: 40
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: da4676a1-93c7-50b1-899e-8b652ee37119
+version: 1.0.0
+dataset_uuid: 96722fb6-8e32-5c11-a4ed-d77abe207f92
+is_managed_externally: false
+external_url: null

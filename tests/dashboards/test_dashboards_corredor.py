@@ -2,7 +2,6 @@
 import json
 from pathlib import Path
 
-import duckdb
 import pytest
 import yaml
 
@@ -59,46 +58,18 @@ def test_cada_grafico_del_dashboard_existe_y_usa_columnas_y_metricas_de_su_datas
         assert _columnas_de(grafico) <= {c["column_name"] for c in dataset["columns"]}, nombre
 
 
-def _gold(tmp_path):
-    """Tablas Gold mínimas con DOS líneas: la del corredor y otra que nunca debe aparecer."""
-    con = duckdb.connect()
-    def tabla(nombre, select):
-        destino = tmp_path / nombre
-        destino.mkdir(parents=True)
-        con.execute(f"COPY ({select}) TO '{(destino / (nombre + '.parquet')).as_posix()}' (FORMAT PARQUET)")
-    tabla("dim_linea", f"""SELECT * FROM (VALUES ('{CORREDOR}', 'AVE Madrid – Barcelona', 'AVE', 'Madrid', 'Barcelona'),
-        ('C-MAD-C2', 'Cercanías Madrid C-2', 'Cercanías', 'Alcalá', 'Chamartín')) t(linea_id, nombre, tipo_tren, origen, destino)""")
-    tabla("dim_estacion", """SELECT * FROM (VALUES ('MADPA', 'Madrid Puerta de Atocha', 'Madrid', 'Comunidad de Madrid', 40.4, -3.7),
-        ('ALCHE', 'Alcalá de Henares', 'Madrid', 'Comunidad de Madrid', 40.5, -3.4)) t(estacion_id, nombre, provincia, comunidad, latitud, longitud)""")
-    tabla("dim_fecha", """SELECT * FROM (VALUES (20261003, DATE '2026-10-03', 2026, 4, 10, 'octubre', 6, 'sábado', true, false, NULL::VARCHAR, 'otoño'),
-        (20261005, DATE '2026-10-05', 2026, 4, 10, 'octubre', 1, 'lunes', false, false, NULL::VARCHAR, 'otoño'))
-        t(fecha_id, fecha, anio, trimestre, mes, nombre_mes, dia_semana, nombre_dia, es_fin_de_semana, es_festivo, festivo_nombre, estacion_anio)""")
-    tabla("fact_viajeros", f"""SELECT * FROM (VALUES (20261003, DATE '2026-10-03', 'MADPA', '{CORREDOR}', 1000, 15.0, 0.0, 'despejado'),
-        (20261005, DATE '2026-10-05', 'MADPA', '{CORREDOR}', 3000, 14.0, 0.0, 'despejado'),
-        (20261003, DATE '2026-10-03', 'ALCHE', 'C-MAD-C2', 9999, 15.0, 0.0, 'despejado'))
-        t(fecha_id, fecha, estacion_id, linea_id, viajeros, temperatura_media, precipitacion_mm, condicion_meteo)""")
-    tabla("fact_puntualidad", f"""SELECT * FROM (VALUES (20261003, DATE '2026-10-03', '{CORREDOR}', 'MADPA', 's1', TIMESTAMP '2026-10-03 08:00:00', TIMESTAMP '2026-10-03 08:03:00', 8, 3, 'realizado', false, true, 'despejado', 15.0, 0.0),
-        (20261003, DATE '2026-10-03', 'C-MAD-C2', 'ALCHE', 's2', TIMESTAMP '2026-10-03 09:00:00', TIMESTAMP '2026-10-03 09:30:00', 9, 30, 'realizado', false, false, 'despejado', 15.0, 0.0))
-        t(fecha_id, fecha, linea_id, estacion_id, servicio_id, hora_prevista, hora_real, hora, retraso_min, estado, cancelado, es_puntual, condicion_meteo, temperatura_media, precipitacion_mm)""")
-    return con
-
-
 @pytest.mark.parametrize("nombre", ("viajeros_diarios", "puntualidad_servicios"))
-def test_los_datasets_de_hechos_solo_devuelven_el_corredor(tmp_path, nombre):
-    con = _gold(tmp_path)
-    sql = DATASETS[nombre]["sql"].replace("s3://raillytics-gold", tmp_path.as_posix())
-
-    filas = con.execute(f"SELECT linea, tipo_tren FROM ({sql}) t").fetchall()
+def test_los_datasets_de_hechos_solo_devuelven_el_corredor(gold, nombre):
+    filas = gold(DATASETS[nombre]["sql"], "linea, tipo_tren")
 
     assert filas and {f[0] for f in filas} == {"AVE Madrid – Barcelona"} and {f[1] for f in filas} == {"AVE"}
 
 
-def test_el_dataset_de_demanda_no_cuenta_viajeros_de_otras_lineas_y_calcula_el_peso_del_fin_de_semana(tmp_path):
-    con = _gold(tmp_path)
-    sql = DATASETS["viajeros_diarios"]["sql"].replace("s3://raillytics-gold", tmp_path.as_posix())
+def test_el_dataset_de_demanda_no_cuenta_viajeros_de_otras_lineas_y_calcula_el_peso_del_fin_de_semana(gold):
+    sql = DATASETS["viajeros_diarios"]["sql"]
     metricas = {m["metric_name"]: m["expression"] for m in DATASETS["viajeros_diarios"]["metrics"]}
 
-    consulta = lambda e: con.execute(f"SELECT {e} FROM ({sql}) t").fetchone()[0]  # noqa: E731
+    consulta = lambda e: gold(sql, e)[0][0]  # noqa: E731
 
     assert consulta(metricas["total_viajeros"]) == 4000  # sin los 9.999 de Cercanías
     assert consulta(metricas["pct_viajeros_fin_de_semana"]) == pytest.approx(25.0)  # 1.000 de 4.000 en sábado

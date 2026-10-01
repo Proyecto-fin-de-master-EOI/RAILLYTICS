@@ -1,6 +1,6 @@
 table_name: puntualidad_servicios
 main_dttm_col: fecha
-description: 'Un servicio (tren) del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN) por fila con su retraso en llegada: Fact_Puntualidad ⋈ dimensiones, leído con DuckDB del Parquet de Gold en MinIO. Solo se muestra el corredor.'
+description: 'Un servicio (tren) del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN) por fila con su operador y su retraso en llegada: Fact_Puntualidad ⋈ dimensiones, leído con DuckDB del Parquet de Gold en MinIO. Solo se muestra el corredor.'
 default_endpoint: null
 offset: 0
 cache_timeout: null
@@ -34,6 +34,9 @@ sql: |-
       e.comunidad,
       l.nombre AS linea,
       l.tipo_tren,
+      o.nombre AS operador,
+      o.empresa AS operador_empresa,
+      o.segmento AS operador_segmento,
       p.retraso_min,
       p.estado,
       p.es_puntual,
@@ -45,6 +48,7 @@ sql: |-
   JOIN read_parquet('s3://raillytics-gold/dim_fecha/*.parquet') AS d USING (fecha_id)
   LEFT JOIN read_parquet('s3://raillytics-gold/dim_estacion/*.parquet') AS e USING (estacion_id)
   JOIN read_parquet('s3://raillytics-gold/dim_linea/*.parquet') AS l USING (linea_id)
+  JOIN read_parquet('s3://raillytics-gold/dim_operador/*.parquet') AS o USING (operador_id)
   WHERE l.linea_id = 'AVE-MAD-BCN'
 params: null
 template_params: null
@@ -326,6 +330,42 @@ columns:
   extra: null
 - column_name: tipo_tren
   verbose_name: Tipo de tren
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: operador
+  verbose_name: Operador
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: operador_empresa
+  verbose_name: Empresa operadora
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: operador_segmento
+  verbose_name: Segmento
   is_dttm: false
   is_active: true
   type: VARCHAR

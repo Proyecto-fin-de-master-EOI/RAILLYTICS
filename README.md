@@ -5,7 +5,8 @@
 Proyecto de TFM (Máster en Ingeniería de Datos — Grupo 3). Plataforma end-to-end que integra, procesa y analiza datos ferroviarios públicos (Renfe Open Data, AEMET, festivos BOE, INE) para generar insights operativos y predicciones de demanda a 30 días.
 
 **Caso de uso: el corredor AVE Madrid–Barcelona.** Todos los dashboards, ejemplos y datos de muestra aplican a ese
-corredor (línea `AVE-MAD-BCN`: Madrid Puerta de Atocha, Zaragoza Delicias, Camp de Tarragona y Barcelona Sants).
+corredor (línea `AVE-MAD-BCN`: Madrid Puerta de Atocha, Zaragoza Delicias, Camp de Tarragona y Barcelona Sants),
+con los datos y los dashboards desglosados **por operador** (Renfe, Iryo, Ouigo y Avlo).
 
 **Stack tecnológico:** Python (ingesta) · Apache Airflow (orquestación) · MinIO — S3-compatible (almacenamiento Bronze/Silver/Gold) · Spark Structured Streaming en Scala (subida a Bronze L1/L2) · PySpark (procesamiento Silver) · Delta Lake + Parquet (almacenamiento) · Spark en Scala, batch (modelo dimensional Gold; Snowflake en el diseño objetivo) · DuckDB (motor de consulta de Superset y notebooks sobre el Parquet del lake) · Apache Superset (dashboards en local; Power BI en el diseño objetivo) · Scikit-learn (modelo predictivo).
 
@@ -40,7 +41,7 @@ Fuentes (Renfe, AEMET, BOE, INE)
 
 - **🥉 Bronze — datos en bruto**: un [framework de ingesta](#framework-de-ingesta-bronze) descarga las fuentes públicas y las promueve a MinIO en dos subcapas — `l1-raw` (tal cual llegan, sin transformar) y `l2` (mismo dato convertido a Parquet) — particionadas por fuente y fecha. Si algo falla después, siempre se puede volver al dato original en `l1-raw`.
 - **🥈 Silver — datos limpios y enriquecidos**: jobs PySpark eliminan duplicados, tratan nulos, normalizan formatos (fechas, nombres de estaciones) y cruzan los viajeros con meteorología y festivos. Es la capa de "datos fiables".
-- **🥇 Gold — datos listos para el análisis**: el modelo dimensional (dimensiones `Dim_Estacion`, `Dim_Linea`, `Dim_Fecha` y hechos `Fact_Viajeros`, `Fact_Puntualidad`). En este repositorio lo construye la app Spark [`GoldBuilderApp`](#capa-gold-con-spark-y-dashboards-en-superset) (Scala, batch) con SQL a partir de Silver y lo deja como Parquet en el bucket `raillytics-gold`; Superset lo consulta directamente desde ahí con DuckDB y el modelo predictivo de Scikit-learn puede leerlo igual. En el diseño del TFM el destino de este paso es Snowflake → Power BI: el SQL es el mismo y podrá ejecutarse allí cuando toque.
+- **🥇 Gold — datos listos para el análisis**: el modelo dimensional (dimensiones `Dim_Estacion`, `Dim_Linea`, `Dim_Operador`, `Dim_Fecha` y hechos `Fact_Viajeros`, `Fact_Puntualidad`). En este repositorio lo construye la app Spark [`GoldBuilderApp`](#capa-gold-con-spark-y-dashboards-en-superset) (Scala, batch) con SQL a partir de Silver y lo deja como Parquet en el bucket `raillytics-gold`; Superset lo consulta directamente desde ahí con DuckDB y el modelo predictivo de Scikit-learn puede leerlo igual. En el diseño del TFM el destino de este paso es Snowflake → Power BI: el SQL es el mismo y podrá ejecutarse allí cuando toque.
 
 ---
 
@@ -305,14 +306,14 @@ Silver (Parquet en MinIO)              Gold (Parquet en MinIO)                Su
 raillytics-silver/                     raillytics-gold/
   viajeros_enriquecidos/    Spark        dim_fecha/       dim_estacion/       DuckDB en memoria + httpfs:
   puntualidad_enriquecida/  ───────►     dim_linea/       fact_viajeros/  ◄── read_parquet('s3://raillytics-gold/...')
-                         GoldBuilderApp  fact_puntualidad/
+                         GoldBuilderApp  dim_operador/    fact_puntualidad/
 ```
 
 ### Cómo se ejecuta
 
 | Paso | Comando | Qué hace |
 | --- | --- | --- |
-| Silver de ejemplo | `make 03_silver-sample` | Genera un Silver sintético y determinista (365 días, semilla 42) en `raillytics-silver`, **solo del corredor AVE Madrid–Barcelona** (una línea y sus cuatro estaciones). Sustituye a los jobs PySpark mientras no existan y produce exactamente las columnas que Gold espera (el contrato está en `python/raillytics/procesamiento/silver_sample.py`). Los datos no son reales. |
+| Silver de ejemplo | `make 03_silver-sample` | Genera un Silver sintético y determinista (365 días, semilla 42) en `raillytics-silver`, **solo del corredor AVE Madrid–Barcelona** (una línea, sus cuatro estaciones y cuatro operadores: Renfe, Iryo, Ouigo y Avlo, con cuota de mercado, servicios, retrasos y cancelaciones propios; Avlo es la marca low cost de Renfe). Sustituye a los jobs PySpark mientras no existan y produce exactamente las columnas que Gold espera (el contrato está en `python/raillytics/procesamiento/silver_sample.py`). Los datos no son reales. |
 | Quality gates | `make quality-gates` | `sbt "runMain raillytics.calidad.QualityGatesApp"` (batch): evalúa `config/quality_gates.yml` sobre lo que hay en Silver y Gold, registra los resultados y termina con error si falla algún gate bloqueante. No escribe datos: es la barrera entre pasos. `QG_ARGS=silver`, `gold` o el nombre de una tabla acotan la evaluación. |
 | Gold | `make 04_gold` | `sbt "runMain raillytics.gold.GoldBuilderApp"` (batch, con la misma configuración s3a que L1/L2): registra las tablas Silver como vistas, aplica los gates `silver_*` (entrada), ejecuta `src/main/resources/gold/<tabla>.sql` para todas las tablas en memoria, aplica los gates `gold_*` (salida) y solo entonces escribe cada tabla en `s3a://raillytics-gold/<tabla>/` (un `part-*.parquet` por tabla, full refresh). Si un gate bloqueante falla, Gold se queda como estaba. No es un stream como L1/L2 porque las dimensiones se recalculan sobre todo Silver. |
 | Dashboards | `make up` (o `make 05_superset-import`) | El servicio `superset-init` importa `dashboards/superset/raillytics_gold/` en cada arranque; `05_superset-import` repite la importación sin reiniciar. |
@@ -330,8 +331,9 @@ locales (así corren los tests, sin MinIO).
 | `dim_fecha` | día | `fecha_id` (AAAAMMDD), `fecha`, `anio`, `trimestre`, `mes`, `nombre_mes`, `dia_semana` (1 = lunes), `nombre_dia`, `es_fin_de_semana`, `es_festivo`, `festivo_nombre`, `estacion_anio` |
 | `dim_estacion` | estación | `estacion_id`, `nombre`, `provincia`, `comunidad`, `latitud`, `longitud` |
 | `dim_linea` | línea | `linea_id`, `nombre`, `tipo_tren`, `origen`, `destino` |
-| `fact_viajeros` | día × estación × línea | `fecha_id`, `fecha`, `estacion_id`, `linea_id`, `viajeros`, `temperatura_media`, `precipitacion_mm`, `condicion_meteo` |
-| `fact_puntualidad` | servicio (tren) | `fecha_id`, `fecha`, `linea_id`, `estacion_id`, `servicio_id`, `hora_prevista`, `hora_real`, `hora`, `retraso_min`, `estado`, `cancelado`, `es_puntual` (retraso ≤ 5 min), meteo |
+| `dim_operador` | operador | `operador_id`, `nombre`, `empresa`, `segmento` (alta velocidad o low cost) |
+| `fact_viajeros` | día × estación × línea × operador | `fecha_id`, `fecha`, `estacion_id`, `linea_id`, `operador_id`, `viajeros`, `temperatura_media`, `precipitacion_mm`, `condicion_meteo` |
+| `fact_puntualidad` | servicio (tren) | `fecha_id`, `fecha`, `linea_id`, `operador_id`, `estacion_id`, `servicio_id`, `hora_prevista`, `hora_real`, `hora`, `retraso_min`, `estado`, `cancelado`, `es_puntual` (retraso ≤ 5 min), meteo |
 
 ### Superset
 
@@ -345,12 +347,14 @@ locales (así corren los tests, sin MinIO).
   dimensiones (`viajeros_diarios` y `puntualidad_servicios`), con las métricas guardadas
   (`total_viajeros`, `media_viajeros_dia`, `pct_puntuales`, `retraso_medio`, `retraso_p90`...).
 - **Dashboards de ejemplo, todos del corredor AVE Madrid–Barcelona:** *Demanda ferroviaria* (viajeros por
-  estación, evolución diaria por estación, % de viajeros en fin de semana, reparto por época del año, día de la
-  semana, festivos, meteorología y comunidades) y *Puntualidad* (% puntuales, retraso medio, evolución mensual y
-  diaria por estación de llegada, tabla por estación, franja horaria × día de la semana, tipo de día, meteorología,
-  estaciones críticas), con filtros nativos de fechas, estación y comunidad (o tipo de día). Los datasets
+  estación, **cuota, evolución semanal y resumen por operador**, evolución diaria por estación, % de viajeros en fin de
+  semana, reparto por época del año, día de la semana, festivos, meteorología y comunidades) y *Puntualidad*
+  (% puntuales, retraso medio, **puntualidad por operador y su evolución mensual**, evolución mensual y diaria por
+  estación de llegada, tabla por estación, franja horaria × día de la semana, tipo de día, meteorología, estaciones
+  críticas), con filtros nativos de fechas, **operador**, estación y comunidad (o tipo de día). Los datasets
   `viajeros_diarios` y `puntualidad_servicios` **filtran por `AVE-MAD-BCN`**: aunque lleguen datos de otras líneas,
-  los dashboards solo muestran el corredor. Los otros dos son *Predicción de demanda* y *Trazabilidad de cargas*
+  los dashboards solo muestran el corredor. La predicción es del total del corredor (no hay demanda trimestral por
+  operador en sus fuentes). Los otros dos son *Predicción de demanda* y *Trazabilidad de cargas*
   (esta última habla del lake, no del corredor), que se describen más abajo.
 - **Metastore**: Superset guarda sus metadatos en la base de datos `superset` del mismo Postgres
   que usa Airflow (servicio `postgres`, variables `POSTGRES_USER`/`POSTGRES_PASSWORD` del `.env`);
@@ -447,7 +451,7 @@ que son las vistas que registran las apps (`LakeViews`). Tipos disponibles:
 ```yaml
 tablas:
   gold_fact_viajeros:
-    - {nombre: grano_unico,         tipo: unico,      columnas: [fecha_id, estacion_id, linea_id], severidad: bloqueante}
+    - {nombre: grano_unico,         tipo: unico,      columnas: [fecha_id, estacion_id, linea_id, operador_id], severidad: bloqueante}
     - {nombre: lineas_en_dim_linea, tipo: referencia, columnas: [linea_id], tabla: gold_dim_linea,  severidad: bloqueante}
     - {nombre: viajeros_conciliados, tipo: sql, severidad: bloqueante,
        sql: "SELECT abs((SELECT sum(viajeros) FROM gold_fact_viajeros) - (SELECT sum(viajeros) FROM silver_viajeros_enriquecidos))"}
