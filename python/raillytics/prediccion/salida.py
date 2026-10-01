@@ -61,7 +61,13 @@ def escribir_csv(
     destino = ruta_csv(raiz, trimestre, version_prompt, generado_en)
     if destino.exists():
         raise FileExistsError(f"ya existe {destino}: no se sobrescriben predicciones (reintenta pasado un segundo)")
-    destino.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        destino.parent.mkdir(parents=True, exist_ok=True)
+    except PermissionError as exc:
+        raise PermissionError(
+            f"no se puede crear {destino.parent}: {exc.strerror}. Si corre dentro de Airflow, fija AIRFLOW_UID=$(id -u) "
+            "en el .env y recrea el stack (make down && make up) para que escriba con tu usuario"
+        ) from exc
     contenido = df.to_csv(index=False, float_format="%.6f", lineterminator="\n").encode("utf-8")
     return atomic_write_bytes(destino, contenido)
 
@@ -101,6 +107,6 @@ def formatear_resumen(resumen: dict[str, float | None]) -> str:
             f"  fines de semana        {_fmt(resumen['fines_de_semana'])}",
             f"  festivos               {_fmt(resumen['festivos'])}",
             f"  días con evento        {_fmt(resumen['dias_con_evento'])}",
-            f"  dispersión (σ) {_fmt(resumen['desviacion'])} | mín {_fmt(resumen['minimo'])} | máx {_fmt(resumen['maximo'])}",
+            f"  desviación típica {_fmt(resumen['desviacion'])} | mín {_fmt(resumen['minimo'])} | máx {_fmt(resumen['maximo'])}",
         ]
     )

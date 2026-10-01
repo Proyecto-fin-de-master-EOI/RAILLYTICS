@@ -109,7 +109,7 @@ RAILLYTICS/
 │   ├── data_sources.yml        # Registro de fuentes (id, url, formato csv|json|zip) — lo leen Python y Scala
 │   ├── quality_gates.yml       # Quality gates declarativos de Silver y Gold — los evalúa Spark (Scala)
 │   ├── prediccion.yml          # Consultas de entrada de la predicción de demanda (lake -> contrato); las lee Python
-│   └── prompts/                # Plantillas versionadas del prompt del LLM (demanda_v1.md, ...)
+│   └── prompts/                # Plantillas versionadas del prompt del LLM (demanda_v1.md, demanda_v2.md, ...)
 │
 ├── docker/
 │   ├── docker-compose.yml      # MinIO + Postgres + Airflow (LocalExecutor) + Superset + Ollama (perfil llm), local/desarrollo
@@ -518,11 +518,11 @@ make llm-up                           # Ollama + modelo (LLM_GPU=1 en el .env re
 make 06_prediccion TRIMESTRE=2026-T4  # predice el trimestre y escribe el CSV
 make 06_prediccion TRIMESTRE=2026-T4 PRED_ARGS="--solo-nivel"            # solo calcula el total esperado (sin LLM)
 make 06_prediccion TRIMESTRE=2026-T4 PRED_ARGS="--total-esperado 4200000" # fija el total a mano
-make 06_prediccion TRIMESTRE=2026-T4 PROMPT=demanda_v2 PRED_ARGS="--mostrar-prompt"
+make 06_prediccion TRIMESTRE=2026-T4 PRED_PROMPT=demanda_v2 PRED_ARGS="--mostrar-prompt"   # imprime el prompt y termina (sin LLM)
 make llm-down
 ```
 
-`--solo-nivel` y `--mostrar-prompt` sirven para iterar sin gastar minutos de GPU. Si el trimestre ya está
+`--solo-nivel` (calcula el total y termina) y `--mostrar-prompt` (imprime el prompt exacto y termina) no llaman al LLM: sirven para iterar sin gastar minutos de GPU. Si el trimestre ya está
 publicado, se relanza como **backtest** (el nivel nunca mira al propio trimestre) y se informa de cuánto se
 desvió el total esperado del real.
 
@@ -552,18 +552,51 @@ UTF-8, cabecera, separador `,`, decimal `.`.
 | `indice` | índice normalizado (media del trimestre = 1.0) |
 | `motivo` | justificación del LLM |
 | `trimestre` | `AAAA-Tn` |
-| `modelo`, `version_prompt` | p. ej. `mistral-nemo`, `demanda_v1` |
+| `modelo`, `version_prompt` | p. ej. `mistral-nemo`, `demanda_v2` |
 | `run_id`, `generado_en` | enlaza con `_trazabilidad/cargas/`; hora UTC |
 
 Cada ejecución queda en la trazabilidad (`proceso = prediccion_demanda`, `capa = ml`, con trimestre, modelo,
 versión del prompt y semilla en `parametros`) y sus quality gates en `_trazabilidad/calidad/`. Bloqueantes: un
-registro por día, sin nulos, viajeros ≥ 0, índices en [0.2, 3.0] y suma = total. Avisos: índices casi planos y
+registro por día, sin nulos, viajeros ≥ 0, índices del LLM en [0.2, 3.0] y suma = total. Avisos: índices casi planos y
 trimestre sin datos de eventos.
+
+### El prompt: un fichero de texto versionado
+
+El prompt **no está en el código**: es un fichero de texto plano, `config/prompts/demanda_vN.md`, con marcadores
+`{{...}}` que el código rellena (`corredor`, `trimestre`, `num_dias`, `total_esperado`, `historico`, `nota_eventos`,
+`calendario`). Se elige con `PRED_PROMPT` (por defecto `demanda_v2`; no se llama `PROMPT` porque `cmd.exe` ya define
+esa variable). `demanda_v1.md` se conserva como línea base.
+
+`demanda_v2.md` aplica estas prácticas, elegidas midiendo variantes con el modelo real y no por opinión:
+
+- **Secciones delimitadas** (`<rol>`, `<tarea>`, `<criterios>`, `<contexto>`, `<ejemplo>`, `<calendario>`,
+  `<respuesta>`): separan las instrucciones de los datos, y los datos largos (el calendario) van después de las
+  instrucciones y del ejemplo.
+- **Criterios numéricos explícitos** (valor de partida por día de la semana, festivos y eventos) en vez de «suele
+  ser más alto». **Son hipótesis de partida, no datos**: ajústalos.
+- **Un ejemplo** con la salida exacta esperada, en fechas ficticias (un test comprueba que cumple el contrato).
+- **Razonar antes de decidir**: en el JSON el `motivo` va *antes* del `indice` (el schema fuerza ese orden).
+- **El día de la semana viene dado** en cada línea del calendario y se pide usarlo: los LLM calculan mal los días.
+- **El calendario se declara como datos, no instrucciones**: los textos de los eventos vienen de fuentes externas.
+- Una sola tarea y respuesta solo JSON con el formato explícito.
+
+Medido el 2026-10-01 con `mistral-nemo` sobre el calendario de 2026-T4 (festivos y eventos de prueba):
+
+| | v1 | v2 |
+| --- | --- | --- |
+| Días que siguen la rúbrica semanal (±0.10) | 46 de 78 | **78 de 78** |
+| Índice medio de un festivo entre semana (laborable = 1.0) | 1.32 | **0.73** |
+| Motivos con el día de la semana equivocado | 1 | **0** |
+| Valores de índice distintos | 6 | **10** |
+
+Probado y **no incorporado** por no mejorar: separar en mensaje de sistema y de usuario (66 de 78) y calcular en
+código marcas de víspera/puente (76 de 78). **Limitación conocida:** ninguna variante aplica el ajuste de víspera
+(el índice medio de las vísperas sale ≈ 1.0); si te importa, habría que calcular ese ajuste en código.
 
 ### Iterar el prompt
 
-El prompt es `config/prompts/demanda_vN.md`: copia `demanda_v1.md` a `demanda_v2.md`, edítalo y lánzalo con
-`PROMPT=demanda_v2`. Los marcadores `{{...}}` disponibles están en `raillytics.prediccion.prompt`. **No hay
+Copia `demanda_v2.md` a `demanda_v3.md`, edítalo y lánzalo con `PRED_PROMPT=demanda_v3`. Los marcadores `{{...}}`
+disponibles están en `raillytics.prediccion.prompt`. **No hay
 verdad externa con la que medir la forma diaria** (solo existen totales trimestrales), así que cada ejecución
 imprime un resumen de coherencia: índice medio de laborables, fines de semana, festivos y días con evento, y la
 dispersión. Úsalo para comparar versiones: un festivo con índice 1.0 o un fin de semana igual que un laborable

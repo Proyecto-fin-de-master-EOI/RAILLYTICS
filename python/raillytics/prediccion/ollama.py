@@ -78,12 +78,14 @@ def esquema_respuesta(n_dias: int) -> dict:
                 "maxItems": n_dias,
                 "items": {
                     "type": "object",
+                    # El orden importa: Ollama fuerza las claves en el orden del schema. El motivo va ANTES del índice
+                    # para que el modelo razone (día de la semana y causa) antes de comprometerse con un número.
                     "properties": {
                         "fecha": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
-                        "indice": {"type": "number", "minimum": INDICE_MIN, "maximum": INDICE_MAX},
                         "motivo": {"type": "string", "maxLength": MAX_MOTIVO},
+                        "indice": {"type": "number", "minimum": INDICE_MIN, "maximum": INDICE_MAX},
                     },
-                    "required": ["fecha", "indice", "motivo"],
+                    "required": ["fecha", "motivo", "indice"],
                 },
             }
         },
@@ -193,6 +195,11 @@ class OllamaClient:
             "stream": False,
             "format": esquema,
             "options": {"temperature": 0, "seed": s.seed, "num_ctx": s.num_ctx},
+            # Medido en Ollama 0.13.3: por defecto, si la respuesta no cabe en num_ctx desplaza el contexto en silencio
+            # (done_reason 'stop' con una respuesta degradada) y, si no cabe el prompt, lo trunca sin avisar.
+            # Con estos dos campos avisa: done_reason 'length' y HTTP 400 'input length exceeds the context length'.
+            "shift": False,
+            "truncate": False,
         }
         try:
             respuesta = self._http.post(f"{s.url}/api/chat", json=cuerpo, timeout=s.timeout_s)
@@ -207,6 +214,10 @@ class OllamaClient:
             ) from exc
         if respuesta.status_code == 404:
             raise ModeloNoDescargado(f"Ollama no conoce el modelo '{s.modelo}'. Descárgalo con: ollama pull {s.modelo}")
+        if respuesta.status_code == 400 and "context length" in respuesta.text:
+            raise ContextoInsuficiente(
+                f"el prompt no cabe en el contexto (num_ctx={s.num_ctx}). Sube OLLAMA_NUM_CTX (92 días necesitan ~10.000)"
+            )
         if not respuesta.ok:
             raise OllamaError(f"Ollama respondió {respuesta.status_code}: {respuesta.text[:300]}")
         try:
@@ -223,5 +234,11 @@ class OllamaClient:
             raise ContextoInsuficiente(
                 f"el prompt llenó el contexto (num_ctx={s.num_ctx}) y Ollama lo habrá truncado. "
                 "Sube OLLAMA_NUM_CTX (92 días necesitan ~10.000)"
+            )
+        if datos.get("prompt_eval_count", 0) + datos.get("eval_count", 0) >= s.num_ctx:
+            # Red de seguridad para versiones de Ollama que ignoren shift=false.
+            raise ContextoInsuficiente(
+                f"prompt y respuesta llenaron el contexto (num_ctx={s.num_ctx}): Ollama habrá desplazado el contexto y "
+                "la respuesta no es fiable. Sube OLLAMA_NUM_CTX (92 días necesitan ~10.000)"
             )
         return contenido

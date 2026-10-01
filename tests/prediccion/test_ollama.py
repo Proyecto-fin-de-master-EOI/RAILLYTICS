@@ -66,6 +66,13 @@ def test_from_env_lee_las_variables_y_la_url_manda_sobre_el_puerto():
     assert (s.url, s.modelo, s.num_ctx, s.timeout_s, s.seed) == ("http://ollama:11434", "phi4", 16384, 60.0, 7)
 
 
+def test_el_schema_pide_el_motivo_antes_del_indice_para_que_el_modelo_razone_antes_de_decidir():
+    items = esquema_respuesta(92)["properties"]["dias"]["items"]
+
+    assert list(items["properties"]) == ["fecha", "motivo", "indice"]
+    assert items["required"] == ["fecha", "motivo", "indice"]
+
+
 def test_el_schema_fija_el_numero_de_dias_y_evita_las_clases_de_escape_que_ollama_rechaza():
     esquema = esquema_respuesta(92)
 
@@ -213,6 +220,45 @@ def test_un_prompt_que_llena_el_contexto_se_considera_truncado(cliente, requests
 
     with pytest.raises(ContextoInsuficiente, match="truncado"):
         cliente.generar_indices("PROMPT", DIAS)
+
+
+def test_la_peticion_desactiva_el_desplazamiento_y_el_truncado_silenciosos(cliente, requests_mock):
+    # Medido en Ollama 0.13.3: por defecto desplaza el contexto (done_reason 'stop' aunque la respuesta no quepa)
+    # y trunca el prompt sin avisar; con shift/truncate a false avisa con 'length' y con HTTP 400.
+    requests_mock.post(CHAT, **respuesta())
+
+    cliente.generar_indices("PROMPT", DIAS)
+
+    cuerpo = requests_mock.last_request.json()
+    assert cuerpo["shift"] is False and cuerpo["truncate"] is False
+
+
+def test_http_400_por_longitud_de_entrada_es_contexto_insuficiente_y_no_se_reintenta(cliente, requests_mock):
+    requests_mock.post(CHAT, status_code=400, json={"error": "the input length exceeds the context length"})
+
+    with pytest.raises(ContextoInsuficiente, match="OLLAMA_NUM_CTX"):
+        cliente.generar_indices("PROMPT", DIAS)
+
+    assert requests_mock.call_count == 1
+
+
+def test_un_400_que_no_es_de_contexto_sigue_siendo_un_error_generico(cliente, requests_mock):
+    requests_mock.post(CHAT, status_code=400, json={"error": "invalid format"})
+
+    with pytest.raises(OllamaError, match="400.*invalid format") as error:
+        cliente.generar_indices("PROMPT", DIAS)
+
+    assert not isinstance(error.value, ContextoInsuficiente)
+
+
+def test_prompt_mas_respuesta_que_llenan_el_contexto_aunque_diga_stop_es_contexto_insuficiente(cliente, requests_mock):
+    # Red de seguridad para versiones de Ollama que ignoren shift=false: el contexto se llenó y se desplazó.
+    requests_mock.post(CHAT, **respuesta(prompt_eval_count=800, eval_count=300))  # 1.100 >= num_ctx 1.024
+
+    with pytest.raises(ContextoInsuficiente, match="desplaz"):
+        cliente.generar_indices("PROMPT", DIAS)
+
+    assert requests_mock.call_count == 1
 
 
 def test_http_404_es_un_modelo_no_descargado(cliente, requests_mock):

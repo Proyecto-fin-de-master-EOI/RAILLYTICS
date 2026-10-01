@@ -21,6 +21,19 @@ def test_el_constructor_rechaza_numeros_fuera_de_rango():
         Trimestre(2026, 5)
 
 
+@pytest.mark.parametrize(
+    "dia, esperado",
+    [
+        (date(2026, 1, 1), Trimestre(2026, 1)), (date(2026, 3, 31), Trimestre(2026, 1)),
+        (date(2026, 4, 1), Trimestre(2026, 2)), (date(2026, 10, 1), Trimestre(2026, 4)),
+        (date(2026, 12, 31), Trimestre(2026, 4)), (date(2028, 2, 29), Trimestre(2028, 1)),
+    ],
+)
+def test_de_fecha_devuelve_el_trimestre_que_contiene_el_dia(dia, esperado):
+    assert Trimestre.de_fecha(dia) == esperado
+    assert esperado.inicio <= dia <= esperado.fin
+
+
 def test_aritmetica_cruza_el_cambio_de_anio():
     assert Trimestre(2026, 4).mas(1) == Trimestre(2027, 1)
     assert Trimestre(2026, 1).menos(1) == Trimestre(2025, 4)

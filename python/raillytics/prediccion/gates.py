@@ -2,6 +2,10 @@
 
 Se evalúan sobre el DataFrame final ANTES de escribir el CSV. Reutilizan `ResultadoGate` del framework
 de calidad del proyecto (raillytics.calidad.registro): un gate bloqueante fallido impide escribir.
+
+El gate de rango se evalúa sobre los índices CRUDOS del LLM, que son los que tienen un contrato ([0.2, 3.0]):
+el índice normalizado del CSV (media 1.0) puede salirse de ese rango con salidas perfectamente legítimas
+(p. ej. un festivo a 0.2 con una media cruda de 1.07 queda en 0.187), y rechazarlas tiraría minutos de GPU.
 """
 from __future__ import annotations
 
@@ -37,7 +41,11 @@ def _gate(nombre, tipo, severidad, pasa, valor=None, umbral=None, detalle=None) 
 
 
 def evaluar_gates(
-    df: pd.DataFrame, dias: Sequence[date], total_esperado: int, eventos_con_datos: bool
+    df: pd.DataFrame,
+    dias: Sequence[date],
+    total_esperado: int,
+    eventos_con_datos: bool,
+    indices_crudos: Sequence[float],
 ) -> list[ResultadoGate]:
     esperadas = {d.isoformat() for d in dias}
     fechas = list(df["fecha"])
@@ -50,8 +58,8 @@ def evaluar_gates(
     nulos = int(df.isna().sum().sum())
     viajeros_min = 0 if vacio else int(df["viajeros_previstos"].min())
     suma = int(df["viajeros_previstos"].sum())
-    indice_min = INDICE_MIN if vacio else float(df["indice"].min())
-    indice_max = INDICE_MAX if vacio else float(df["indice"].max())
+    indice_min = min(indices_crudos) if len(indices_crudos) else INDICE_MIN
+    indice_max = max(indices_crudos) if len(indices_crudos) else INDICE_MAX
     dispersion = 0.0 if vacio else float(df["indice"].std(ddof=0))
 
     return [
@@ -67,7 +75,7 @@ def evaluar_gates(
         _gate(
             "indice_en_rango", "rango", SEVERIDAD_BLOQUEANTE,
             indice_min >= INDICE_MIN and indice_max <= INDICE_MAX, indice_max, f"[{INDICE_MIN}, {INDICE_MAX}]",
-            f"índice mínimo {indice_min:.3f} y máximo {indice_max:.3f} fuera de rango",
+            f"índice crudo del LLM mínimo {indice_min:.3f} y máximo {indice_max:.3f}: fuera de rango",
         ),
         _gate(
             "suma_igual_total", "suma", SEVERIDAD_BLOQUEANTE, suma == total_esperado, suma, str(total_esperado),

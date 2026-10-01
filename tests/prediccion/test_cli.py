@@ -1,3 +1,6 @@
+import io
+import sys
+
 import duckdb
 import pytest
 
@@ -11,7 +14,7 @@ def test_los_valores_por_defecto():
     args = cli.parsear(["--trimestre", "2026-T4"])
 
     assert args.trimestre == Trimestre(2026, 4)
-    assert (args.prompt, args.total_esperado, args.solo_nivel, args.mostrar_prompt) == ("demanda_v1", None, False, False)
+    assert (args.prompt, args.total_esperado, args.solo_nivel, args.mostrar_prompt) == ("demanda_v2", None, False, False)
 
 
 def test_todas_las_opciones():
@@ -37,7 +40,7 @@ def test_los_argumentos_invalidos_terminan_con_error_de_uso(argumentos):
 
 @pytest.fixture
 def sin_infraestructura(monkeypatch):
-    monkeypatch.setattr(cli, "_conectar", lambda layout, env: duckdb.connect())
+    monkeypatch.setattr(cli, "conectar", lambda layout, env: duckdb.connect())
 
 
 def test_main_devuelve_cero_y_pasa_los_argumentos_al_servicio(monkeypatch, sin_infraestructura):
@@ -54,7 +57,7 @@ def test_main_devuelve_cero_y_pasa_los_argumentos_al_servicio(monkeypatch, sin_i
     trimestre, kwargs = llamadas[0]
     assert codigo == 0 and trimestre == Trimestre(2026, 4)
     assert kwargs["solo_nivel"] is True and kwargs["total_manual"] == 7 and kwargs["cliente"] is None
-    assert kwargs["version_prompt"] == "demanda_v1"
+    assert kwargs["version_prompt"] == "demanda_v2"
 
 
 def test_main_crea_el_cliente_de_ollama_salvo_en_solo_nivel(monkeypatch, sin_infraestructura):
@@ -64,6 +67,27 @@ def test_main_crea_el_cliente_de_ollama_salvo_en_solo_nivel(monkeypatch, sin_inf
     cli.main(["--trimestre", "2026-T4"], env={"OLLAMA_MODEL": "phi4"})
 
     assert clientes[0].settings.modelo == "phi4"
+
+
+def test_main_no_crea_el_cliente_con_mostrar_prompt(monkeypatch, sin_infraestructura):
+    clientes = []
+    monkeypatch.setattr(cli, "ejecutar", lambda t, **kw: clientes.append(kw["cliente"]) or Resultado(None, 1, None, None, None))
+
+    assert cli.main(["--trimestre", "2026-T4", "--mostrar-prompt"], env={}) == 0
+    assert clientes == [None]
+
+
+def test_main_no_revienta_con_caracteres_que_la_consola_no_codifica(monkeypatch, sin_infraestructura):
+    consola = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")  # como Windows con la salida redirigida
+    monkeypatch.setattr(sys, "stdout", consola)
+
+    def imprime(trimestre, **kwargs):
+        print("σ → texto con caracteres fuera de cp1252")
+        return Resultado(None, 1, None, None, None)
+
+    monkeypatch.setattr(cli, "ejecutar", imprime)
+
+    assert cli.main(["--trimestre", "2026-T4", "--solo-nivel"], env={}) == 0
 
 
 def test_main_traduce_los_errores_de_dominio_a_codigo_1_con_mensaje(monkeypatch, sin_infraestructura, capsys):

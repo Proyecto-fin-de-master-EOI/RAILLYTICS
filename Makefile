@@ -69,7 +69,7 @@ help:
 	@echo "  04_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold), con quality gates"
 	@echo "  05_superset-import    Reimporta los dashboards de dashboards/superset/ en Superset"
 	@echo "  06_prediccion         Predicción diaria de demanda AVE Madrid-Barcelona con un LLM (make 06_prediccion TRIMESTRE=2026-T4)"
-	@echo "                        (PROMPT=demanda_v1 elige la plantilla; PRED_ARGS=\"--solo-nivel\" o \"--total-esperado N\" pasan opciones)"
+	@echo "                        (PRED_PROMPT=demanda_v2 elige la plantilla; PRED_ARGS=\"--solo-nivel\" o \"--total-esperado N\" pasan opciones)"
 	@echo "  llm-up                Levanta Ollama (perfil llm del compose) y descarga OLLAMA_MODEL (LLM_GPU=1 reserva la GPU NVIDIA)"
 	@echo "  llm-down              Para y elimina los contenedores de Ollama (los modelos se conservan en su volumen)"
 	@echo "  quality-gates      Evalúa config/quality_gates.yml sobre Silver y Gold del lake (app Spark; falla si hay gates bloqueantes)"
@@ -146,11 +146,11 @@ test-scala:
 # trimestre y un LLM de Ollama reparte ese total entre los días. Escribe un CSV en
 # PREDICCIONES_ROOT (data/predicciones por defecto). Necesita Ollama arriba: make llm-up.
 TRIMESTRE ?=
-PROMPT ?= demanda_v1
+PRED_PROMPT ?= demanda_v2
 PRED_ARGS ?=
 06_prediccion: $(VENV)/.deps-installed
 	$(if $(TRIMESTRE),,$(error Falta TRIMESTRE: make 06_prediccion TRIMESTRE=2026-T4))
-	$(VENV_PY) -m raillytics.prediccion --trimestre $(TRIMESTRE) --prompt $(PROMPT) $(PRED_ARGS)
+	$(VENV_PY) -m raillytics.prediccion --trimestre $(TRIMESTRE) --prompt $(PRED_PROMPT) $(PRED_ARGS)
 
 
 # LLM local (Ollama) para la predicción: perfil `llm` del compose. Con LLM_GPU=1 (p. ej. en el .env) se añade

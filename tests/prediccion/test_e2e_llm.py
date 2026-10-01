@@ -28,7 +28,7 @@ def test_prediccion_completa_con_ollama_real(entorno):
     env = dict(entorno.env, PROMPTS_DIR=str(RAIZ / "config" / "prompts"))  # el prompt v1 de verdad
 
     resultado = ejecutar(
-        Trimestre(2026, 4), version_prompt="demanda_v1", total_manual=None, solo_nivel=False, env=env,
+        Trimestre(2026, 4), version_prompt="demanda_v2", total_manual=None, solo_nivel=False, env=env,
         layout=entorno.layout, con=entorno.con, cliente=cliente, ahora=datetime(2026, 10, 1, 16, 51, 0), imprimir=print,
     )
 

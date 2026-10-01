@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import duckdb
@@ -13,6 +13,7 @@ from raillytics.prediccion.nivel import NivelError
 from raillytics.prediccion.normalizar import IndiceDia
 from raillytics.prediccion.ollama import OllamaSettings, RespuestaInvalida
 from raillytics.prediccion.prompt import PlantillaError
+from raillytics.prediccion import servicio
 from raillytics.prediccion.servicio import ejecutar
 from raillytics.prediccion.trimestre import Trimestre
 
@@ -124,12 +125,30 @@ def test_total_manual_sustituye_al_nivel(entorno):
     assert json.loads(_cargas(entorno)[0][7])["total_manual"] == 500_000
 
 
-def test_mostrar_prompt_imprime_exactamente_lo_que_se_envia(entorno):
+def test_mostrar_prompt_imprime_el_prompt_y_termina_sin_llamar_al_llm(entorno):
     cliente = ClienteFalso()
 
-    _, salida = _lanzar(entorno, cliente, mostrar_prompt=True)
+    resultado, salida = _lanzar(entorno, cliente, mostrar_prompt=True)
 
-    assert cliente.prompts[0] in salida
+    assert cliente.comprobaciones == 0 and cliente.prompts == []  # ni siquiera se comprueba Ollama
+    assert resultado.ruta is None and _csvs(entorno) == []
+    assert not Path(entorno.layout.cargas_dir).exists()  # no queda carga registrada
+    enviado = ClienteFalso()
+    _lanzar(entorno, enviado)  # ejecución normal
+    assert enviado.prompts[0] in salida  # lo mostrado es exactamente lo que luego se envía
+
+
+def test_mostrar_prompt_no_necesita_cliente(entorno):
+    resultado, salida = _lanzar(entorno, None, mostrar_prompt=True)
+
+    assert resultado.ruta is None and any("1.320.000" in linea for linea in salida)
+
+
+def test_la_salida_por_consola_cabe_en_cp1252(entorno):
+    # Windows con la salida redirigida usa cp1252: un carácter fuera (p. ej. 'σ') rompía la ejecución tras escribir el CSV.
+    _, salida = _lanzar(entorno, ClienteFalso())
+
+    "\n".join(salida).encode("cp1252")
 
 
 def test_si_el_llm_falla_no_se_escribe_nada_y_la_carga_queda_en_error(entorno):
@@ -142,7 +161,7 @@ def test_si_el_llm_falla_no_se_escribe_nada_y_la_carga_queda_en_error(entorno):
 
 
 def test_un_gate_bloqueante_impide_escribir_y_queda_registrado(entorno):
-    extremos = [3.0] + [0.2] * 91  # normalizado, el máximo supera con mucho 3.0
+    extremos = [3.5] + [1.0] * 91  # un índice crudo por encima del límite duro de 3.0 (el cliente real ya lo rechazaría)
 
     with pytest.raises(QualityGateError, match="indice_en_rango"):
         _lanzar(entorno, ClienteFalso(indices=extremos))
@@ -179,3 +198,54 @@ def test_sin_nivel_calculable_pide_el_total_a_mano(entorno):
         )
 
     assert _csvs(entorno) == []
+
+
+# --- punto de entrada del DAG de Airflow: todo sale del entorno del contenedor ---
+
+
+@pytest.fixture
+def desde_entorno(entorno, monkeypatch):
+    """Sustituye Ollama y la conexión al lake; el resto (config, prompts, CSV) es el código real."""
+    cliente = ClienteFalso()
+    monkeypatch.setattr(servicio, "OllamaClient", lambda settings: cliente)
+    monkeypatch.setattr(servicio, "conectar", lambda layout, env: entorno.con)
+    env = dict(entorno.env, SILVER_ROOT=entorno.layout.silver_root, GOLD_ROOT=entorno.layout.gold_root)
+    return entorno, cliente, env
+
+
+def test_predecir_desde_entorno_usa_el_trimestre_en_curso_si_no_se_indica(desde_entorno):
+    entorno, cliente, env = desde_entorno
+
+    resultado = servicio.predecir_desde_entorno(None, date(2026, 10, 1), env, version_prompt="demanda_v1", imprimir=lambda _: None)
+
+    assert resultado.ruta.parent.name == "2026-T4" and resultado.ruta.is_file()
+    assert resultado.total_esperado == 1_320_000 and cliente.comprobaciones == 1
+
+
+def test_predecir_desde_entorno_respeta_el_trimestre_pedido(desde_entorno):
+    _, _, env = desde_entorno
+
+    resultado = servicio.predecir_desde_entorno("2026-T4", date(2030, 1, 1), env, version_prompt="demanda_v1", imprimir=lambda _: None)
+
+    assert resultado.ruta.parent.name == "2026-T4"
+
+
+def test_predecir_desde_entorno_rechaza_un_trimestre_mal_escrito(desde_entorno):
+    _, cliente, env = desde_entorno
+
+    with pytest.raises(ValueError, match="AAAA-Tn"):
+        servicio.predecir_desde_entorno("2026-Q4", date(2026, 10, 1), env, imprimir=lambda _: None)
+
+    assert cliente.comprobaciones == 0
+
+
+def test_la_plantilla_por_defecto_es_la_v2_y_se_puede_cambiar_con_el_entorno(desde_entorno):
+    _, _, env = desde_entorno
+
+    assert servicio.VERSION_PROMPT_POR_DEFECTO == "demanda_v2"
+    with pytest.raises(PlantillaError, match="demanda_v2"):  # el lake de prueba solo tiene demanda_v1
+        servicio.predecir_desde_entorno(None, date(2026, 10, 1), env, imprimir=lambda _: None)
+    resultado = servicio.predecir_desde_entorno(
+        None, date(2026, 10, 1), dict(env, PRED_PROMPT="demanda_v1"), imprimir=lambda _: None
+    )
+    assert "demanda_v1" in resultado.ruta.name

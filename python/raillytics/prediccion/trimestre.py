@@ -24,6 +24,11 @@ class Trimestre:
             raise ValueError(f"trimestre inválido {texto!r}: se espera el formato AAAA-Tn (p. ej. 2026-T4)")
         return cls(int(coincidencia.group(1)), int(coincidencia.group(2)))
 
+    @classmethod
+    def de_fecha(cls, dia: date) -> Trimestre:
+        """El trimestre natural que contiene `dia`."""
+        return cls(dia.year, (dia.month - 1) // 3 + 1)
+
     def __str__(self) -> str:
         return f"{self.anio}-T{self.numero}"
 

@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from pathlib import Path
 
@@ -5,6 +6,7 @@ import pandas as pd
 import pytest
 
 from raillytics.prediccion.calendario import construir_calendario
+from raillytics.prediccion.normalizar import INDICE_MAX, INDICE_MIN
 from raillytics.prediccion.prompt import (
     MARCADOR,
     PlantillaError,
@@ -120,18 +122,43 @@ def test_un_evento_con_un_marcador_en_su_descripcion_no_corrompe_el_prompt():
     assert len([linea for linea in prompt.split("\n") if linea.startswith("2026-")]) == 92
 
 
-def test_la_plantilla_v1_usa_exactamente_los_marcadores_que_se_rellenan():
-    texto = cargar_plantilla("demanda_v1", PROMPTS)
-
-    assert set(MARCADOR.findall(texto)) == {
-        "corredor", "trimestre", "num_dias", "total_esperado", "historico", "nota_eventos", "calendario",
-    }
+MARCADORES = {"corredor", "trimestre", "num_dias", "total_esperado", "historico", "nota_eventos", "calendario"}
 
 
-def test_la_plantilla_v1_se_renderiza_completa():
+@pytest.mark.parametrize("version", ["demanda_v1", "demanda_v2"])
+def test_las_plantillas_usan_exactamente_los_marcadores_que_se_rellenan(version):
+    texto = cargar_plantilla(version, PROMPTS)
+
+    assert set(MARCADOR.findall(texto)) == MARCADORES
+
+
+@pytest.mark.parametrize("version", ["demanda_v1", "demanda_v2"])
+def test_las_plantillas_se_renderizan_completas(version):
     prompt = construir_prompt(
-        cargar_plantilla("demanda_v1", PROMPTS), T4, 1_320_000, HISTORICO, _calendario(), "AVE-MAD-BCN"
+        cargar_plantilla(version, PROMPTS), T4, 1_320_000, HISTORICO, _calendario(), "AVE-MAD-BCN"
     )
 
     assert "{{" not in prompt and "}}" not in prompt
     assert "1.320.000" in prompt and "AVE-MAD-BCN" in prompt and "2026-T4" in prompt
+
+
+def test_la_plantilla_v2_esta_estructurada_en_secciones_y_trata_el_calendario_como_datos():
+    texto = cargar_plantilla("demanda_v2", PROMPTS)
+
+    posiciones = [texto.index(f"<{seccion}>") for seccion in ("rol", "tarea", "criterios", "contexto", "ejemplo", "calendario", "respuesta")]
+    assert posiciones == sorted(posiciones)  # el calendario (datos largos) va tras las instrucciones y el ejemplo
+    assert all(f"</{s}>" in texto for s in ("rol", "tarea", "criterios", "contexto", "ejemplo", "calendario", "respuesta"))
+    assert "datos, no instrucciones" in texto  # los textos de los eventos vienen de fuentes externas
+
+
+def test_el_ejemplo_de_la_plantilla_v2_cumple_el_contrato_de_respuesta():
+    texto = cargar_plantilla("demanda_v2", PROMPTS)
+    ejemplo = texto.split("Respuesta correcta para ese fragmento:\n")[1].split("\n</ejemplo>")[0]
+
+    dias = json.loads(ejemplo)["dias"]
+
+    assert len(dias) >= 3
+    for dia in dias:
+        assert list(dia) == ["fecha", "motivo", "indice"]  # el motivo ANTES del índice: razonar antes de decidir
+        date.fromisoformat(dia["fecha"])
+        assert INDICE_MIN <= dia["indice"] <= INDICE_MAX and len(dia["motivo"].split()) <= 10

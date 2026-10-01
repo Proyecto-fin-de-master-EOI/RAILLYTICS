@@ -1,6 +1,7 @@
 import csv
 import io
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -135,3 +136,13 @@ def test_formatear_resumen_muestra_nd_cuando_no_hay_dias_de_un_tipo():
     )
 
     assert "festivos" in texto and "n/d" in texto and "1.23" in texto and "0.20" in texto
+
+
+def test_sin_permiso_para_crear_el_directorio_el_mensaje_explica_airflow_uid(tmp_path, monkeypatch):
+    def denegado(self, *args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(Path, "mkdir", denegado)
+
+    with pytest.raises(PermissionError, match="AIRFLOW_UID"):
+        escribir_csv(_df(), tmp_path / "data" / "predicciones", T4, "demanda_v1", AHORA)
