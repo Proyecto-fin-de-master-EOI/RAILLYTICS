@@ -3,7 +3,6 @@ from datetime import date, datetime
 
 import duckdb
 import pandas as pd
-import pytest
 
 from raillytics.prediccion.calendario import construir_calendario
 from raillytics.prediccion.normalizar import IndiceDia, normalizar_indices, repartir
@@ -71,3 +70,26 @@ def test_republicar_la_misma_ejecucion_no_duplica_filas(tmp_path):
     publicar_gold(con, layout, gold)
 
     assert duckdb.connect().execute(f"SELECT count(*) FROM read_parquet('{layout.gold_glob(GOLD_TABLA)}')").fetchone() == (92,)
+
+
+def test_un_trimestre_sin_festivos_ni_eventos_publica_esas_columnas_como_texto(tmp_path):
+    # Con la columna entera a None, DuckDB la tipa como INTEGER: el contrato de la tabla (y las demás ejecuciones) es VARCHAR.
+    layout = LakeLayout(silver_root=(tmp_path / "silver").as_posix(), gold_root=(tmp_path / "gold").as_posix())
+    con = connect()
+    sin_nada = construir_calendario(
+        T4,
+        pd.DataFrame([], columns=["fecha", "nombre"]),
+        pd.DataFrame([], columns=["fecha", "descripcion", "ciudad"]),
+        pd.DataFrame([], columns=["fecha", "ciudad", "temperatura_media", "precipitacion_mm"]),
+    )
+
+    sin = publicar_gold(con, layout, construir_gold(_df("run-sin"), sin_nada, total_esperado=1_320_000, datos_sinteticos=False))
+    con_datos = publicar_gold(con, layout, construir_gold(_df("run-con"), _calendario(), total_esperado=1_320_000, datos_sinteticos=False))
+
+    lector = duckdb.connect()
+    for ruta in (sin, con_datos):
+        tipos = lector.execute(f"DESCRIBE SELECT festivo, eventos FROM read_parquet('{ruta}')").fetchall()
+        assert [t[1] for t in tipos] == ["VARCHAR", "VARCHAR"], ruta
+    # un lector del glob sin union_by_name (un notebook, un job Spark) tiene que poder leer las dos ejecuciones juntas
+    n = lector.execute(f"SELECT count(*) FROM read_parquet('{layout.gold_glob(GOLD_TABLA)}')").fetchone()[0]
+    assert n == 2 * len(DIAS)

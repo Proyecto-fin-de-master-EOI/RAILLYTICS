@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import date
 
 import requests
+from urllib3.exceptions import ReadTimeoutError
 
 from raillytics.prediccion.normalizar import INDICE_MAX, INDICE_MIN, IndiceDia
 
@@ -283,11 +284,13 @@ class OllamaClient:
                 if trozo.get("done"):
                     final = trozo
                     break
-        except requests.Timeout as exc:
-            raise OllamaError(
-                f"Ollama dejó de responder durante {s.timeout_s:.0f} s. Sube OLLAMA_TIMEOUT_S o usa un modelo más rápido"
-            ) from exc
-        except requests.RequestException as exc:  # conexión cortada a mitad del flujo
+        except requests.RequestException as exc:
+            # Con el flujo ya abierto, requests envuelve el ReadTimeoutError de urllib3 en un ConnectionError (no en un
+            # Timeout): se distingue aquí para no aconsejar `make llm-up` cuando lo que pasa es que el modelo va lento.
+            if isinstance(exc, requests.Timeout) or any(isinstance(a, ReadTimeoutError) for a in exc.args):
+                raise OllamaError(
+                    f"Ollama dejó de responder durante {s.timeout_s:.0f} s. Sube OLLAMA_TIMEOUT_S o usa un modelo más rápido"
+                ) from exc
             raise OllamaNoDisponible(
                 f"se perdió la conexión con Ollama en {s.url} durante la generación ({exc}). "
                 "Levántalo con: make llm-up (o docker compose --profile llm up -d)"

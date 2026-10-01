@@ -3,6 +3,7 @@ from datetime import date, timedelta
 
 import pytest
 import requests
+from urllib3.exceptions import ReadTimeoutError
 
 from raillytics.prediccion.ollama import (
     ContextoInsuficiente,
@@ -321,6 +322,38 @@ def test_el_timeout_dice_que_variable_subir(cliente, requests_mock):
 
     with pytest.raises(OllamaError, match="OLLAMA_TIMEOUT_S"):
         cliente.generar_indices("PROMPT", DIAS)
+
+
+class _FlujoQueSeCuelga:
+    """El `raw` de una respuesta cuyo servidor se queda mudo a mitad del flujo: urllib3 lanza ReadTimeoutError al leer."""
+
+    status = 200
+    reason = "OK"
+    headers = {"Content-Type": "application/x-ndjson"}
+
+    def stream(self, *_args, **_kwargs):
+        yield (json.dumps({"message": {"content": '{"dias": ['}, "done": False}) + "\n").encode()
+        raise ReadTimeoutError(None, CHAT, "Read timed out.")
+
+    def release_conn(self):
+        pass
+
+    def close(self):
+        pass
+
+
+def test_un_timeout_a_mitad_del_flujo_dice_que_variable_subir_y_no_que_levante_ollama(cliente, monkeypatch):
+    # requests envuelve ese ReadTimeoutError en un ConnectionError (no en un Timeout): con las cabeceras ya recibidas,
+    # el caso habitual de un modelo lento es este, y el consejo de `make llm-up` sería el equivocado.
+    colgada = requests.Response()
+    colgada.status_code = 200
+    colgada.raw = _FlujoQueSeCuelga()
+    monkeypatch.setattr(cliente._http, "post", lambda *_a, **_k: colgada)
+
+    with pytest.raises(OllamaError, match="OLLAMA_TIMEOUT_S") as error:
+        cliente.generar_indices("PROMPT", DIAS)
+
+    assert not isinstance(error.value, OllamaNoDisponible)
 
 
 def test_sin_conexion_dice_como_levantar_ollama(cliente, requests_mock):

@@ -58,10 +58,13 @@ def publicar_gold(con: duckdb.DuckDBPyConnection, layout: LakeLayout, gold: pd.D
     destino = f"{layout.gold_root}/{GOLD_TABLA}/{run_id}.parquet"
     ensure_parent_dir(destino)
     # pandas guarda fechas y horas como timestamps de nanosegundos; el contrato es DATE / TIMESTAMP, como lo escribiría Spark.
+    # festivo y eventos van a None en los días sin dato: si lo son TODOS (trimestre sin festivos o sin eventos), DuckDB tipa la
+    # columna como INTEGER, así que se fijan como texto para que todas las ejecuciones compartan esquema.
     con.register("prediccion_gold", gold)
     try:
         con.execute(
-            "COPY (SELECT * REPLACE (CAST(generado_en AS TIMESTAMP) AS generado_en, CAST(fecha AS DATE) AS fecha) "
+            "COPY (SELECT * REPLACE (CAST(generado_en AS TIMESTAMP) AS generado_en, CAST(fecha AS DATE) AS fecha, "
+            "CAST(festivo AS VARCHAR) AS festivo, CAST(eventos AS VARCHAR) AS eventos) "
             f"FROM prediccion_gold) TO '{destino}' (FORMAT PARQUET)"
         )
     finally:
