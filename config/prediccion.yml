@@ -1,0 +1,39 @@
+# Consultas de entrada de la predicción diaria de demanda (raillytics.prediccion.entradas).
+#
+# Cada origen es un SELECT de DuckDB que traduce lo que los DAGs de Airflow dejan en el lake al
+# contrato de la predicción. Debe devolver EXACTAMENTE estas columnas, en este orden:
+#
+#   trimestrales  trimestre ('AAAA-Tn'), viajeros (entero)
+#                 UNA fila por trimestre: solo el corredor AVE Madrid–Barcelona, ambos sentidos sumados.
+#   festivos      fecha (DATE), nombre
+#   eventos       fecha (DATE), descripcion, ciudad ('MAD', 'BCN' o NULL)
+#   meteo         fecha (DATE), ciudad ('MAD' | 'BCN'), temperatura_media, precipitacion_mm
+#                 UNA fila por (fecha, ciudad) con valores OBSERVADOS. La climatología (promedio histórico
+#                 del mes) para los días futuros la calcula la propia predicción a partir de estas filas.
+#
+# Marcadores de ruta: {bronze}, {silver}, {gold} (bucket de MinIO o directorio local, según el .env).
+#
+# IMPORTANTE: las rutas y las columnas de ORIGEN de abajo son SUPUESTAS. Cuando se escribió este fichero
+# los DAGs de Airflow aún no habían ingestado estas fuentes. Ajústalas a lo que haya en el lake. Para ver
+# las columnas reales de una fuente, en DuckDB:
+#   DESCRIBE SELECT * FROM read_parquet('s3://raillytics-bronze/l2/<fuente>/*/*.parquet');
+origenes:
+  trimestrales:
+    sql: |
+      SELECT concat(anio, '-T', trimestre) AS trimestre, sum(viajeros) AS viajeros
+      FROM read_parquet('{bronze}/l2/demanda_trimestral/*/*.parquet')
+      WHERE corredor = 'AVE-MAD-BCN'
+      GROUP BY 1
+      ORDER BY 1
+  festivos:
+    sql: |
+      SELECT fecha, nombre
+      FROM read_parquet('{bronze}/l2/festivos/*/*.parquet')
+  eventos:
+    sql: |
+      SELECT fecha, descripcion, ciudad
+      FROM read_parquet('{bronze}/l2/eventos/*/*.parquet')
+  meteo:
+    sql: |
+      SELECT fecha, ciudad, tmed AS temperatura_media, prec AS precipitacion_mm
+      FROM read_parquet('{bronze}/l2/aemet/*/*.parquet')

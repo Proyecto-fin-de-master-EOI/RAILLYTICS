@@ -1,0 +1,84 @@
+"""Quality gates de salida de la predicción.
+
+Se evalúan sobre el DataFrame final ANTES de escribir el CSV. Reutilizan `ResultadoGate` del framework
+de calidad del proyecto (raillytics.calidad.registro): un gate bloqueante fallido impide escribir.
+"""
+from __future__ import annotations
+
+from collections.abc import Sequence
+from datetime import date
+
+import pandas as pd
+
+from raillytics.calidad.registro import (
+    RESULTADO_FALLO,
+    RESULTADO_OK,
+    SEVERIDAD_AVISO,
+    SEVERIDAD_BLOQUEANTE,
+    ResultadoGate,
+)
+from raillytics.prediccion.normalizar import INDICE_MAX, INDICE_MIN
+
+TABLA = "prediccion_demanda_ave_mad_bcn"
+MIN_DISPERSION = 0.02  # desviación típica mínima de los índices: por debajo, el LLM devolvió una curva plana
+
+
+def _gate(nombre, tipo, severidad, pasa, valor=None, umbral=None, detalle=None) -> ResultadoGate:
+    return ResultadoGate(
+        tabla=TABLA,
+        gate=nombre,
+        tipo=tipo,
+        severidad=severidad,
+        resultado=RESULTADO_OK if pasa else RESULTADO_FALLO,
+        valor=None if valor is None else float(valor),
+        umbral=umbral,
+        detalle=None if pasa else detalle,
+    )
+
+
+def evaluar_gates(
+    df: pd.DataFrame, dias: Sequence[date], total_esperado: int, eventos_con_datos: bool
+) -> list[ResultadoGate]:
+    esperadas = {d.isoformat() for d in dias}
+    fechas = list(df["fecha"])
+    faltan = sorted(esperadas - set(fechas))
+    sobran = sorted(set(fechas) - esperadas)
+    duplicadas = sorted(set(df["fecha"][df["fecha"].duplicated()]))
+    cobertura_ok = len(fechas) == len(dias) and not faltan and not sobran and not duplicadas
+
+    vacio = df.empty
+    nulos = int(df.isna().sum().sum())
+    viajeros_min = 0 if vacio else int(df["viajeros_previstos"].min())
+    suma = int(df["viajeros_previstos"].sum())
+    indice_min = INDICE_MIN if vacio else float(df["indice"].min())
+    indice_max = INDICE_MAX if vacio else float(df["indice"].max())
+    dispersion = 0.0 if vacio else float(df["indice"].std(ddof=0))
+
+    return [
+        _gate(
+            "un_registro_por_dia", "cobertura", SEVERIDAD_BLOQUEANTE, cobertura_ok, len(fechas), str(len(dias)),
+            f"faltan {faltan[:5]}, sobran {sobran[:5]}, duplicadas {duplicadas[:5]}",
+        ),
+        _gate("sin_nulos", "no_nulos", SEVERIDAD_BLOQUEANTE, nulos == 0, nulos, "0", f"{nulos} celdas nulas"),
+        _gate(
+            "viajeros_no_negativos", "rango", SEVERIDAD_BLOQUEANTE, viajeros_min >= 0, viajeros_min, ">= 0",
+            f"hay viajeros previstos negativos (mínimo {viajeros_min})",
+        ),
+        _gate(
+            "indice_en_rango", "rango", SEVERIDAD_BLOQUEANTE,
+            indice_min >= INDICE_MIN and indice_max <= INDICE_MAX, indice_max, f"[{INDICE_MIN}, {INDICE_MAX}]",
+            f"índice mínimo {indice_min:.3f} y máximo {indice_max:.3f} fuera de rango",
+        ),
+        _gate(
+            "suma_igual_total", "suma", SEVERIDAD_BLOQUEANTE, suma == total_esperado, suma, str(total_esperado),
+            f"la suma de viajeros previstos es {suma} y el total esperado {total_esperado}",
+        ),
+        _gate(
+            "indice_no_plano", "dispersion", SEVERIDAD_AVISO, dispersion >= MIN_DISPERSION, dispersion,
+            f">= {MIN_DISPERSION}", f"desviación típica de los índices {dispersion:.4f}: el LLM devolvió una curva casi plana",
+        ),
+        _gate(
+            "eventos_con_datos", "fuente", SEVERIDAD_AVISO, eventos_con_datos, int(eventos_con_datos), "1",
+            "la fuente de eventos no tiene filas dentro del trimestre",
+        ),
+    ]

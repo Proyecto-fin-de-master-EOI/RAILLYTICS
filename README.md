@@ -107,10 +107,13 @@ RAILLYTICS/
 │
 ├── config/
 │   ├── data_sources.yml        # Registro de fuentes (id, url, formato csv|json|zip) — lo leen Python y Scala
-│   └── quality_gates.yml       # Quality gates declarativos de Silver y Gold — los evalúa Spark (Scala)
+│   ├── quality_gates.yml       # Quality gates declarativos de Silver y Gold — los evalúa Spark (Scala)
+│   ├── prediccion.yml          # Consultas de entrada de la predicción de demanda (lake -> contrato); las lee Python
+│   └── prompts/                # Plantillas versionadas del prompt del LLM (demanda_v1.md, ...)
 │
 ├── docker/
-│   ├── docker-compose.yml      # MinIO + Postgres + Airflow (LocalExecutor) + Superset, local/desarrollo
+│   ├── docker-compose.yml      # MinIO + Postgres + Airflow (LocalExecutor) + Superset + Ollama (perfil llm), local/desarrollo
+│   ├── docker-compose.gpu.yml  # Override opcional: reserva de GPU NVIDIA para Ollama (LLM_GPU=1)
 │   ├── init-buckets.sh         # Crea los buckets de MinIO (raillytics-bronze/-silver/-gold)
 │   ├── postgres/               # init-databases.sh: crea la BD de Superset en el Postgres compartido con Airflow
 │   └── superset/               # Imagen de Superset con driver DuckDB, superset_config.py y scripts de arranque/importación
@@ -128,7 +131,8 @@ RAILLYTICS/
 │   ├── bronze_rejected/        # Generado en runtime: cuarentena (ficheros que no pasan un quality gate + .rechazo.txt)
 │   ├── checkpoints/            # Generado en runtime: checkpoints de Spark Structured Streaming
 │   ├── silver/                 # Datos limpios, normalizados y enriquecidos (Delta Lake)
-│   └── gold/                   # Sin uso en local: Gold vive en el bucket raillytics-gold de MinIO
+│   ├── gold/                   # Sin uso en local: Gold vive en el bucket raillytics-gold de MinIO
+│   └── predicciones/           # CSV de la predicción de demanda: <corredor>/<trimestre>/demanda_diaria_*.csv
 │
 ├── python/
 │   └── raillytics/
@@ -136,6 +140,7 @@ RAILLYTICS/
 │       ├── calidad/            # Lado Python de los quality gates: ficheros.py (valida la descarga), registro.py (escribe resultados)
 │       ├── procesamiento/      # Jobs PySpark de limpieza y enriquecimiento (capa Silver); silver_sample.py: Silver sintético
 │       ├── ml/                 # Modelo predictivo Scikit-learn (features, entrenamiento, evaluación)
+│       ├── prediccion/         # Predicción diaria de demanda AVE Madrid–Barcelona con un LLM de Ollama (make 06_prediccion)
 │       └── utils/              # Comunes: fs.py (escritura atómica), lake.py (DuckDB + MinIO), cargas.py (trazabilidad de cargas)
 │
 ├── build.sbt                   # Proyecto SBT (Scala 2.13 / Spark 4.2) en la raíz para que IntelliJ lo reconozca
@@ -164,7 +169,8 @@ RAILLYTICS/
 │   ├── ingesta/                # Tests pytest del registro de fuentes, nombres de fichero y la descarga (incluida la cuarentena)
 │   ├── calidad/                # Tests pytest de los gates de fichero y del registro de resultados
 │   ├── procesamiento/          # Tests pytest del Silver sintético (contrato de columnas, festivos, determinismo, traza)
-│   └── utils/                  # Tests pytest de utilidades comunes (fs, lake, trazabilidad de cargas)
+│   ├── utils/                  # Tests pytest de utilidades comunes (fs, lake, trazabilidad de cargas)
+│   └── prediccion/             # Tests pytest de la predicción (el e2e con Ollama real lleva el marcador llm)
 │
 └── docs/                       # Documentación técnica y memoria del TFM
 ```
@@ -481,6 +487,117 @@ con.sql(f"""
 
 (El kernel necesita `python/` en el `PYTHONPATH`, por ejemplo con `sys.path.insert(0, "../python")`
 desde `notebooks/`, o instalando el paquete en modo editable.)
+
+---
+
+## Predicción diaria de demanda con un LLM (Ollama)
+
+Para un trimestre objetivo, predice la demanda **por día** del corredor **AVE Madrid–Barcelona** (línea
+`AVE-MAD-BCN`, ambos sentidos sumados) y la guarda en un CSV. El reparto de trabajo es deliberado:
+
+- El **código fija el nivel**: total del trimestre = el mismo trimestre del año anterior × el crecimiento
+  interanual del último trimestre publicado (`raillytics.prediccion.nivel`).
+- El **LLM da la forma**: recibe el calendario día a día (festivos, eventos, meteo) y devuelve un índice
+  relativo por día (1.0 = laborable típico) con un motivo. El código normaliza los índices para que la suma
+  sea **exactamente** el total, valida el resultado con quality gates y escribe el CSV.
+
+Se hace así porque los LLM razonan bien sobre el contexto (un puente, un partido) pero son malos haciendo
+aritmética: dejarles inventar el nivel absoluto es la fuente de error más probable.
+
+```
+Airflow ──► lake (Bronze/Silver) ──► entradas ──► nivel ─┐
+(trimestrales, festivos,                  calendario ────┼─► prompt ──► Ollama ──► índices ──► normalizar
+ eventos, meteo)                                          ┘                                        │
+                                                    CSV  ◄── gates (bloqueantes y avisos) ◄───────┘
+```
+
+### Cómo se usa
+
+```bash
+make llm-up                           # Ollama + modelo (LLM_GPU=1 en el .env reserva la GPU NVIDIA)
+make 06_prediccion TRIMESTRE=2026-T4  # predice el trimestre y escribe el CSV
+make 06_prediccion TRIMESTRE=2026-T4 PRED_ARGS="--solo-nivel"            # solo calcula el total esperado (sin LLM)
+make 06_prediccion TRIMESTRE=2026-T4 PRED_ARGS="--total-esperado 4200000" # fija el total a mano
+make 06_prediccion TRIMESTRE=2026-T4 PROMPT=demanda_v2 PRED_ARGS="--mostrar-prompt"
+make llm-down
+```
+
+`--solo-nivel` y `--mostrar-prompt` sirven para iterar sin gastar minutos de GPU. Si el trimestre ya está
+publicado, se relanza como **backtest** (el nivel nunca mira al propio trimestre) y se informa de cuánto se
+desvió el total esperado del real.
+
+### Entradas (las deja Airflow)
+
+La ingesta de los cuatro orígenes (demanda trimestral, festivos, eventos, meteo) la hacen los DAGs de Airflow
+(`config/data_sources.yml`). Esta predicción solo los lee: `config/prediccion.yml` define, **para cada origen, un
+`SELECT` de DuckDB** que traduce lo que haya en el lake a un contrato fijo (columnas documentadas en el propio
+fichero). **Las rutas y columnas de origen que trae son supuestas: ajústalas cuando Airflow haya ingestado las
+fuentes.** Si un origen falta o no cumple el contrato, la predicción falla con el nombre de la fuente y la ruta
+consultada, y no escribe nada.
+
+La meteo de un trimestre futuro **no es una previsión** (AEMET prevé a ~7 días): para los días sin dato observado
+se usa la **climatología** (promedio histórico del mes y la ciudad) y el prompt la marca como tal.
+
+### Salida
+
+`<PREDICCIONES_ROOT>/AVE-MAD-BCN/<trimestre>/demanda_diaria_<trimestre>_<prompt>_<AAAAMMDDThhmmssZ>.csv`
+(`PREDICCIONES_ROOT` = `data/predicciones` por defecto). Un fichero por ejecución: nunca se sobrescribe otro.
+UTF-8, cabecera, separador `,`, decimal `.`.
+
+| Columna | Contenido |
+| --- | --- |
+| `fecha` | día, `AAAA-MM-DD` |
+| `corredor` | `AVE-MAD-BCN` |
+| `viajeros_previstos` | entero; la suma del CSV es exactamente el total esperado |
+| `indice` | índice normalizado (media del trimestre = 1.0) |
+| `motivo` | justificación del LLM |
+| `trimestre` | `AAAA-Tn` |
+| `modelo`, `version_prompt` | p. ej. `mistral-nemo`, `demanda_v1` |
+| `run_id`, `generado_en` | enlaza con `_trazabilidad/cargas/`; hora UTC |
+
+Cada ejecución queda en la trazabilidad (`proceso = prediccion_demanda`, `capa = ml`, con trimestre, modelo,
+versión del prompt y semilla en `parametros`) y sus quality gates en `_trazabilidad/calidad/`. Bloqueantes: un
+registro por día, sin nulos, viajeros ≥ 0, índices en [0.2, 3.0] y suma = total. Avisos: índices casi planos y
+trimestre sin datos de eventos.
+
+### Iterar el prompt
+
+El prompt es `config/prompts/demanda_vN.md`: copia `demanda_v1.md` a `demanda_v2.md`, edítalo y lánzalo con
+`PROMPT=demanda_v2`. Los marcadores `{{...}}` disponibles están en `raillytics.prediccion.prompt`. **No hay
+verdad externa con la que medir la forma diaria** (solo existen totales trimestrales), así que cada ejecución
+imprime un resumen de coherencia: índice medio de laborables, fines de semana, festivos y días con evento, y la
+dispersión. Úsalo para comparar versiones: un festivo con índice 1.0 o un fin de semana igual que un laborable
+indican que el prompt no está haciendo su trabajo. La suma diaria frente al total publicado mide solo el
+**nivel** (`--solo-nivel` lo da sin LLM), no el prompt.
+
+### Modelo y rendimiento
+
+Medido el 2026-10-01 con 92 días (≈5.700 tokens de prompt y ≈4.000 de respuesta) en una RTX 2080 Ti de 11 GB:
+
+| Modelo | Reparto CPU/GPU | Tiempo | Notas |
+| --- | --- | --- | --- |
+| `mistral-nemo` (por defecto) | 6 % / 94 % | ~150 s | Cabe casi entero en la GPU |
+| `phi4` | 29 % / 71 % | ~480 s | No cabe entero a `num_ctx` 12288 |
+
+`OLLAMA_NUM_CTX` debe ser ≥ ~10.000 para 92 días: con menos, Ollama trunca el prompt en silencio (la predicción
+lo detecta y falla pidiendo subirlo). Cambiar de modelo es `OLLAMA_MODEL` en el `.env` y `make llm-up`.
+
+**Los modelos persisten.** Ollama guarda sus modelos en un volumen Docker con nombre (`docker_ollama_data`) que no borran `make llm-down` ni `make down`: cada modelo se descarga **una sola vez**, y `make llm-up` lo avisa («ya descargado») en vez de volver a bajarlo. Solo se pierde con `docker volume rm docker_ollama_data`. Para reutilizar los modelos de un Ollama instalado en el host, apunta `OLLAMA_MODELS_DIR` a su directorio (p. ej. `~/.ollama`).
+
+### Si algo falla
+
+| Mensaje | Qué hacer |
+| --- | --- |
+| `no se puede conectar con Ollama` | `make llm-up` |
+| `el modelo '…' no está` | `ollama pull <modelo>` o `make llm-up` |
+| `origen '…': no se pudo leer` | Airflow no ha ingestado esa fuente, o la ruta de `config/prediccion.yml` no es la real |
+| `faltan trimestres publicados` | Falta el mismo trimestre del año anterior (o el de referencia); usa `--total-esperado N` |
+| `se cortó por falta de contexto` | Sube `OLLAMA_NUM_CTX` |
+| `Ollama no respondió en N s` | Sube `OLLAMA_TIMEOUT_S` o usa un modelo más rápido |
+| `quality gate(s) bloqueante(s)` | No se escribió nada; el detalle de cada gate está en `make calidad` |
+
+La prueba extremo a extremo con un Ollama real lleva el marcador `llm` y no entra en `make test`:
+`.venv/bin/python -m pytest -m llm -v -s`.
 
 ---
 

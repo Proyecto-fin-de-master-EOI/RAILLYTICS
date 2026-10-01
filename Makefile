@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest 01_raw-uploader 02_parquet-converter 03_silver-sample 04_gold 05_superset-import quality-gates cargas calidad clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest 01_raw-uploader 02_parquet-converter 03_silver-sample 04_gold 05_superset-import 06_prediccion llm-up llm-down quality-gates cargas calidad clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -68,6 +68,10 @@ help:
 	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
 	@echo "  04_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold), con quality gates"
 	@echo "  05_superset-import    Reimporta los dashboards de dashboards/superset/ en Superset"
+	@echo "  06_prediccion         Predicción diaria de demanda AVE Madrid-Barcelona con un LLM (make 06_prediccion TRIMESTRE=2026-T4)"
+	@echo "                        (PROMPT=demanda_v1 elige la plantilla; PRED_ARGS=\"--solo-nivel\" o \"--total-esperado N\" pasan opciones)"
+	@echo "  llm-up                Levanta Ollama (perfil llm del compose) y descarga OLLAMA_MODEL (LLM_GPU=1 reserva la GPU NVIDIA)"
+	@echo "  llm-down              Para y elimina los contenedores de Ollama (los modelos se conservan en su volumen)"
 	@echo "  quality-gates      Evalúa config/quality_gates.yml sobre Silver y Gold del lake (app Spark; falla si hay gates bloqueantes)"
 	@echo "                     (make quality-gates QG_ARGS=silver | gold | <tabla> para acotar)"
 	@echo "  cargas             Muestra las últimas cargas registradas (trazabilidad del lake)"
@@ -137,6 +141,28 @@ test-scala:
 
 05_superset-import:
 	$(COMPOSE) exec superset bash /app/raillytics/docker/superset-import-dashboards.sh
+
+# Predicción diaria de demanda del corredor AVE Madrid-Barcelona: el código fija el total del
+# trimestre y un LLM de Ollama reparte ese total entre los días. Escribe un CSV en
+# PREDICCIONES_ROOT (data/predicciones por defecto). Necesita Ollama arriba: make llm-up.
+TRIMESTRE ?=
+PROMPT ?= demanda_v1
+PRED_ARGS ?=
+06_prediccion: $(VENV)/.deps-installed
+	$(if $(TRIMESTRE),,$(error Falta TRIMESTRE: make 06_prediccion TRIMESTRE=2026-T4))
+	$(VENV_PY) -m raillytics.prediccion --trimestre $(TRIMESTRE) --prompt $(PROMPT) $(PRED_ARGS)
+
+
+# LLM local (Ollama) para la predicción: perfil `llm` del compose. Con LLM_GPU=1 (p. ej. en el .env) se añade
+# la reserva de GPU NVIDIA. `llm-up` espera a que Ollama esté sano y descarga OLLAMA_MODEL si falta.
+LLM_COMPOSE = docker compose -f docker/docker-compose.yml $(if $(LLM_GPU),-f docker/docker-compose.gpu.yml) --env-file .env --profile llm
+
+llm-up:
+	$(LLM_COMPOSE) up -d --wait ollama
+	$(LLM_COMPOSE) run --rm ollama-init
+
+llm-down:
+	$(LLM_COMPOSE) rm -sf ollama ollama-init
 
 # Quality gate independiente sobre el lake: no escribe datos, solo evalúa y
 # registra. Termina con error si falla algún gate bloqueante, así sirve de

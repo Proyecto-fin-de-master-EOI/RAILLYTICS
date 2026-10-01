@@ -248,6 +248,44 @@ services:
       superset-init:
         condition: service_completed_successfully
 
+  # LLM local para la predicción diaria de demanda (python/raillytics/prediccion). Va bajo el perfil
+  # `llm`: `make up` NO lo arranca (la imagen y el modelo pesan varios GB); `make llm-up` sí.
+  # Dentro de la red de compose es ollama:11434; en el host, localhost:${OLLAMA_PORT:-11435}
+  # (el 11434 suele estar ocupado por un Ollama instalado en el host).
+  ollama:
+    image: ollama/ollama:0.13.3
+    container_name: raillytics-ollama
+    profiles: ["llm"]
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11435}:11434"
+    volumes:
+      # Sin OLLAMA_MODELS_DIR, un volumen Docker; con una ruta (p. ej. $HOME/.ollama) se reutilizan los
+      # modelos ya descargados en el host. El contenedor corre como root: lo que descargue será de root.
+      - ${OLLAMA_MODELS_DIR:-ollama_data}:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # Descarga OLLAMA_MODEL si no está (mismo patrón que minio-init). Se lanza con `make llm-up`.
+  ollama-init:
+    image: ollama/ollama:0.13.3
+    container_name: raillytics-ollama-init
+    profiles: ["llm"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-mistral-nemo}
+    entrypoint: ["/bin/sh", "-c", 'if ollama show "$${OLLAMA_MODEL}" >/dev/null 2>&1; then echo "Modelo $${OLLAMA_MODEL} ya descargado (volumen persistente): no se descarga de nuevo"; else ollama pull "$${OLLAMA_MODEL}"; fi']
+
 volumes:
   minio_data:
   postgres_data:
+  # Modelos de Ollama (/root/.ollama). Volumen con nombre: persiste entre `make llm-down`, `make down` y reinicios,
+  # así cada modelo se descarga UNA sola vez. Solo se borra a propósito: docker volume rm docker_ollama_data.
+  ollama_data:
