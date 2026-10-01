@@ -1,4 +1,4 @@
-dashboard_title: Predicción de demanda
+dashboard_title: Predicción de demanda · AVE Madrid–Barcelona
 description: 'Predicción diaria de demanda del corredor AVE Madrid–Barcelona con un LLM (raillytics.prediccion): curva diaria, comparación
   entre versiones del prompt o del modelo, coherencia del reparto y calendario con el motivo de cada día. Fuente: s3://raillytics-gold/fact_prediccion_demanda/.'
 css: ''
@@ -26,7 +26,7 @@ position:
     id: HEADER_ID
     type: HEADER
     meta:
-      text: Predicción de demanda
+      text: Predicción de demanda · AVE Madrid–Barcelona
   ROW-pred-1:
     type: ROW
     id: ROW-pred-1

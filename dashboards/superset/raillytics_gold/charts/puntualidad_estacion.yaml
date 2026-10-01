@@ -1,4 +1,4 @@
-slice_name: Puntualidad por línea
+slice_name: Puntualidad por estación de llegada
 description: null
 certified_by: null
 certification_details: null
@@ -13,8 +13,8 @@ params:
     subject: fecha
   query_mode: aggregate
   groupby:
-  - linea
-  - tipo_tren
+  - estacion
+  - comunidad
   time_grain_sqla: P1D
   temporal_columns_lookup: {}
   metrics:
@@ -41,7 +41,7 @@ params:
   dashboards: []
 query_context: null
 cache_timeout: null
-uuid: 81336db4-f072-59f4-84cd-11d76c6e5ab1
+uuid: 9bd13b24-7fbd-58d8-ac1f-433941bf9fbc
 version: 1.0.0
 dataset_uuid: af719c1c-3a54-5f0d-b18c-bb5dcda219dd
 is_managed_externally: false

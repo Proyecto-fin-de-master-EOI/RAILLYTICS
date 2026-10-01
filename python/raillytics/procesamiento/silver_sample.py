@@ -13,10 +13,11 @@ deja donde ellos las dejarán (bucket Silver de MinIO, o SILVER_ROOT local):
 Cuando existan los jobs reales bastará con que escriban estas columnas en los
 mismos prefijos; Gold (la app Spark GoldBuilderApp) y Superset no cambian.
 
-Los datos NO son reales: estaciones y líneas son un subconjunto ilustrativo
-con códigos inventados, y demanda y retrasos siguen un modelo simple
-(estacionalidad, día de la semana, festivos, lluvia, hora punta) para que los
-dashboards tengan algo que contar.
+Los datos NO son reales y cubren SOLO el corredor AVE Madrid–Barcelona (una
+línea, AVE-MAD-BCN, y sus cuatro estaciones: Madrid Puerta de Atocha, Zaragoza
+Delicias, Camp de Tarragona y Barcelona Sants), con códigos inventados. Demanda
+y retrasos siguen un modelo simple (estacionalidad, día de la semana, festivos,
+lluvia, hora punta) para que los dashboards tengan algo que contar.
 
 Uso:  python -m raillytics.procesamiento.silver_sample [--start AAAA-MM-DD] [--end AAAA-MM-DD] [--seed N]
 """
@@ -50,7 +51,8 @@ PUNTUALIDAD_COLUMNS = (
     "temperatura_media", "precipitacion_mm", "condicion_meteo", "es_festivo",
 )
 
-TIPOS_TREN = ("AVE", "Larga Distancia", "Media Distancia", "Cercanías")
+CORREDOR = "AVE-MAD-BCN"  # la única línea del ejemplo
+TIPOS_TREN = ("AVE",)
 CONDICIONES_METEO = ("despejado", "nuboso", "lluvia", "tormenta")
 ESTADOS = ("realizado", "cancelado")
 
@@ -79,73 +81,29 @@ class Linea:
 # Códigos inventados (no son los de Adif); coordenadas aproximadas de la ciudad.
 ESTACIONES = (
     Estacion("MADPA", "Madrid Puerta de Atocha", "Madrid", "Comunidad de Madrid", 40.4066, -3.6895, 3.0),
-    Estacion("MADCH", "Madrid Chamartín", "Madrid", "Comunidad de Madrid", 40.4722, -3.6825, 2.4),
-    Estacion("ALCHE", "Alcalá de Henares", "Madrid", "Comunidad de Madrid", 40.4830, -3.3660, 1.2),
-    Estacion("GETAF", "Getafe Centro", "Madrid", "Comunidad de Madrid", 40.3060, -3.7300, 1.0),
-    Estacion("BCNSA", "Barcelona Sants", "Barcelona", "Cataluña", 41.3792, 2.1400, 2.6),
-    Estacion("MATAR", "Mataró", "Barcelona", "Cataluña", 41.5350, 2.4430, 0.9),
-    Estacion("SABAD", "Sabadell Centre", "Barcelona", "Cataluña", 41.5480, 2.1070, 0.9),
-    Estacion("GIRON", "Girona", "Girona", "Cataluña", 41.9790, 2.8170, 0.5),
-    Estacion("TARRA", "Camp de Tarragona", "Tarragona", "Cataluña", 41.1690, 1.2020, 0.4),
-    Estacion("VLCJS", "Valencia Joaquín Sorolla", "Valencia", "Comunidad Valenciana", 39.4600, -0.3830, 1.4),
-    Estacion("ALICA", "Alicante", "Alicante", "Comunidad Valenciana", 38.3440, -0.4930, 0.8),
-    Estacion("SEVSJ", "Sevilla Santa Justa", "Sevilla", "Andalucía", 37.3920, -5.9750, 1.3),
-    Estacion("MALMZ", "Málaga María Zambrano", "Málaga", "Andalucía", 36.7115, -4.4320, 1.0),
-    Estacion("CORDO", "Córdoba", "Córdoba", "Andalucía", 37.8880, -4.7900, 0.7),
     Estacion("ZARDE", "Zaragoza Delicias", "Zaragoza", "Aragón", 41.6590, -0.9120, 1.0),
-    Estacion("VALLA", "Valladolid", "Valladolid", "Castilla y León", 41.6420, -4.7290, 0.7),
-    Estacion("TOLED", "Toledo", "Toledo", "Castilla-La Mancha", 39.8610, -4.0110, 0.4),
-    Estacion("ALBAC", "Albacete", "Albacete", "Castilla-La Mancha", 38.9880, -1.8570, 0.4),
-    Estacion("BILAB", "Bilbao Abando", "Bizkaia", "País Vasco", 43.2610, -2.9270, 0.8),
-    Estacion("SANTA", "Santander", "Cantabria", "Cantabria", 43.4600, -3.8130, 0.5),
-    Estacion("OVIED", "Oviedo", "Asturias", "Principado de Asturias", 43.3670, -5.8560, 0.5),
-    Estacion("ACORU", "A Coruña", "A Coruña", "Galicia", 43.3530, -8.4090, 0.5),
+    Estacion("TARRA", "Camp de Tarragona", "Tarragona", "Cataluña", 41.1690, 1.2020, 0.4),
+    Estacion("BCNSA", "Barcelona Sants", "Barcelona", "Cataluña", 41.3792, 2.1400, 2.6),
 )
 
 LINEAS = (
     Linea("AVE-MAD-BCN", "AVE Madrid – Barcelona", "AVE", ("MADPA", "ZARDE", "TARRA", "BCNSA"), 3200, 28),
-    Linea("AVE-MAD-SEV", "AVE Madrid – Sevilla", "AVE", ("MADPA", "CORDO", "SEVSJ"), 2600, 22),
-    Linea("AVE-MAD-VLC", "AVE Madrid – Valencia", "AVE", ("MADPA", "VLCJS"), 2400, 18),
-    Linea("AVE-MAD-MAL", "AVE Madrid – Málaga", "AVE", ("MADPA", "CORDO", "MALMZ"), 1800, 14),
-    Linea("AVE-MAD-ALC", "AVE Madrid – Alicante", "AVE", ("MADPA", "ALBAC", "ALICA"), 1300, 12),
-    Linea("LD-MAD-SAN", "Alvia Madrid – Santander", "Larga Distancia", ("MADCH", "VALLA", "SANTA"), 700, 6),
-    Linea("LD-MAD-BIL", "Alvia Madrid – Bilbao", "Larga Distancia", ("MADCH", "VALLA", "BILAB"), 750, 6),
-    Linea("LD-MAD-OVI", "Alvia Madrid – Oviedo", "Larga Distancia", ("MADCH", "VALLA", "OVIED"), 650, 5),
-    Linea("LD-MAD-COR", "Alvia Madrid – A Coruña", "Larga Distancia", ("MADCH", "ACORU"), 600, 4),
-    Linea("MD-MAD-TOL", "Avant Madrid – Toledo", "Media Distancia", ("MADPA", "TOLED"), 900, 16),
-    Linea("MD-BCN-GIR", "Regional Barcelona – Girona", "Media Distancia", ("BCNSA", "GIRON"), 800, 20),
-    Linea("MD-SEV-COR", "Media Distancia Sevilla – Córdoba", "Media Distancia", ("SEVSJ", "CORDO"), 500, 12),
-    Linea("C-MAD-C2", "Cercanías Madrid C-2", "Cercanías", ("ALCHE", "MADPA", "MADCH"), 9000, 70),
-    Linea("C-MAD-C4", "Cercanías Madrid C-4", "Cercanías", ("GETAF", "MADPA", "MADCH"), 8000, 70),
-    Linea("C-BCN-R1", "Rodalies Barcelona R1", "Cercanías", ("MATAR", "BCNSA"), 7000, 60),
-    Linea("C-BCN-R4", "Rodalies Barcelona R4", "Cercanías", ("SABAD", "BCNSA"), 6500, 60),
 )
 
-# Factores de demanda por tipo de tren. Índice 0 = lunes ... 6 = domingo.
+# Factores de demanda del AVE. Índice 0 = lunes ... 6 = domingo.
 _FACTOR_DIA_SEMANA = {
-    "AVE":             (1.05, 0.85, 0.85, 0.95, 1.25, 0.80, 1.20),
-    "Larga Distancia": (1.00, 0.85, 0.85, 0.95, 1.25, 0.85, 1.25),
-    "Media Distancia": (1.00, 1.00, 1.00, 1.00, 1.10, 0.70, 0.80),
-    "Cercanías":       (1.00, 1.02, 1.02, 1.02, 0.95, 0.45, 0.35),
+    "AVE": (1.05, 0.85, 0.85, 0.95, 1.25, 0.80, 1.20),
 }
 # Índice 0 = enero ... 11 = diciembre.
 _FACTOR_MES = {
-    "AVE":             (0.85, 0.85, 0.95, 1.05, 1.00, 1.05, 1.20, 1.20, 1.05, 1.00, 0.95, 1.10),
-    "Larga Distancia": (0.85, 0.85, 0.95, 1.05, 1.00, 1.05, 1.20, 1.20, 1.05, 1.00, 0.95, 1.10),
-    "Media Distancia": (0.95, 0.95, 1.00, 1.00, 1.00, 1.00, 0.95, 0.80, 1.00, 1.00, 1.00, 0.95),
-    "Cercanías":       (1.00, 1.00, 1.00, 0.98, 1.00, 0.95, 0.85, 0.60, 1.00, 1.02, 1.02, 0.90),
+    "AVE": (0.85, 0.85, 0.95, 1.05, 1.00, 1.05, 1.20, 1.20, 1.05, 1.00, 0.95, 1.10),
 }
-_FACTOR_FESTIVO = {"AVE": 1.15, "Larga Distancia": 1.15, "Media Distancia": 0.80, "Cercanías": 0.40}
+_FACTOR_FESTIVO = {"AVE": 1.15}
 # (tipo de tren, condición meteorológica) -> factor sobre la demanda; el resto, 1.0.
-_FACTOR_METEO_VIAJEROS = {
-    ("Cercanías", "lluvia"): 0.93,
-    ("Cercanías", "tormenta"): 0.85,
-    ("Media Distancia", "lluvia"): 0.97,
-    ("Media Distancia", "tormenta"): 0.92,
-}
+_FACTOR_METEO_VIAJEROS: dict[tuple[str, str], float] = {}  # el AVE no varía con el tiempo en este modelo
 
-# Retraso medio en llegada (minutos) por tipo de tren y factores sobre él.
-_RETRASO_MEDIO_MIN = {"AVE": 2.5, "Larga Distancia": 6.0, "Media Distancia": 4.0, "Cercanías": 3.0}
+# Retraso medio en llegada (minutos) del AVE y factores sobre él.
+_RETRASO_MEDIO_MIN = {"AVE": 2.5}
 _FACTOR_METEO_RETRASO = {"despejado": 1.0, "nuboso": 1.05, "lluvia": 1.5, "tormenta": 2.5}
 _HORAS_PUNTA = (7, 8, 9, 17, 18, 19, 20)
 
@@ -340,25 +298,14 @@ def _puntualidad(
     rng: np.random.Generator, fechas: pd.DatetimeIndex, meteo: pd.DataFrame, festivos: dict[date, str]
 ) -> pd.DataFrame:
     estaciones = {e.id: e for e in ESTACIONES}
-    dia_semana = fechas.dayofweek.to_numpy()
     partes = []
     for linea in LINEAS:
         servicios_dia = np.full(len(fechas), linea.servicios_dia)
-        if linea.tipo_tren == "Cercanías":  # menos oferta en fin de semana
-            servicios_dia = np.where(dia_semana >= 5, np.rint(servicios_dia * 0.6), servicios_dia).astype(int)
         fecha = np.repeat(fechas.to_numpy(), servicios_dia)
         n = len(fecha)
         orden = np.concatenate([np.arange(k) for k in servicios_dia])
 
-        if linea.tipo_tren == "Cercanías":  # dos picos: mañana y tarde
-            en_pico = rng.random(n) < 0.55
-            minutos = np.where(
-                en_pico,
-                rng.choice([8 * 60 + 15, 18 * 60 + 30], n) + rng.normal(0.0, 55.0, n),
-                rng.uniform(5.5 * 60, 23.5 * 60, n),
-            )
-        else:
-            minutos = rng.uniform(7 * 60, 22.5 * 60, n)
+        minutos = rng.uniform(7 * 60, 22.5 * 60, n)
         minutos = np.clip(np.rint(minutos), 5 * 60, 23 * 60 + 59).astype("int64")
 
         # Estación de llegada: cualquier parada menos el origen, ponderada por tamaño.
@@ -388,7 +335,7 @@ def _puntualidad(
     hora_punta = np.isin(df.hora_prevista.dt.hour.to_numpy(), _HORAS_PUNTA)
     retraso_medio = (
         df.tipo_tren.map(_RETRASO_MEDIO_MIN).to_numpy()
-        * np.where(hora_punta, np.where(df.tipo_tren == "Cercanías", 1.6, 1.2), 1.0)
+        * np.where(hora_punta, 1.2, 1.0)
         * df.condicion_meteo.map(_FACTOR_METEO_RETRASO).to_numpy()
         * np.where(df.es_festivo, 0.85, 1.0)
         * (1.0 + 0.12 * df.peso_estacion.to_numpy())

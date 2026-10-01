@@ -1,4 +1,4 @@
-slice_name: Retraso medio por franja horaria y tipo de tren
+slice_name: Retraso medio por franja horaria y día de la semana
 description: null
 certified_by: null
 certification_details: null
@@ -13,7 +13,7 @@ params:
     subject: fecha
   x_axis: franja_horaria
   time_grain_sqla: null
-  groupby: tipo_tren
+  groupby: dia_semana_etiqueta
   metric: retraso_medio
   row_limit: 10000
   sort_x_axis: alpha_asc

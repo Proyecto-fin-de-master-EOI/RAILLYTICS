@@ -45,6 +45,17 @@ def test_viajeros_follow_the_silver_contract(sample):
     assert set(viajeros.condicion_meteo) <= set(CONDICIONES_METEO)
 
 
+def test_the_sample_covers_only_the_ave_madrid_barcelona_corridor(sample):
+    estaciones = {"MADPA", "ZARDE", "TARRA", "BCNSA"}  # Atocha, Zaragoza Delicias, Camp de Tarragona, Sants
+
+    assert set(sample.viajeros.linea_id) == set(sample.puntualidad.linea_id) == {"AVE-MAD-BCN"}
+    assert set(sample.viajeros.estacion_id) == estaciones
+    assert set(sample.puntualidad.estacion_id) <= estaciones
+    assert set(sample.viajeros.tipo_tren) == {"AVE"}
+    assert set(sample.viajeros.provincia) == {"Madrid", "Zaragoza", "Tarragona", "Barcelona"}
+    assert TIPOS_TREN == ("AVE",)
+
+
 def test_holidays_are_flagged_with_their_name(sample):
     por_fecha = sample.viajeros.groupby(sample.viajeros.fecha.dt.date)
 

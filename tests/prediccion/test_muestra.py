@@ -27,14 +27,14 @@ RAIZ = Path(__file__).resolve().parents[2]
 HASTA = Trimestre(2026, 3)
 
 
-def test_la_demanda_cubre_los_trimestres_pedidos_con_dos_sentidos_y_un_corredor_distractor():
+def test_la_demanda_cubre_los_trimestres_pedidos_con_dos_sentidos_y_solo_el_corredor_madrid_barcelona():
     df = demanda_trimestral(HASTA, 11, 42)
     mad = df[df["corredor"] == "AVE-MAD-BCN"]
 
     trimestres = sorted(set(zip(mad["anio"], mad["trimestre"])))
     assert len(trimestres) == 11 and trimestres[0] == (2024, 1) and trimestres[-1] == (2026, 3)
     assert (mad.groupby(["anio", "trimestre"])["sentido"].nunique() == 2).all()
-    assert "AVE-MAD-SEV" in set(df["corredor"])  # para que la consulta tenga algo que filtrar
+    assert set(df["corredor"]) == {"AVE-MAD-BCN"}  # el ejemplo es solo del corredor: ningún otro
     assert (df["viajeros"] > 0).all()
 
 

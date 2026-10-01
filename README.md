@@ -4,6 +4,9 @@
 
 Proyecto de TFM (Máster en Ingeniería de Datos — Grupo 3). Plataforma end-to-end que integra, procesa y analiza datos ferroviarios públicos (Renfe Open Data, AEMET, festivos BOE, INE) para generar insights operativos y predicciones de demanda a 30 días.
 
+**Caso de uso: el corredor AVE Madrid–Barcelona.** Todos los dashboards, ejemplos y datos de muestra aplican a ese
+corredor (línea `AVE-MAD-BCN`: Madrid Puerta de Atocha, Zaragoza Delicias, Camp de Tarragona y Barcelona Sants).
+
 **Stack tecnológico:** Python (ingesta) · Apache Airflow (orquestación) · MinIO — S3-compatible (almacenamiento Bronze/Silver/Gold) · Spark Structured Streaming en Scala (subida a Bronze L1/L2) · PySpark (procesamiento Silver) · Delta Lake + Parquet (almacenamiento) · Spark en Scala, batch (modelo dimensional Gold; Snowflake en el diseño objetivo) · DuckDB (motor de consulta de Superset y notebooks sobre el Parquet del lake) · Apache Superset (dashboards en local; Power BI en el diseño objetivo) · Scikit-learn (modelo predictivo).
 
 **Arquitectura:** patrón Medallion — Bronze (datos brutos) → Silver (datos limpios y enriquecidos) → Gold (modelo dimensional listo para consumo analítico).
@@ -309,7 +312,7 @@ raillytics-silver/                     raillytics-gold/
 
 | Paso | Comando | Qué hace |
 | --- | --- | --- |
-| Silver de ejemplo | `make 03_silver-sample` | Genera un Silver sintético y determinista (365 días, semilla 42) en `raillytics-silver`. Sustituye a los jobs PySpark mientras no existan y produce exactamente las columnas que Gold espera (el contrato está en `python/raillytics/procesamiento/silver_sample.py`). Los datos no son reales. |
+| Silver de ejemplo | `make 03_silver-sample` | Genera un Silver sintético y determinista (365 días, semilla 42) en `raillytics-silver`, **solo del corredor AVE Madrid–Barcelona** (una línea y sus cuatro estaciones). Sustituye a los jobs PySpark mientras no existan y produce exactamente las columnas que Gold espera (el contrato está en `python/raillytics/procesamiento/silver_sample.py`). Los datos no son reales. |
 | Quality gates | `make quality-gates` | `sbt "runMain raillytics.calidad.QualityGatesApp"` (batch): evalúa `config/quality_gates.yml` sobre lo que hay en Silver y Gold, registra los resultados y termina con error si falla algún gate bloqueante. No escribe datos: es la barrera entre pasos. `QG_ARGS=silver`, `gold` o el nombre de una tabla acotan la evaluación. |
 | Gold | `make 04_gold` | `sbt "runMain raillytics.gold.GoldBuilderApp"` (batch, con la misma configuración s3a que L1/L2): registra las tablas Silver como vistas, aplica los gates `silver_*` (entrada), ejecuta `src/main/resources/gold/<tabla>.sql` para todas las tablas en memoria, aplica los gates `gold_*` (salida) y solo entonces escribe cada tabla en `s3a://raillytics-gold/<tabla>/` (un `part-*.parquet` por tabla, full refresh). Si un gate bloqueante falla, Gold se queda como estaba. No es un stream como L1/L2 porque las dimensiones se recalculan sobre todo Silver. |
 | Dashboards | `make up` (o `make 05_superset-import`) | El servicio `superset-init` importa `dashboards/superset/raillytics_gold/` en cada arranque; `05_superset-import` repite la importación sin reiniciar. |
@@ -341,11 +344,14 @@ locales (así corren los tests, sin MinIO).
 - **Datasets**: dos datasets virtuales que hacen el *star join* de cada tabla de hechos con sus
   dimensiones (`viajeros_diarios` y `puntualidad_servicios`), con las métricas guardadas
   (`total_viajeros`, `media_viajeros_dia`, `pct_puntuales`, `retraso_medio`, `retraso_p90`...).
-- **Dashboards de ejemplo** (los dos primeros del diseño): *Demanda ferroviaria* (viajeros por
-  estación, evolución por tipo de tren, día de la semana, festivos, meteorología, comunidades) y
-  *Puntualidad* (% puntuales, retraso medio, evolución mensual y diaria, tabla por línea, franja
-  horaria × tipo de tren, meteorología, estaciones críticas), con filtros nativos de fechas,
-  tipo de tren, comunidad y línea. El tercero, *Trazabilidad de cargas*, se describe más abajo.
+- **Dashboards de ejemplo, todos del corredor AVE Madrid–Barcelona:** *Demanda ferroviaria* (viajeros por
+  estación, evolución diaria por estación, % de viajeros en fin de semana, reparto por época del año, día de la
+  semana, festivos, meteorología y comunidades) y *Puntualidad* (% puntuales, retraso medio, evolución mensual y
+  diaria por estación de llegada, tabla por estación, franja horaria × día de la semana, tipo de día, meteorología,
+  estaciones críticas), con filtros nativos de fechas, estación y comunidad (o tipo de día). Los datasets
+  `viajeros_diarios` y `puntualidad_servicios` **filtran por `AVE-MAD-BCN`**: aunque lleguen datos de otras líneas,
+  los dashboards solo muestran el corredor. Los otros dos son *Predicción de demanda* y *Trazabilidad de cargas*
+  (esta última habla del lake, no del corredor), que se describen más abajo.
 - **Metastore**: Superset guarda sus metadatos en la base de datos `superset` del mismo Postgres
   que usa Airflow (servicio `postgres`, variables `POSTGRES_USER`/`POSTGRES_PASSWORD` del `.env`);
   `docker/postgres/init-databases.sh` la crea al inicializar el volumen.
@@ -478,9 +484,10 @@ from raillytics.utils.lake import LakeLayout, S3Settings, connect
 load_dotenv(find_dotenv(usecwd=True))  # MINIO_* del .env (lo busca hacia arriba desde el directorio actual)
 layout, con = LakeLayout.from_env(), connect(S3Settings.from_env())
 con.sql(f"""
-    SELECT l.tipo_tren, sum(f.viajeros) AS viajeros
+    SELECT e.nombre AS estacion, sum(f.viajeros) AS viajeros
     FROM read_parquet('{layout.gold_glob("fact_viajeros")}') f
-    JOIN read_parquet('{layout.gold_glob("dim_linea")}') l USING (linea_id)
+    JOIN read_parquet('{layout.gold_glob("dim_estacion")}') e USING (estacion_id)
+    WHERE f.linea_id = 'AVE-MAD-BCN'  -- el corredor AVE Madrid–Barcelona
     GROUP BY 1 ORDER BY 2 DESC
 """).show()
 ```
@@ -567,7 +574,7 @@ make prediccion-sample MUESTRA_ARGS="--hasta 2026-T3 --semilla 7"
 
 Escribe las cuatro fuentes en Bronze L2 (`raillytics-bronze/l2/muestra_<fuente>/sintetico/`), de forma determinista
 (mismos argumentos y semilla, mismos datos) y con las columnas que asumen las consultas: la demanda sigue un modelo
-simple (nivel, estacionalidad trimestral y +4 % anual; incluye un corredor «distractor» que la consulta filtra), los
+simple (nivel, estacionalidad trimestral y +4 % anual; solo el corredor Madrid–Barcelona), los
 festivos son los nacionales, y los eventos y la meteo son inventados (los eventos acaban en «(muestra)»). Cada
 ejecución de la predicción avisa de que está leyendo datos sintéticos.
 

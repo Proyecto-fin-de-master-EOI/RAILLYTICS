@@ -1,4 +1,4 @@
-slice_name: Retraso medio por línea
+slice_name: Retraso medio por tipo de día
 description: null
 certified_by: null
 certification_details: null
@@ -11,7 +11,7 @@ params:
     expressionType: SIMPLE
     operator: TEMPORAL_RANGE
     subject: fecha
-  x_axis: linea
+  x_axis: tipo_dia
   time_grain_sqla: null
   x_axis_sort_asc: false
   x_axis_sort_series: name
@@ -52,7 +52,7 @@ params:
   dashboards: []
 query_context: null
 cache_timeout: null
-uuid: 8280fa75-f009-5d62-b91c-5370e771d4df
+uuid: 2d9a069d-e74c-5f93-8176-0e8a2890023f
 version: 1.0.0
 dataset_uuid: af719c1c-3a54-5f0d-b18c-bb5dcda219dd
 is_managed_externally: false

@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 FUENTES = ("demanda_trimestral", "festivos", "eventos", "aemet")
 
 # Nivel base por trimestre (viajeros, ambos sentidos), estacionalidad por número de trimestre y crecimiento anual.
-BASE = {CORREDOR: 2_400_000, "AVE-MAD-SEV": 900_000}  # el segundo es un corredor «distractor»: la consulta debe filtrarlo
+BASE = {CORREDOR: 2_400_000}  # solo el corredor AVE Madrid–Barcelona
 ESTACIONALIDAD = {1: 0.94, 2: 1.04, 3: 1.10, 4: 0.98}
 CRECIMIENTO_ANUAL = 0.04
 TRIMESTRES_POR_DEFECTO = 11

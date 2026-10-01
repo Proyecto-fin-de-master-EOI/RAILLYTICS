@@ -1,7 +1,6 @@
 table_name: puntualidad_servicios
 main_dttm_col: fecha
-description: Un servicio (tren) por fila con su retraso en llegada (Fact_Puntualidad ⋈ dimensiones), leído con DuckDB del
-  Parquet de s3://raillytics-gold.
+description: 'Un servicio (tren) del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN) por fila con su retraso en llegada: Fact_Puntualidad ⋈ dimensiones, leído con DuckDB del Parquet de Gold en MinIO. Solo se muestra el corredor.'
 default_endpoint: null
 offset: 0
 cache_timeout: null
@@ -9,6 +8,7 @@ schema: null
 catalog: null
 sql: |-
   -- Fact_Puntualidad con sus dimensiones (modelo en estrella de la capa Gold).
+  -- Solo el corredor AVE Madrid–Barcelona (AVE-MAD-BCN): los dashboards de negocio aplican a él.
   SELECT
       p.fecha,
       p.hora_prevista,
@@ -45,6 +45,7 @@ sql: |-
   JOIN read_parquet('s3://raillytics-gold/dim_fecha/*.parquet') AS d USING (fecha_id)
   LEFT JOIN read_parquet('s3://raillytics-gold/dim_estacion/*.parquet') AS e USING (estacion_id)
   JOIN read_parquet('s3://raillytics-gold/dim_linea/*.parquet') AS l USING (linea_id)
+  WHERE l.linea_id = 'AVE-MAD-BCN'
 params: null
 template_params: null
 filter_select_enabled: true
