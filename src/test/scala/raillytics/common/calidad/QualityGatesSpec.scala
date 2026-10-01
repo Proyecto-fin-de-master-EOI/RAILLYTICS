@@ -160,4 +160,36 @@ class QualityGatesSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll 
       Seq(QualityGates.resultado("t", "g", QualityGates.Aviso, pasa = true, 1, "= 1")),
       "run", "p", "bronze", "noexiste://bucket/calidad/")
   }
+
+  "QualityGates.loadOpcionalesFromStream" should "read the optional tables declared in the YAML" in {
+    val texto =
+      """opcionales: [silver_a]
+        |tablas:
+        |  silver_a:
+        |    - {nombre: filas, tipo: filas_min, minimo: 1}
+        |  gold_b:
+        |    - {nombre: filas, tipo: filas_min, minimo: 1}
+        |""".stripMargin
+
+    QualityGates.loadOpcionalesFromStream(yaml(texto)) shouldBe Set("silver_a")
+  }
+
+  it should "return an empty set when the YAML declares none" in {
+    val texto = "tablas:\n  silver_a:\n    - {nombre: filas, tipo: filas_min, minimo: 1}\n"
+
+    QualityGates.loadOpcionalesFromStream(yaml(texto)) shouldBe empty
+  }
+
+  it should "reject an optional table that has no gates, so a typo does not silently skip a table" in {
+    val texto = "opcionales: [silver_typo]\ntablas:\n  silver_a:\n    - {nombre: filas, tipo: filas_min, minimo: 1}\n"
+
+    val e = the[IllegalArgumentException] thrownBy QualityGates.loadOpcionalesFromStream(yaml(texto))
+    e.getMessage should include("silver_typo")
+  }
+
+  it should "keep loading the gates themselves when the YAML has an opcionales key" in {
+    val texto = "opcionales: [silver_a]\ntablas:\n  silver_a:\n    - {nombre: filas, tipo: filas_min, minimo: 1}\n"
+
+    QualityGates.loadFromStream(yaml(texto)).keySet shouldBe Set("silver_a")
+  }
 }

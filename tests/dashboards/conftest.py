@@ -41,6 +41,30 @@ def gold(tmp_path):
         (20261003, DATE '2026-10-03', 'C-MAD-C2', 'RENFE', 'ALCHE', 's3', TIMESTAMP '2026-10-03 09:00:00', TIMESTAMP '2026-10-03 09:30:00', 9, 30, 'realizado', false, false, 'despejado', 15.0, 0.0))
         t(fecha_id, fecha, linea_id, operador_id, estacion_id, servicio_id, hora_prevista, hora_real, hora, retraso_min, estado, cancelado, es_puntual, condicion_meteo, temperatura_media, precipitacion_mm)""")
 
+    # Mercado (CNMC): 7 trimestres seguidos (2024-T4 … 2026-T2), Renfe y Ouigo + la fila TOTAL con ingresos. Con 7 trimestres
+    # hay variación interanual (LAG 4) y un único punto de backtest (LAG 6) en 2026-T2.
+    trimestres = [(2024, 4), (2025, 1), (2025, 2), (2025, 3), (2025, 4), (2026, 1), (2026, 2)]
+    renfe = [900, 1000, 1100, 1200, 1000, 800, 880]
+    ouigo = [300, 320, 350, 360, 330, 290, 310]
+    ingresos = [10000, 11000, 12000, 13000, 12000, 9000, 10000]
+    filas = []
+    for (anio, t), r, o, i in zip(trimestres, renfe, ouigo, ingresos):
+        inicio = f"DATE '{anio}-{(t - 1) * 3 + 1:02d}-01'"
+        filas += [
+            f"({anio}, {t}, {inicio}, '{CORREDOR}', 'RENFE', {r}, 1000, {r * 100}, {r // 2}, {r * 3}, NULL)",
+            f"({anio}, {t}, {inicio}, '{CORREDOR}', 'OUIGO', {o}, 400, {o * 100}, {o // 2}, {o * 3}, NULL)",
+            f"({anio}, {t}, {inicio}, '{CORREDOR}', 'TOTAL', NULL, NULL, NULL, NULL, NULL, {i})",
+        ]
+    tabla("fact_mercado_trimestral", "SELECT * FROM (VALUES " + ", ".join(filas) + ") t(anio, trimestre, fecha_inicio, linea_id, operador_id, viajeros, plazas_ofertadas, plazas_km, tren_km, viajeros_km, ingresos_eur)")
+    tabla("fact_precio_trimestral", f"""SELECT * FROM (VALUES
+        (2026, 1, DATE '2026-01-01', '{CORREDOR}', 'RENFE', 70.00), (2026, 1, DATE '2026-01-01', '{CORREDOR}', 'OUIGO', 52.00), (2026, 1, DATE '2026-01-01', '{CORREDOR}', 'TOTAL', 60.00),
+        (2026, 2, DATE '2026-04-01', '{CORREDOR}', 'RENFE', 72.00), (2026, 2, DATE '2026-04-01', '{CORREDOR}', 'OUIGO', 54.00), (2026, 2, DATE '2026-04-01', '{CORREDOR}', 'TOTAL', 62.00)
+        ) t(anio, trimestre, fecha_inicio, linea_id, operador_id, precio_medio_eur)""")
+    tabla("fact_precio_mensual", f"""SELECT * FROM (VALUES
+        (2026, 5, DATE '2026-05-01', '{CORREDOR}', 'RENFE', 71.00), (2026, 5, DATE '2026-05-01', '{CORREDOR}', 'AVLO', 40.00), (2026, 5, DATE '2026-05-01', '{CORREDOR}', 'TOTAL', 61.00),
+        (2026, 6, DATE '2026-06-01', '{CORREDOR}', 'RENFE', 73.00), (2026, 6, DATE '2026-06-01', '{CORREDOR}', 'AVLO', 41.00), (2026, 6, DATE '2026-06-01', '{CORREDOR}', 'TOTAL', 63.00)
+        ) t(anio, mes, fecha_inicio, linea_id, operador_id, precio_medio_eur)""")
+
     def consulta(dataset_sql, select, agrupar=""):
         sql = dataset_sql.replace("s3://raillytics-gold", tmp_path.as_posix())
         return con.execute(f"SELECT {select} FROM ({sql}) t {agrupar}").fetchall()

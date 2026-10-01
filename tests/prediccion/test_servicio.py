@@ -144,7 +144,8 @@ def test_avisa_cuando_las_consultas_leen_fuentes_sinteticas(entorno):
 
     _, salida = _lanzar(entorno, ClienteFalso())
 
-    assert any(linea.startswith("AVISO") and "SINTÉTICAS" in linea and "NO son reales" in linea for linea in salida)
+    aviso = next(linea for linea in salida if linea.startswith("AVISO") and "SINTÉTICAS" in linea and "NO son reales" in linea)
+    assert "festivos" in aviso and "trimestrales" not in aviso   # nombra solo los orígenes que leen la muestra
 
 
 def test_no_avisa_de_datos_sinteticos_si_las_consultas_leen_fuentes_reales(entorno):

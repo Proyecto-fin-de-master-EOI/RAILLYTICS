@@ -2,7 +2,7 @@
 
 Uso:  python -m raillytics.prediccion --trimestre 2026-T4 [--prompt demanda_v2]
                                        [--total-esperado N] [--solo-nivel] [--mostrar-prompt]
-      (o:  make 06_prediccion TRIMESTRE=2026-T4)
+      (o:  make 07_prediccion TRIMESTRE=2026-T4)
 """
 from __future__ import annotations
 

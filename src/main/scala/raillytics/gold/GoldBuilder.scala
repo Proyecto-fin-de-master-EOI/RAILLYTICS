@@ -24,6 +24,9 @@ import scala.io.Source
 //   2. salida: todas las tablas Gold se construyen en memoria y se validan ANTES de
 //      escribir; si falla un gate bloqueante, Gold se queda como estaba (ninguna
 //      tabla se sobrescribe a medias).
+//
+// Grupo opcional «mercado» (datos reales de la CNMC): se construye solo si existen sus tres tablas Silver
+// (make 04_silver); si no, Gold es el de siempre.
 object GoldBuilder extends Logging {
 
   private val Proceso = "gold_build"
@@ -36,16 +39,34 @@ object GoldBuilder extends Logging {
   // escribir hechos que no podrían resolverse.
   val GoldTables: Seq[String] = Seq("dim_fecha", "dim_estacion", "dim_linea", "dim_operador", "fact_viajeros", "fact_puntualidad")
 
-  private def silverViews: Seq[String] = SilverTables.map(LakeViews.SilverPrefix + _)
-  private def goldViews: Seq[String] = GoldTables.map(LakeViews.GoldPrefix + _)
+  // Grupo OPCIONAL «mercado»: datos reales de la CNMC que construye `make 04_silver`. Todo o nada: si falta alguna de sus tablas
+  // Silver el grupo se omite (quien solo usa el Silver sintético no tiene por qué lanzar 04_silver). Sus hechos referencian
+  // dim_linea y dim_operador del modelo núcleo.
+  val MercadoSilver: Seq[String] = Seq("cnmc_trimestral", "cnmc_precio_trimestral", "cnmc_precio_mensual")
+  val MercadoGold: Seq[String] = Seq("fact_mercado_trimestral", "fact_precio_trimestral", "fact_precio_mensual")
+
+  private def silverViews(tablas: Seq[String]): Seq[String] = tablas.map(LakeViews.SilverPrefix + _)
+  private def goldViews(tablas: Seq[String]): Seq[String] = tablas.map(LakeViews.GoldPrefix + _)
 
   // Registra cada tabla Silver (el prefijo entero: un único fichero o varios
   // part-*.parquet) como vista temporal de la sesión, que es lo que el SQL usa.
   // Sin Silver no hay Gold: un prefijo ilegible es un error, no un aviso.
-  private def registerSilver(lake: LakeSettings)(implicit spark: SparkSession): Unit =
-    LakeViews.registrar(lake, silverViews).headOption.foreach { case (vista, e) =>
+  private def registerSilver(lake: LakeSettings, tablas: Seq[String])(implicit spark: SparkSession): Unit =
+    LakeViews.registrar(lake, silverViews(tablas)).headOption.foreach { case (vista, e) =>
       throw new IllegalStateException(s"no se puede leer la tabla Silver '$vista' bajo ${lake.silverRoot}: ${e.getMessage}", e)
     }
+
+  // ¿Existen las tres tablas Silver del grupo «mercado»? Con solo una parte se omite el grupo y se avisa.
+  private def mercadoDisponible(lake: LakeSettings)(implicit spark: SparkSession): Boolean = {
+    val faltan = LakeViews.registrar(lake, silverViews(MercadoSilver)).keySet
+    if (faltan.isEmpty) true
+    else {
+      if (faltan.size < MercadoSilver.size)
+        logger.warn(s"grupo 'mercado' omitido: faltan tablas Silver (${faltan.toSeq.sorted.mkString(", ")}); lanza make 04_silver hasta que estén las tres")
+      else logger.info("grupo 'mercado' omitido: aún no hay Silver real (make 04_silver)")
+      false
+    }
+  }
 
   // El SQL de cada tabla va como recurso; ${umbral_puntualidad_min} se sustituye
   // antes de ejecutarlo (Spark SQL no tiene variables de sesión portables).
@@ -61,21 +82,24 @@ object GoldBuilder extends Logging {
   // Cada ejecución queda en la trazabilidad de cargas (una fila por tabla) y en
   // la de calidad (una fila por gate, mismo run_id).
   def build(settings: GoldBuilderSettings)(implicit spark: SparkSession): Map[String, Long] = {
-    val parametros = Map("umbral_puntualidad_min" -> settings.umbralPuntualidadMin, "tablas" -> GoldTables,
+    val mercado = mercadoDisponible(settings.lake)
+    val silverTablas = SilverTables ++ (if (mercado) MercadoSilver else Nil)
+    val goldTablas = GoldTables ++ (if (mercado) MercadoGold else Nil)
+    val parametros = Map("umbral_puntualidad_min" -> settings.umbralPuntualidadMin, "tablas" -> goldTablas,
                          "quality_gates" -> settings.calidadConfig)
     Cargas.registrar(Proceso, "gold", settings.lake.cargasDir, parametros) { ejecucion =>
       val gates = QualityGates.load(settings.calidadConfig)
-      registerSilver(settings.lake)
+      registerSilver(settings.lake, silverTablas)
 
       // 1. Gate de entrada: el contrato de Silver.
-      val silverResultados = QualityGates.evaluarTablas(gates, silverViews)
+      val silverResultados = QualityGates.evaluarTablas(gates, silverViews(silverTablas))
       QualityGates.registrar(silverResultados, ejecucion.runId, Proceso, "silver", settings.lake.calidadDir)
       logger.info("entrada Silver: " + QualityGates.resumen(silverResultados).replace("\n", " | "))
       QualityGates.exigir(silverResultados)
 
       // 2. Todas las tablas en memoria, sin tocar el destino. cache + count: si el SQL
       //    falla se sabe aquí, y ni los gates ni el recuento vuelven a ejecutar la consulta.
-      val construidas: Seq[(String, DataFrame, Long)] = GoldTables.map { table =>
+      val construidas: Seq[(String, DataFrame, Long)] = goldTablas.map { table =>
         val df = spark.sql(modelSql(table, settings.umbralPuntualidadMin)).cache()
         val n = df.count()
         df.createOrReplaceTempView(LakeViews.GoldPrefix + table)   // para los gates gold_* (y su conciliación con silver_*)
@@ -83,7 +107,7 @@ object GoldBuilder extends Logging {
       }
       try {
         // 3. Gate de salida: sobre lo construido, antes de sobrescribir nada.
-        val goldResultados = QualityGates.evaluarTablas(gates, goldViews)
+        val goldResultados = QualityGates.evaluarTablas(gates, goldViews(goldTablas))
         QualityGates.registrar(goldResultados, ejecucion.runId, Proceso, "gold", settings.lake.calidadDir)
         logger.info("salida Gold: " + QualityGates.resumen(goldResultados).replace("\n", " | "))
         QualityGates.exigir(goldResultados)

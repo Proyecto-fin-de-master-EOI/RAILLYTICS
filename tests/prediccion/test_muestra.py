@@ -83,6 +83,18 @@ def lake(tmp_path):
     return layout, env, connect(), bronze
 
 
+def _silver_cnmc_desde_la_muestra(layout, con, muestra):
+    """`trimestrales` de la config real lee el Silver de la CNMC (make 04_silver), no la muestra: se le da uno con la forma real."""
+    destino = Path(layout.silver_root) / "cnmc_trimestral"
+    destino.mkdir(parents=True)
+    demanda = muestra["demanda_trimestral"]
+    con.register("demanda_muestra", demanda[demanda["corredor"] == "AVE-MAD-BCN"])
+    con.execute(
+        "COPY (SELECT anio, trimestre, 'Madrid-Barcelona' AS corredor, 'RENFE' AS operador_id, sum(viajeros) AS viajeros "
+        f"FROM demanda_muestra GROUP BY anio, trimestre) TO '{(destino / 'cnmc_trimestral.parquet').as_posix()}' (FORMAT PARQUET)"
+    )
+
+
 def test_escribir_muestra_usa_prefijos_propios_que_nunca_se_mezclan_con_las_fuentes_reales(lake):
     layout, env, con, bronze = lake
 
@@ -96,7 +108,9 @@ def test_escribir_muestra_usa_prefijos_propios_que_nunca_se_mezclan_con_las_fuen
 
 def test_la_muestra_cumple_el_contrato_de_la_config_real_y_permite_calcular_el_nivel(lake):
     layout, env, con, bronze = lake
-    escribir_muestra(con, layout, bronze.as_posix(), generar_muestra(HASTA, 11, 42), {})
+    muestra = generar_muestra(HASTA, 11, 42)
+    escribir_muestra(con, layout, bronze.as_posix(), muestra, {})
+    _silver_cnmc_desde_la_muestra(layout, con, muestra)
 
     entradas = cargar_entradas(cargar_config(RAIZ / "config" / "prediccion.yml"), layout, con, env)
 
@@ -118,7 +132,9 @@ class _ClienteFalso:
 
 def test_con_la_muestra_corre_toda_la_prediccion_con_la_config_y_el_prompt_reales(lake, tmp_path):
     layout, env, con, bronze = lake
-    escribir_muestra(con, layout, bronze.as_posix(), generar_muestra(HASTA, 11, 42), {})
+    muestra = generar_muestra(HASTA, 11, 42)
+    escribir_muestra(con, layout, bronze.as_posix(), muestra, {})
+    _silver_cnmc_desde_la_muestra(layout, con, muestra)
     env = dict(
         env,
         PREDICCION_CONFIG=str(RAIZ / "config" / "prediccion.yml"),
@@ -141,7 +157,7 @@ def test_el_cli_genera_las_cuatro_fuentes_y_avisa_de_que_son_sinteticas(lake, ca
     codigo = main(["--hasta", "2026-T3", "--semilla", "1"], env=env)
 
     salida = capsys.readouterr().out
-    assert codigo == 0 and "NO son datos reales" in salida and "make 06_prediccion" in salida
+    assert codigo == 0 and "NO son datos reales" in salida and "make 07_prediccion" in salida
     assert len(list((bronze / "l2").glob("muestra_*/sintetico/*.parquet"))) == 4
 
 

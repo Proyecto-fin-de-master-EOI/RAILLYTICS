@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest 01_raw-uploader 02_parquet-converter 03_silver-sample 04_gold 05_superset-import 06_prediccion prediccion-sample llm-up llm-down quality-gates cargas calidad clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates cargas calidad clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -66,9 +66,10 @@ help:
 	@echo "  01_raw-uploader       Lanza la app Spark L1 raw-uploader (primer plano)"
 	@echo "  02_parquet-converter  Lanza la app Spark L2 parquet-converter (primer plano)"
 	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
-	@echo "  04_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold), con quality gates"
-	@echo "  05_superset-import    Reimporta los dashboards de dashboards/superset/ en Superset"
-	@echo "  06_prediccion         Predicción diaria de demanda AVE Madrid-Barcelona con un LLM (make 06_prediccion TRIMESTRE=2026-T4)"
+	@echo "  04_silver             Silver real en streaming: lee Bronze L2 y construye las tablas Silver con quality gates (primer plano; terminal aparte)"
+	@echo "  05_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold), con quality gates"
+	@echo "  06_superset-import    Reimporta los dashboards de dashboards/superset/ en Superset"
+	@echo "  07_prediccion         Predicción diaria de demanda AVE Madrid-Barcelona con un LLM (make 07_prediccion TRIMESTRE=2026-T4)"
 	@echo "                        (PRED_PROMPT=demanda_v2 elige la plantilla; PRED_ARGS=\"--solo-nivel\", \"--sin-cache\" o \"--total-esperado N\" pasan opciones)"
 	@echo "  prediccion-sample     Genera fuentes SINTETICAS de la prediccion (demanda trimestral, festivos, eventos y meteo) en Bronze L2"
 	@echo "  llm-up                Levanta Ollama (perfil llm del compose) y descarga OLLAMA_MODEL (LLM_GPU=1 reserva la GPU NVIDIA)"
@@ -122,7 +123,7 @@ test-scala:
 
 # Levanta Ollama y dispara el DAG de ingesta con la predicción de demanda encadenada al final (conf predecir=true).
 # TRIMESTRE=2026-T4 fija el trimestre a predecir (por defecto, el trimestre en curso); PRED_PROMPT elige la plantilla.
-# Las ejecuciones programadas del DAG (@daily) solo ingestan. Orden de las variables: ver 06_prediccion.
+# Las ejecuciones programadas del DAG (@daily) solo ingestan. Orden de las variables: ver 07_prediccion.
 00_ingest: llm-up
 	$(COMPOSE) exec airflow-scheduler airflow dags trigger ingesta_data_sources --conf "{\"predecir\": true, \"trimestre\": \"$(TRIMESTRE)\", \"prompt\": \"$(PRED_PROMPT)\"}"
 
@@ -137,13 +138,19 @@ test-scala:
 03_silver-sample: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.procesamiento.silver_sample
 
+# Silver real en streaming: lee lo que L2 deja en Bronze (l2/<fuente>/) y construye las tablas Silver que declara cada
+# fuente de config/data_sources.yml (clave `silver`), con quality gates y cuarentena. Se queda en primer plano, como
+# 01_raw-uploader y 02_parquet-converter: lánzalo en una terminal aparte.
+04_silver:
+	$(SBT) -batch "runMain raillytics.silver.SilverBuilderApp"
+
 # Gold: app Spark batch en Scala (misma configuración s3a que L1/L2). Aplica los
 # quality gates de config/quality_gates.yml a Silver (entrada) y a Gold (salida,
 # antes de escribir): si falla uno bloqueante, termina con error y no toca Gold.
-04_gold:
+05_gold:
 	$(SBT) -batch "runMain raillytics.gold.GoldBuilderApp"
 
-05_superset-import:
+06_superset-import:
 	$(COMPOSE) exec superset bash /app/raillytics/docker/superset-import-dashboards.sh
 
 # Predicción diaria de demanda del corredor AVE Madrid-Barcelona: el código fija el total del
@@ -153,13 +160,13 @@ TRIMESTRE ?=
 PRED_PROMPT ?= demanda_v2
 PRED_ARGS ?=
 # Fuentes SINTETICAS (no reales) de la prediccion en Bronze L2, en las rutas que espera config/prediccion.yml, para
-# probar 06_prediccion y 00_ingest mientras Airflow no ingiera las reales. make prediccion-sample MUESTRA_ARGS="--hasta 2026-T3"
+# probar 07_prediccion y 00_ingest mientras Airflow no ingiera las reales. make prediccion-sample MUESTRA_ARGS="--hasta 2026-T3"
 MUESTRA_ARGS ?=
 prediccion-sample: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.prediccion.muestra $(MUESTRA_ARGS)
 
-06_prediccion: $(VENV)/.deps-installed
-	$(if $(TRIMESTRE),,$(error Falta TRIMESTRE: make 06_prediccion TRIMESTRE=2026-T4))
+07_prediccion: $(VENV)/.deps-installed
+	$(if $(TRIMESTRE),,$(error Falta TRIMESTRE: make 07_prediccion TRIMESTRE=2026-T4))
 	$(VENV_PY) -m raillytics.prediccion --trimestre $(TRIMESTRE) --prompt $(PRED_PROMPT) $(PRED_ARGS)
 
 
@@ -176,7 +183,7 @@ llm-down:
 
 # Quality gate independiente sobre el lake: no escribe datos, solo evalúa y
 # registra. Termina con error si falla algún gate bloqueante, así sirve de
-# barrera entre pasos (p. ej. tras 03_silver-sample y antes de 04_gold).
+# barrera entre pasos (p. ej. tras 03_silver-sample y antes de 05_gold).
 QG_ARGS ?=
 quality-gates:
 	$(SBT) -batch "runMain raillytics.calidad.QualityGatesApp $(QG_ARGS)"

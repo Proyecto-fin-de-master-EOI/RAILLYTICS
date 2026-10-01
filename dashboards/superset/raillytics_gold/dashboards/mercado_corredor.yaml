@@ -1,0 +1,351 @@
+dashboard_title: Mercado del corredor · AVE Madrid–Barcelona
+description: 'Mercado del corredor AVE Madrid–Barcelona según la CNMC: viajeros, cuota, oferta, ingresos, precio y backtest de la regla
+  de nivel de la predicción. Datos reales (no sintéticos). Avlo va dentro de Renfe en la demanda y por separado en el precio; «viajeros
+  por plaza ofertada» no es ocupación.'
+css: ''
+slug: mercado-corredor
+uuid: ff3dd104-e8a3-5e9c-b027-23a1a5088ad0
+position:
+  DASHBOARD_VERSION_KEY: v2
+  ROOT_ID:
+    type: ROOT
+    id: ROOT_ID
+    children:
+    - GRID_ID
+  GRID_ID:
+    type: GRID
+    id: GRID_ID
+    children:
+    - ROW-mercado-1
+    - ROW-mercado-2
+    - ROW-mercado-3
+    - ROW-mercado-4
+    - ROW-mercado-5
+    - ROW-mercado-6
+    parents:
+    - ROOT_ID
+  HEADER_ID:
+    id: HEADER_ID
+    type: HEADER
+    meta:
+      text: Mercado del corredor · AVE Madrid–Barcelona
+  ROW-mercado-1:
+    type: ROW
+    id: ROW-mercado-1
+    children:
+    - CHART-kpi_mercado_viajeros
+    - CHART-kpi_mercado_yoy
+    - CHART-kpi_mercado_cuota_renfe
+    - CHART-kpi_mercado_precio
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-kpi_mercado_viajeros:
+    type: CHART
+    id: CHART-kpi_mercado_viajeros
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-mercado-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 201
+      uuid: 4a7948b0-158b-58d4-a9d4-97c48e4ce226
+      sliceName: Viajeros del último trimestre
+  CHART-kpi_mercado_yoy:
+    type: CHART
+    id: CHART-kpi_mercado_yoy
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-mercado-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 202
+      uuid: 840727c3-bccf-54e6-936c-80cc08d9529c
+      sliceName: Variación interanual del corredor
+  CHART-kpi_mercado_cuota_renfe:
+    type: CHART
+    id: CHART-kpi_mercado_cuota_renfe
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-mercado-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 203
+      uuid: a8a50ef8-6f45-5f32-bb3e-b6da52e9fb53
+      sliceName: Cuota de Renfe (incl. Avlo)
+  CHART-kpi_mercado_precio:
+    type: CHART
+    id: CHART-kpi_mercado_precio
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-mercado-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 204
+      uuid: 8d4f2733-1f2c-554d-9581-873c2f7dd2c9
+      sliceName: Precio medio del corredor (€)
+  ROW-mercado-2:
+    type: ROW
+    id: ROW-mercado-2
+    children:
+    - CHART-mercado_viajeros_operador
+    - CHART-mercado_cuota_operador
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-mercado_viajeros_operador:
+    type: CHART
+    id: CHART-mercado_viajeros_operador
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-mercado-2
+    meta:
+      width: 7
+      height: 60
+      chartId: 205
+      uuid: 9d134542-4d39-5682-8d20-7d84b2e2e81d
+      sliceName: Viajeros por trimestre y operador
+  CHART-mercado_cuota_operador:
+    type: CHART
+    id: CHART-mercado_cuota_operador
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-mercado-2
+    meta:
+      width: 5
+      height: 60
+      chartId: 206
+      uuid: 52233769-311b-5ad4-9844-163b7abca1df
+      sliceName: Cuota de mercado por operador
+  ROW-mercado-3:
+    type: ROW
+    id: ROW-mercado-3
+    children:
+    - CHART-mercado_viajeros_plaza
+    - CHART-mercado_tren_km
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-mercado_viajeros_plaza:
+    type: CHART
+    id: CHART-mercado_viajeros_plaza
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-mercado-3
+    meta:
+      width: 6
+      height: 60
+      chartId: 207
+      uuid: 9330da53-bb67-509b-84c6-4f713dcfb74f
+      sliceName: Viajeros por plaza ofertada
+  CHART-mercado_tren_km:
+    type: CHART
+    id: CHART-mercado_tren_km
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-mercado-3
+    meta:
+      width: 6
+      height: 60
+      chartId: 208
+      uuid: 29f1bc89-4637-5c0c-802f-cb4d926f12a9
+      sliceName: Tren·km por trimestre y operador
+  ROW-mercado-4:
+    type: ROW
+    id: ROW-mercado-4
+    children:
+    - CHART-precio_mensual_operador
+    - CHART-mercado_ingresos
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-precio_mensual_operador:
+    type: CHART
+    id: CHART-precio_mensual_operador
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-mercado-4
+    meta:
+      width: 7
+      height: 60
+      chartId: 209
+      uuid: 0eeca552-e61a-5568-9859-12411b14bc24
+      sliceName: Precio medio mensual por operador (€)
+  CHART-mercado_ingresos:
+    type: CHART
+    id: CHART-mercado_ingresos
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-mercado-4
+    meta:
+      width: 5
+      height: 60
+      chartId: 210
+      uuid: 4e0ac99f-caf7-598c-896e-8071226297e6
+      sliceName: Ingresos por venta de billetes (corredor)
+  ROW-mercado-5:
+    type: ROW
+    id: ROW-mercado-5
+    children:
+    - CHART-kpi_backtest_mape
+    - CHART-backtest_previsto_real
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-kpi_backtest_mape:
+    type: CHART
+    id: CHART-kpi_backtest_mape
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-mercado-5
+    meta:
+      width: 3
+      height: 60
+      chartId: 211
+      uuid: f3e892b8-26e3-596a-8517-48b8880ccf18
+      sliceName: Error medio absoluto (últimos 8 trimestres)
+  CHART-backtest_previsto_real:
+    type: CHART
+    id: CHART-backtest_previsto_real
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-mercado-5
+    meta:
+      width: 9
+      height: 60
+      chartId: 212
+      uuid: 1df08378-ad41-5b05-bcf7-247b01bbfd94
+      sliceName: 'Backtest del nivel: real frente a previsto'
+  ROW-mercado-6:
+    type: ROW
+    id: ROW-mercado-6
+    children:
+    - CHART-backtest_error
+    - CHART-mercado_resumen
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-backtest_error:
+    type: CHART
+    id: CHART-backtest_error
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-mercado-6
+    meta:
+      width: 5
+      height: 60
+      chartId: 213
+      uuid: cb03a578-2ef3-546f-a921-6a3e84639cd3
+      sliceName: Error de la regla de nivel por trimestre
+  CHART-mercado_resumen:
+    type: CHART
+    id: CHART-mercado_resumen
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-mercado-6
+    meta:
+      width: 7
+      height: 60
+      chartId: 214
+      uuid: 875e7749-4f58-55d5-9c42-d9d615e6cf2e
+      sliceName: Resumen de los últimos 4 trimestres
+metadata:
+  color_scheme: supersetColors
+  refresh_frequency: 0
+  timed_refresh_immune_slices: []
+  expanded_slices: {}
+  label_colors: {}
+  default_filters: '{}'
+  cross_filters_enabled: true
+  native_filter_configuration:
+  - id: NATIVE_FILTER-mercado-fechas
+    name: Rango de fechas
+    filterType: filter_time
+    targets:
+    - {}
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues: {}
+    type: NATIVE_FILTER
+    description: ''
+  - id: NATIVE_FILTER-mercado-operador
+    name: Operador
+    filterType: filter_select
+    targets:
+    - datasetUuid: a6f87572-5c8e-5db1-90ea-ec45e618a779
+      column:
+        name: operador
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: false
+      inverseSelection: false
+    type: NATIVE_FILTER
+    description: ''
+version: 1.0.0
+is_managed_externally: false
+external_url: null
+certified_by: null
+certification_details: null
+published: true

@@ -1,0 +1,32 @@
+slice_name: Cuota de Renfe (incl. Avlo)
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha_inicio
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_ultimo_trimestre AND operador_id = 'RENFE'
+  metric: cuota_total
+  header_font_size: 0.4
+  subheader: viajeros del último trimestre
+  subheader_font_size: 0.15
+  y_axis_format: .1%
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: a8a50ef8-6f45-5f32-bb3e-b6da52e9fb53
+version: 1.0.0
+dataset_uuid: a6f87572-5c8e-5db1-90ea-ec45e618a779
+is_managed_externally: false
+external_url: null

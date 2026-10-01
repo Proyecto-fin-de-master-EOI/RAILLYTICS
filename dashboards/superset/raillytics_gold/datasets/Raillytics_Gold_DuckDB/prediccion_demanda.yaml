@@ -9,7 +9,7 @@ schema: null
 catalog: null
 sql: |-
   -- Predicción diaria de demanda del corredor AVE Madrid–Barcelona (raillytics.prediccion): una fila por día y ejecución.
-  -- La publica cada ejecución de `make 06_prediccion` en s3://raillytics-gold/fact_prediccion_demanda/<run_id>.parquet.
+  -- La publica cada ejecución de `make 07_prediccion` en s3://raillytics-gold/fact_prediccion_demanda/<run_id>.parquet.
   -- generado_en se guarda en UTC; aquí se muestra en hora de Madrid. es_ultima marca la ejecución más reciente de cada trimestre.
   WITH base AS (
       SELECT

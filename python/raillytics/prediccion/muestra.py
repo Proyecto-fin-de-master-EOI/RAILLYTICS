@@ -1,7 +1,7 @@
 """Fuentes SINTÉTICAS de la predicción de demanda, en las rutas y con las columnas que asume config/prediccion.yml.
 
 Mientras los DAGs de Airflow no ingesten las fuentes reales (demanda trimestral, festivos, eventos y meteo), este
-módulo genera las cuatro de forma determinista como Parquet en Bronze L2, para poder ejecutar `make 06_prediccion` y
+módulo genera las cuatro de forma determinista como Parquet en Bronze L2, para poder ejecutar `make 07_prediccion` y
 `make 00_ingest` de punta a punta. LOS DATOS NO SON REALES: la demanda sigue un modelo simple (nivel, estacionalidad
 trimestral y crecimiento anual) y los eventos y la meteo son inventados (los eventos llevan «(muestra)» en el nombre).
 Van a prefijos PROPIOS (`muestra_<fuente>`), nunca a los de las fuentes reales: si compartieran prefijo, cuando Airflow
@@ -181,7 +181,7 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None
     print(f"Fuentes SINTÉTICAS de la predicción (NO son datos reales) hasta {hasta}, semilla {args.semilla} -> {bronze}/l2/muestra_*/")
     for fuente, ruta in escritos.items():
         print(f"  {fuente:<20}{len(muestra[fuente]):>8,} filas  {ruta}")
-    print(f"Ahora:  make 06_prediccion TRIMESTRE={hasta.mas(1)}")
+    print(f"Ahora:  make 07_prediccion TRIMESTRE={hasta.mas(1)}")
     return 0
 
 

@@ -34,14 +34,19 @@ object SourceFormat {
 
   def kind(format: String): Kind = if (format == Zip) Archive else Tabular
 
-  def options(format: String): Map[String, String] = readerOptions.getOrElse(format, Map.empty)
+  def options(format: String): Map[String, String] = options(format, Map.empty)
+
+  // Opciones de una fuente concreta: las de su formato más las que declara en data_sources.yml (`options`: delimiter y
+  // encoding, que se llaman igual que las opciones del lector csv de Spark).
+  def options(format: String, extra: Map[String, String]): Map[String, String] =
+    readerOptions.getOrElse(format, Map.empty) ++ extra
 
   // Lector de streaming ya configurado para el formato; la ruta la pone quien
   // llama (.load), porque depende de la fuente.
-  def streamReader(format: String)(implicit spark: SparkSession): DataStreamReader =
-    spark.readStream.format(format).options(options(format))
+  def streamReader(format: String, extra: Map[String, String] = Map.empty)(implicit spark: SparkSession): DataStreamReader =
+    spark.readStream.format(format).options(options(format, extra))
 
   // El mismo lector en batch: L2 lo usa para inferir el esquema de la query al arrancar.
-  def batchReader(format: String)(implicit spark: SparkSession): DataFrameReader =
-    spark.read.format(format).options(options(format))
+  def batchReader(format: String, extra: Map[String, String] = Map.empty)(implicit spark: SparkSession): DataFrameReader =
+    spark.read.format(format).options(options(format, extra))
 }

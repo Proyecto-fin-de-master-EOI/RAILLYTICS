@@ -77,11 +77,11 @@ def _preparar(
 ) -> tuple[Entradas, dict[Trimestre, int], NivelEsperado | None, int, bool]:
     """Lee los cuatro orígenes y fija el total esperado (calculado o manual). El último valor: ¿se leen fuentes sintéticas?"""
     consultas = cargar_config(Path(env.get("PREDICCION_CONFIG") or "config/prediccion.yml"))
-    sinteticas = any("muestra_" in sql for sql in consultas.values())
+    sinteticas = [origen for origen, sql in consultas.items() if "muestra_" in sql]
     if sinteticas:
         imprimir(
-            "AVISO: las consultas leen fuentes SINTÉTICAS (muestra_*): los resultados NO son reales. Cuando Airflow "
-            "ingeste las fuentes reales, apunta config/prediccion.yml a ellas"
+            f"AVISO: los orígenes {', '.join(sinteticas)} leen fuentes SINTÉTICAS (muestra_*): los resultados NO son reales. "
+            "Cuando existan las fuentes reales, apunta config/prediccion.yml a ellas"
         )
     entradas = cargar_entradas(consultas, layout, con, env)
     publicados = entradas.trimestrales_dict()
@@ -99,7 +99,7 @@ def _preparar(
             f"{trimestre} ya está publicado ({miles(real)} viajeros reales): "
             f"el total esperado se desvía {desviacion_relativa(total, real):+.2%}"
         )
-    return entradas, publicados, nivel, total, sinteticas
+    return entradas, publicados, nivel, total, bool(sinteticas)
 
 
 def _prompt(

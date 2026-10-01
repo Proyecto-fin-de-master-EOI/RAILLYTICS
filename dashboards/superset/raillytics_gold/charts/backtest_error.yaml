@@ -1,0 +1,58 @@
+slice_name: Error de la regla de nivel por trimestre
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_bar
+params:
+  viz_type: echarts_timeseries_bar
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha_inicio
+  x_axis: fecha_inicio
+  time_grain_sqla: P3M
+  x_axis_sort_asc: true
+  x_axis_sort_series: name
+  x_axis_sort_series_ascending: true
+  metrics:
+  - error_medio
+  groupby: []
+  order_desc: true
+  row_limit: 10000
+  truncate_metric: true
+  show_empty_columns: true
+  comparison_type: values
+  annotation_layers: []
+  forecastPeriods: 10
+  forecastInterval: 0.8
+  x_axis_title_margin: 15
+  y_axis_title_margin: 15
+  y_axis_title_position: Left
+  sort_series_type: sum
+  color_scheme: supersetColors
+  only_total: true
+  show_legend: true
+  legendType: scroll
+  legendOrientation: top
+  x_axis_time_format: smart_date
+  rich_tooltip: true
+  tooltipTimeFormat: smart_date
+  y_axis_format: .0%
+  truncateXAxis: true
+  y_axis_bounds:
+  - null
+  - null
+  orientation: vertical
+  show_value: false
+  stack: Stack
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: cb03a578-2ef3-546f-a921-6a3e84639cd3
+version: 1.0.0
+dataset_uuid: d9f69c6f-4670-5b48-881c-3f6908db655b
+is_managed_externally: false
+external_url: null

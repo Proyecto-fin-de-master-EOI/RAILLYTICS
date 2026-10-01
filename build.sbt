@@ -48,7 +48,7 @@ lazy val root = (project in file("."))
         s"-Djava.library.path=${file(home) / "bin"}${java.io.File.pathSeparator}${sys.props.getOrElse("java.library.path", "")}"
       )
     },
-    // Lo mismo para `runMain` (make 01_raw-uploader ... 04_gold). Sin fork, Spark
+    // Lo mismo para `runMain` (make 01_raw-uploader ... 05_gold). Sin fork, Spark
     // corre dentro de la JVM de sbt con classloader en capas: sbt copia los jars a
     // target/bg-jobs/sbt_<id>/ y borra ese directorio al salir, justo antes de que
     // el shutdown hook de Hadoop lea core-default.xml del jar ya borrado

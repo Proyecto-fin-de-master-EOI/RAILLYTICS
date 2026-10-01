@@ -28,6 +28,7 @@ object QualityGatesApp extends Logging {
     implicit val spark: SparkSession = SparkSessionFactory.build("quality-gates", config)
     try {
       val gates = QualityGates.load(settings.calidadConfig)
+      val opcionales = QualityGates.loadOpcionales(settings.calidadConfig)
       val tablas = seleccionar(args.toSeq, gates.keys.toSeq)
       val capa = capaDe(tablas)
       require(tablas.nonEmpty, s"ningún gate coincide con '${args.mkString(" ")}' (tablas: ${gates.keys.mkString(", ")})")
@@ -35,9 +36,13 @@ object QualityGatesApp extends Logging {
       val resultados = Cargas.registrar("quality_gates", capa, settings.lake.cargasDir, Map("tablas" -> tablas)) { ejecucion =>
         // Se registran todas las vistas del YAML (también las referenciadas por
         // gates de otras tablas, p. ej. Silver para conciliar Gold); las que no
-        // existen en el lake hacen fallar sus gates con resultado 'error'.
-        LakeViews.registrar(settings.lake, gates.keys.toSeq ++ gates.values.flatten.flatMap(_.tabla))
-        val res = QualityGates.evaluarTablas(gates, tablas)
+        // existen en el lake hacen fallar sus gates con resultado 'error'...
+        val sinVista = LakeViews.registrar(settings.lake, gates.keys.toSeq ++ gates.values.flatten.flatMap(_.tabla)).keySet
+        // ...salvo las tablas opcionales sin datos (p. ej. el Silver real si aún no se ha lanzado `make 04_silver`).
+        val aOmitir = omitidas(tablas, opcionales, args.toSet, sinVista)
+        if (aOmitir.nonEmpty) println(s"AVISO: tablas opcionales sin datos en el lake, omitidas: ${aOmitir.mkString(", ")}")
+        val aEvaluar = tablas.filterNot(aOmitir.contains)
+        val res = QualityGates.evaluarTablas(gates, aEvaluar)
         QualityGates.registrar(res, ejecucion.runId, "quality_gates", capa, settings.lake.calidadDir)
         println(QualityGates.resumen(res))
         QualityGates.exigir(res)   // falla el proceso (y la carga queda con estado error)
@@ -46,6 +51,11 @@ object QualityGatesApp extends Logging {
       println(s"${resultados.size} gate(s) evaluados sobre ${tablas.size} tabla(s): todos los bloqueantes OK")
     } finally spark.stop()
   }
+
+  // Tablas opcionales (`opcionales:` del YAML) cuya vista no se ha podido registrar y que no se han pedido por su nombre: se omiten.
+  // Pedir una tabla por su nombre (`QG_ARGS=silver_cnmc_trimestral`) la vuelve obligatoria: si no hay datos, sus gates fallan.
+  def omitidas(tablas: Seq[String], opcionales: Set[String], pedidas: Set[String], sinDatos: Set[String]): Seq[String] =
+    tablas.filter(t => opcionales.contains(t) && !pedidas.contains(t) && sinDatos.contains(t))
 
   // Sin argumentos, todas las tablas; "silver" / "gold" filtran por capa; cualquier
   // otro argumento es el nombre exacto de una tabla del YAML.

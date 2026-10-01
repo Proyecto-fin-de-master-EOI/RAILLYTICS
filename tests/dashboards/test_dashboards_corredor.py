@@ -9,7 +9,7 @@ CORREDOR = "AVE-MAD-BCN"
 DATASETS = {p.stem: yaml.safe_load(p.read_text(encoding="utf-8")) for p in (BASE / "datasets" / "Raillytics_Gold_DuckDB").glob("*.yaml")}
 GRAFICOS = {p.stem: yaml.safe_load(p.read_text(encoding="utf-8")) for p in (BASE / "charts").glob("*.yaml")}
 DASHBOARDS = {p.stem: yaml.safe_load(p.read_text(encoding="utf-8")) for p in (BASE / "dashboards").glob("*.yaml")}
-DE_NEGOCIO = ("demanda_ferroviaria", "puntualidad", "prediccion_demanda")  # trazabilidad_cargas habla del lake, no del corredor
+DE_NEGOCIO = ("demanda_ferroviaria", "puntualidad", "prediccion_demanda", "mercado_corredor")  # trazabilidad_cargas habla del lake, no del corredor
 DIMENSIONES_DE_VARIAS_LINEAS = {"linea", "tipo_tren", "linea_id"}
 
 
@@ -50,7 +50,7 @@ def test_ningun_grafico_versionado_queda_huerfano_fuera_de_los_dashboards():
     assert sorted(n for n, g in GRAFICOS.items() if g["uuid"] not in colocados) == []  # Superset lo importaría y no se vería en ningún sitio
 
 
-@pytest.mark.parametrize("dashboard", ("demanda_ferroviaria", "puntualidad"))
+@pytest.mark.parametrize("dashboard", ("demanda_ferroviaria", "puntualidad", "mercado_corredor"))
 def test_cada_grafico_del_dashboard_existe_y_usa_columnas_y_metricas_de_su_dataset(dashboard):
     por_uuid = {d["uuid"]: d for d in DATASETS.values()}
     colocados = [c["meta"]["uuid"] for c in DASHBOARDS[dashboard]["position"].values() if isinstance(c, dict) and c.get("type") == "CHART"]

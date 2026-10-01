@@ -7,7 +7,7 @@ import raillytics.common.spark.SparkSessionFactory
 
 // Punto de entrada de la construcción de Gold con Spark (batch): solo cablea
 // entorno y SparkSession. La lógica vive en GoldBuilder.
-//   make 04_gold   (sbt "runMain raillytics.gold.GoldBuilderApp")
+//   make 05_gold   (sbt "runMain raillytics.gold.GoldBuilderApp")
 object GoldBuilderApp extends Logging {
 
   def main(args: Array[String]): Unit = {

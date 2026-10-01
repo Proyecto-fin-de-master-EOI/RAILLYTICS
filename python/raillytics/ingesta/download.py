@@ -43,7 +43,9 @@ def download(source: DataSource, dest_root: Path, rejected_root: Path | None = N
     response.raise_for_status()
     content = response.content
 
-    gates = validar_contenido(content, source.format, response.headers.get("Content-Type"), tabla=source.id)
+    gates = validar_contenido(
+        content, source.format, response.headers.get("Content-Type"), tabla=source.id, opciones=source.options, checks=source.checks
+    )
     motivo = motivo_rechazo(gates)
     file_name = staging_filename(source, response.headers)
 

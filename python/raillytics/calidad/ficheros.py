@@ -11,16 +11,20 @@ Gates (todos sobre el contenido en memoria, sin tocar disco):
                                    csv -> texto con cabecera delimitada; json -> JSON válido;
                                    zip -> archivo ZIP íntegro con al menos un miembro
   content_type         aviso       la cabecera Content-Type del servidor es coherente con el formato
+  tamano_minimo        bloqueante  (solo si la fuente declara checks.min_bytes) el fichero pesa al menos eso
+  cabecera_esperada    bloqueante  (checks.columnas) la cabecera, sin BOM y partida con el delimitador, es la esperada
+  filas_minimas        bloqueante  (checks.min_filas) hay al menos esas filas de datos
 
 Motivación: CRTM sirve un ZIP (GTFS) y Renfe JSON; con el formato mal declarado L2
 convertía bytes binarios a Parquet sin que nada avisara.
 """
 from __future__ import annotations
 
+import csv
 import io
 import json
 import zipfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from raillytics.calidad.registro import (
     RESULTADO_FALLO,
@@ -44,12 +48,30 @@ _CONTENT_TYPES = {
 }
 
 
-def validar_contenido(content: bytes, formato: str, content_type: str | None = None, tabla: str = "") -> list[ResultadoGate]:
-    """Evalúa los gates de fichero y devuelve un resultado por gate (ninguno lanza)."""
+def validar_contenido(
+    content: bytes,
+    formato: str,
+    content_type: str | None = None,
+    tabla: str = "",
+    opciones: Mapping[str, str] | None = None,
+    checks: Mapping[str, object] | None = None,
+) -> list[ResultadoGate]:
+    """Evalúa los gates de fichero y devuelve un resultado por gate (ninguno lanza).
+
+    `opciones` (delimiter, encoding) y `checks` (min_bytes, min_filas, columnas) salen de la fuente en
+    config/data_sources.yml. Los checks solo se evalúan si el formato declarado ha pasado: si el servidor
+    devolvió una página HTML, el único motivo del rechazo debe ser ese.
+    """
+    opciones = opciones or {}
     resultados = [_gate_no_vacio(content, tabla)]
+    formato_ok = False
     if resultados[0].pasa:
-        resultados.append(_gate_formato(content, formato, tabla))
+        gate_formato = _gate_formato(content, formato, tabla, opciones)
+        resultados.append(gate_formato)
+        formato_ok = gate_formato.pasa
     resultados.append(_gate_content_type(content_type, formato, tabla))
+    if formato_ok and checks:
+        resultados.extend(_gates_declarados(content, tabla, opciones, checks))
     return resultados
 
 
@@ -77,8 +99,8 @@ def _gate_no_vacio(content: bytes, tabla: str) -> ResultadoGate:
     )
 
 
-def _gate_formato(content: bytes, formato: str, tabla: str) -> ResultadoGate:
-    problema = _comprobar_formato(content, formato)
+def _gate_formato(content: bytes, formato: str, tabla: str, opciones: Mapping[str, str]) -> ResultadoGate:
+    problema = _comprobar_formato(content, formato, opciones)
     return _resultado(tabla, "formato_declarado", SEVERIDAD_BLOQUEANTE, problema is None, problema)
 
 
@@ -93,8 +115,8 @@ def _gate_content_type(content_type: str | None, formato: str, tabla: str) -> Re
     )
 
 
-def _describir_contenido(content: bytes) -> str:
-    """Qué parece ser el contenido, para el mensaje de error."""
+def _describir_contenido(content: bytes, codificacion: str = "utf-8") -> str:
+    """Qué parece ser el contenido, para el mensaje de error. `codificacion` es la declarada por la fuente (si la hay)."""
     if content.startswith(_ZIP_MAGICS):
         return "ZIP"
     inicio = content[:512].lstrip()
@@ -103,15 +125,15 @@ def _describir_contenido(content: bytes) -> str:
     if inicio[:1] == b"<":
         return "HTML/XML"
     try:
-        content[:4096].decode("utf-8")
+        content[:4096].decode(codificacion)
     except UnicodeDecodeError:
         return "binario"
     return "texto"
 
 
-def _comprobar_formato(content: bytes, formato: str) -> str | None:
+def _comprobar_formato(content: bytes, formato: str, opciones: Mapping[str, str] | None = None) -> str | None:
     """None si el contenido encaja con el formato declarado; si no, el motivo."""
-    parece = _describir_contenido(content)
+    parece = _describir_contenido(content, (opciones or {}).get("encoding", "utf-8"))
     if formato == "zip":
         if parece != "ZIP":
             return f"declarado zip, el contenido parece {parece}"
@@ -137,10 +159,49 @@ def _comprobar_formato(content: bytes, formato: str) -> str | None:
     if formato == "csv":
         if parece in ("ZIP", "binario", "HTML/XML", "JSON"):
             return f"declarado csv, el contenido parece {parece}"
-        cabecera = content.split(b"\n", 1)[0].decode("utf-8", errors="replace").strip()
+        opciones = opciones or {}
+        # Con delimitador declarado, ese y solo ese: declarar `,` sobre un fichero con `;` es un error de configuración.
+        delimitadores = (opciones["delimiter"],) if "delimiter" in opciones else _CSV_DELIMITERS
+        cabecera = content.split(b"\n", 1)[0].decode(opciones.get("encoding", "utf-8"), errors="replace").strip().lstrip("\ufeff")
         if not cabecera:
             return "la primera línea (cabecera) está vacía"
-        if not any(d in cabecera for d in _CSV_DELIMITERS):
+        if not any(d in cabecera for d in delimitadores):
             return f"la cabecera no tiene delimitador: {cabecera[:80]!r}"
         return None
     return f"formato '{formato}' sin validador"
+
+
+def _gates_declarados(content: bytes, tabla: str, opciones: Mapping[str, str], checks: Mapping[str, object]) -> list[ResultadoGate]:
+    """Gates que la fuente pide con `checks` (todos bloqueantes: un fichero que no los cumple no entra en el pipeline)."""
+    resultados: list[ResultadoGate] = []
+    if "min_bytes" in checks:
+        minimo = int(checks["min_bytes"])
+        resultados.append(
+            _resultado(
+                tabla, "tamano_minimo", SEVERIDAD_BLOQUEANTE, len(content) >= minimo,
+                f"el fichero pesa {len(content)} bytes, se esperaban al menos {minimo}", valor=float(len(content)), umbral=f">= {minimo}",
+            )
+        )
+    texto = content.decode(opciones.get("encoding", "utf-8"), errors="replace").lstrip("\ufeff")
+    delimitador = opciones.get("delimiter", ",")
+    lineas = texto.splitlines()
+    if "columnas" in checks:
+        esperadas = [str(c) for c in checks["columnas"]]
+        cabecera = next(csv.reader(lineas[:1], delimiter=delimitador), []) if lineas else []
+        ok = [c.strip().lower() for c in cabecera] == [c.strip().lower() for c in esperadas]
+        resultados.append(
+            _resultado(
+                tabla, "cabecera_esperada", SEVERIDAD_BLOQUEANTE, ok,
+                f"cabecera {cabecera} distinta de la esperada {esperadas}", valor=float(len(cabecera)), umbral=f"= {len(esperadas)} columnas",
+            )
+        )
+    if "min_filas" in checks:
+        minimo = int(checks["min_filas"])
+        filas = sum(1 for linea in lineas[1:] if linea.strip())
+        resultados.append(
+            _resultado(
+                tabla, "filas_minimas", SEVERIDAD_BLOQUEANTE, filas >= minimo,
+                f"{filas} fila(s) de datos, se esperaban al menos {minimo}", valor=float(filas), umbral=f">= {minimo}",
+            )
+        )
+    return resultados

@@ -22,7 +22,7 @@ def _make_n(objetivo, *argumentos, **entorno):
 
 
 def _receta(**entorno):
-    return _make_n("06_prediccion", "TRIMESTRE=2026-T4", **entorno)
+    return _make_n("07_prediccion", "TRIMESTRE=2026-T4", **entorno)
 
 
 def test_prediccion_sample_lanza_el_generador_de_fuentes_sinteticas():
@@ -69,3 +69,25 @@ def test_el_dag_lee_las_mismas_claves_de_conf_que_envia_el_makefile():
     for clave in ("predecir", "trimestre", "prompt"):
         assert f'conf.get("{clave}")' in dag
     assert 'trigger_rule="all_done"' in dag  # que falle una descarga no impide predecir con lo que haya
+
+
+def test_04_silver_lanza_la_app_de_streaming_silver():
+    salida = _make_n("04_silver")
+
+    assert 'runMain raillytics.silver.SilverBuilderApp' in salida
+
+
+def test_los_targets_numerados_siguen_el_orden_del_pipeline_en_la_ayuda():
+    ayuda = subprocess.run(["make", "help"], cwd=RAIZ, capture_output=True, text=True).stdout
+    objetivos = ["00_ingest", "01_raw-uploader", "02_parquet-converter", "03_silver-sample", "04_silver", "05_gold", "06_superset-import", "07_prediccion"]
+
+    posiciones = [ayuda.index(f"  {objetivo} ") for objetivo in objetivos]
+
+    assert posiciones == sorted(posiciones)
+
+
+@pytest.mark.parametrize("antiguo", ["04_gold", "05_superset-import", "06_prediccion"])
+def test_los_nombres_antiguos_de_los_targets_ya_no_existen(antiguo):
+    resultado = subprocess.run(["make", "-n", antiguo], cwd=RAIZ, capture_output=True, text=True)
+
+    assert resultado.returncode != 0 and "No rule to make target" in resultado.stderr

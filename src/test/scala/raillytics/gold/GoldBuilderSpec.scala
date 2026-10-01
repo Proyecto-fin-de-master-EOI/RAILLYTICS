@@ -28,6 +28,21 @@ case class SilverPuntualidad(
   temperatura_media: Double, precipitacion_mm: Double, condicion_meteo: String, es_festivo: Boolean
 )
 
+// Filas Silver reales de la CNMC (contrato de src/main/resources/silver/*.sql); los volúmenes son nulables.
+case class SilverCnmcTrimestral(
+  anio: Int, trimestre: Int, fecha_inicio: LocalDate, corredor: String, empresa: String, operador_id: String,
+  viajeros: Option[Long], plazas_ofertadas: Option[Long], plazas_km: Option[Long], tren_km: Option[Long],
+  viajeros_km: Option[Long], ingresos_eur: Option[Long]
+)
+case class SilverCnmcPrecioTrimestral(
+  anio: Int, trimestre: Int, fecha_inicio: LocalDate, trayecto: String, empresa: String, operador_id: String,
+  precio_medio_eur: java.math.BigDecimal
+)
+case class SilverCnmcPrecioMensual(
+  anio: Int, mes: Int, fecha_inicio: LocalDate, trayecto: String, empresa: String, operador_id: String,
+  precio_medio_eur: java.math.BigDecimal
+)
+
 class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
 
   private implicit var spark: SparkSession = _
@@ -194,6 +209,109 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
     val thrown = the[QualityGates.QualityGateException] thrownBy GoldBuilder.build(ajustes)
 
     thrown.fallidos.map(r => (r.tabla, r.gate)) shouldBe Seq(("silver_puntualidad_enriquecida", "operadores_en_viajeros"))
+    Files.exists(dir.resolve("gold")) shouldBe false
+  }
+
+  private def bd(valor: String) = new java.math.BigDecimal(valor)
+  private val t1 = LocalDate.of(2026, 1, 1)
+  private val t2 = LocalDate.of(2026, 4, 1)
+
+  // `GoldBuilder` aplica a la entrada los gates REALES de Silver (config/quality_gates.yml), que exigen un mínimo de filas
+  // (300 / 150 / 500): se rellena con otros corredores/trayectos, que Gold filtra, hasta superarlos con holgura.
+  private val otros = Seq("Madrid-Valencia", "Madrid-Alicante", "Madrid-Sevilla", "Madrid-Málaga/Granada", "Resto")
+  private val empresas = Seq(("Renfe Viajeros", "RENFE"), ("OUIGO", "OUIGO"), ("Total", "TOTAL"))
+  private def trimestresDesde(anio0: Int) =
+    for { anio <- anio0 to 2026; t <- 1 to 4 if anio < 2026 || t <= 2 } yield (anio, t, LocalDate.of(anio, (t - 1) * 3 + 1, 1))
+
+  private def trimestral(anio: Int, t: Int, fecha: LocalDate, corredor: String, empresa: String, operador: String,
+                         viajeros: Option[Long], ingresos: Option[Long] = None) =
+    SilverCnmcTrimestral(anio, t, fecha, corredor, empresa, operador, viajeros, viajeros.map(_ + 100), viajeros.map(_ * 100),
+      viajeros.map(_ / 2), viajeros.map(_ * 3), ingresos)
+
+  // Madrid-Barcelona: Renfe, Ouigo y la fila Total (solo ingresos) en dos trimestres; una empresa desconocida DOS veces en
+  // 2026-T2 (ambas pasan a OTRO y Gold las suma); y el relleno de otros corredores, que no es del corredor.
+  private val mercadoTrimestral = Seq(
+    trimestral(2026, 1, t1, "Madrid-Barcelona", "Renfe Viajeros", "RENFE", Some(1000L)),
+    trimestral(2026, 1, t1, "Madrid-Barcelona", "OUIGO", "OUIGO", Some(400L)),
+    trimestral(2026, 1, t1, "Madrid-Barcelona", "Total", "TOTAL", None, Some(5000L)),
+    trimestral(2026, 2, t2, "Madrid-Barcelona", "Renfe Viajeros", "RENFE", Some(1100L)),
+    trimestral(2026, 2, t2, "Madrid-Barcelona", "OUIGO", "OUIGO", Some(450L)),
+    trimestral(2026, 2, t2, "Madrid-Barcelona", "Total", "TOTAL", None, Some(5500L)),
+    trimestral(2026, 2, t2, "Madrid-Barcelona", "Nueva SA", "OTRO", Some(10L)),
+    trimestral(2026, 2, t2, "Madrid-Barcelona", "Otra SL", "OTRO", Some(20L))
+  ) ++ (for { corredor <- otros; (anio, t, fecha) <- trimestresDesde(2020); (empresa, op) <- empresas } yield
+    trimestral(anio, t, fecha, corredor, empresa, op, if (op == "TOTAL") None else Some(500L), if (op == "TOTAL") Some(1000L) else None))
+
+  private def preciosTrimestral(operadores: Seq[String] = Seq("RENFE", "OUIGO", "TOTAL")) =
+    (for { (fecha, t) <- Seq((t1, 1), (t2, 2)); op <- operadores } yield
+      SilverCnmcPrecioTrimestral(2026, t, fecha, "Madrid-Barcelona", op, op, bd("60.50"))) ++
+    (for { trayecto <- otros; (anio, t, fecha) <- trimestresDesde(2023); (_, op) <- empresas } yield
+      SilverCnmcPrecioTrimestral(anio, t, fecha, trayecto, op, op, bd("55.00")))
+
+  private def preciosMensual() =
+    (for { m <- 1 to 3; (_, op) <- empresas } yield
+      SilverCnmcPrecioMensual(2026, m, LocalDate.of(2026, m, 1), "Madrid-Barcelona", op, op, bd("61.25"))) ++
+    (for { trayecto <- otros; anio <- 2023 to 2026; m <- 1 to 12 if anio < 2026 || m <= 6; (_, op) <- empresas } yield
+      SilverCnmcPrecioMensual(anio, m, LocalDate.of(anio, m, 1), trayecto, op, op, bd("58.00")))
+
+  private def escribirSilverMercado(settings: GoldBuilderSettings, precios: Seq[SilverCnmcPrecioTrimestral] = preciosTrimestral()): Unit = {
+    spark.createDataFrame(mercadoTrimestral).write.parquet(settings.lake.silverTable("cnmc_trimestral"))
+    spark.createDataFrame(precios).write.parquet(settings.lake.silverTable("cnmc_precio_trimestral"))
+    spark.createDataFrame(preciosMensual()).write.parquet(settings.lake.silverTable("cnmc_precio_mensual"))
+  }
+
+  it should "build the optional market group from the real Silver tables, only the corridor, summing unknown companies" in {
+    val dir = Files.createTempDirectory("gold-builder-mercado-spec")
+    val ajustes = settingsIn(dir)
+    escribirSilver(ajustes, filasPuntualidad)
+    escribirSilverMercado(ajustes)
+
+    val filas = GoldBuilder.build(ajustes)
+
+    filas.keySet shouldBe (GoldBuilder.GoldTables ++ GoldBuilder.MercadoGold).toSet
+    filas("fact_mercado_trimestral") shouldBe 7L   // 2×(RENFE, OUIGO, TOTAL) + OTRO; sin el relleno de otros corredores
+    val mercado = spark.read.parquet(ajustes.lake.goldTable("fact_mercado_trimestral"))
+    mercado.select("linea_id").distinct().collect().map(_.getString(0)) shouldBe Array("AVE-MAD-BCN")
+    mercado.filter("operador_id = 'OTRO'").select("viajeros").collect().map(_.getLong(0)) shouldBe Array(30L)   // 10 + 20
+    mercado.filter("operador_id = 'TOTAL'").select("ingresos_eur").collect().map(_.getLong(0)).sorted shouldBe Array(5000L, 5500L)
+    mercado.filter("operador_id <> 'TOTAL'").agg(sum("viajeros")).collect().head.getLong(0) shouldBe 2980L   // sin los otros corredores
+    filas("fact_precio_trimestral") shouldBe 6L
+    filas("fact_precio_mensual") shouldBe 9L
+    spark.read.parquet(ajustes.lake.goldTable("fact_precio_trimestral")).select("precio_medio_eur").collect().head.getDecimal(0).toPlainString shouldBe "60.50"
+    val calidad = spark.read.parquet(ajustes.lake.calidadDir).select("tabla", "gate", "resultado").collect().map(_.toSeq.map(_.toString))
+    // Ningún gate de los hechos de mercado falla salvo el AVISO por la empresa desconocida (OTRO) que el fixture incluye a propósito.
+    calidad.filter(_(0).startsWith("gold_fact_m")).filterNot(_(2) == "ok").map(_(1)) shouldBe Array("sin_operadores_otro")
+  }
+
+  it should "leave the core model unchanged when the market Silver tables do not exist" in {
+    val dir = Files.createTempDirectory("gold-builder-sin-mercado-spec")
+    val ajustes = settingsIn(dir)
+    escribirSilver(ajustes, filasPuntualidad)
+
+    val filas = GoldBuilder.build(ajustes)
+
+    filas.keySet shouldBe GoldBuilder.GoldTables.toSet
+    Files.exists(dir.resolve("gold/fact_mercado_trimestral")) shouldBe false
+  }
+
+  it should "skip the market group, not fail, when only some of its Silver tables exist" in {
+    val dir = Files.createTempDirectory("gold-builder-mercado-parcial-spec")
+    val ajustes = settingsIn(dir)
+    escribirSilver(ajustes, filasPuntualidad)
+    spark.createDataFrame(mercadoTrimestral).write.parquet(ajustes.lake.silverTable("cnmc_trimestral"))   // faltan los dos de precios
+
+    GoldBuilder.build(ajustes).keySet shouldBe GoldBuilder.GoldTables.toSet
+  }
+
+  it should "abort without writing Gold when a market fact references an operator that is not in dim_operador" in {
+    val dir = Files.createTempDirectory("gold-builder-mercado-ri-spec")
+    val ajustes = settingsIn(dir)
+    escribirSilver(ajustes, filasPuntualidad)   // dim_operador solo tiene RENFE y OUIGO
+    escribirSilverMercado(ajustes, preciosTrimestral(Seq("RENFE", "IRYO", "TOTAL")))
+
+    val thrown = the[QualityGates.QualityGateException] thrownBy GoldBuilder.build(ajustes)
+
+    thrown.fallidos.map(r => (r.tabla, r.gate)) shouldBe Seq(("gold_fact_precio_trimestral", "operadores_en_dim_operador"))
     Files.exists(dir.resolve("gold")) shouldBe false
   }
 }
