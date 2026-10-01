@@ -47,5 +47,14 @@ lazy val root = (project in file("."))
         s"-Dhadoop.home.dir=$home",
         s"-Djava.library.path=${file(home) / "bin"}${java.io.File.pathSeparator}${sys.props.getOrElse("java.library.path", "")}"
       )
-    }
+    },
+    // Lo mismo para `runMain` (make 01_raw-uploader ... 04_gold). Sin fork, Spark
+    // corre dentro de la JVM de sbt con classloader en capas: sbt copia los jars a
+    // target/bg-jobs/sbt_<id>/ y borra ese directorio al salir, justo antes de que
+    // el shutdown hook de Hadoop lea core-default.xml del jar ya borrado
+    // (NoSuchFileException al final de cada job, aunque el job haya ido bien).
+    // En una JVM aparte no hay nada que sbt borre mientras Hadoop sigue vivo.
+    run / fork := true,
+    run / javaOptions := (Test / javaOptions).value,
+    run / connectInput := true
   )
