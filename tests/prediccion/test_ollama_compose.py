@@ -62,3 +62,13 @@ def test_airflow_ve_ollama_en_la_red_de_compose_y_las_rutas_montadas_para_la_pre
     assert entorno["PREDICCION_CONFIG"] == "/opt/airflow/raillytics_config/prediccion.yml"
     assert entorno["PROMPTS_DIR"] == "/opt/airflow/raillytics_config/prompts"
     assert entorno["PREDICCIONES_ROOT"] == "/opt/airflow/raillytics_data/predicciones"
+    # la caché de resultados del LLM vive en data/ (montado), así que sobrevive a recrear el contenedor
+    assert entorno["PREDICCION_CACHE_DIR"] == "/opt/airflow/raillytics_data/cache/prediccion"
+
+
+def test_ollama_arranca_con_flash_attention_y_kv_cache_comprimida_por_defecto_y_se_puede_cambiar():
+    # Medido (RTX 2080 Ti, mistral-nemo, 92 días): 51 tok/s frente a 21 y el modelo cabe entero en la GPU.
+    entorno = COMPOSE["services"]["ollama"]["environment"]
+
+    assert entorno["OLLAMA_FLASH_ATTENTION"] == "${OLLAMA_FLASH_ATTENTION:-1}"
+    assert entorno["OLLAMA_KV_CACHE_TYPE"] == "${OLLAMA_KV_CACHE_TYPE:-q8_0}"

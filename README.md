@@ -122,7 +122,7 @@ RAILLYTICS/
 │   └── ingesta_data_sources.py # DAG Airflow: descarga por fuente (dynamic task mapping sobre el YAML)
 │
 ├── dashboards/
-│   └── superset/raillytics_gold/  # Dashboards de Superset como código (Demanda, Puntualidad, Trazabilidad de cargas); se importan al arrancar
+│   └── superset/raillytics_gold/  # Dashboards de Superset como código (Demanda, Puntualidad, Trazabilidad de cargas, Predicción de demanda); se importan al arrancar
 │
 ├── data/                       # Data Lake local — NO se versiona en git
 │   ├── bronze/                 # Staging local por fuente — aquí escribe la descarga Python
@@ -634,6 +634,22 @@ Probado y **no incorporado** por no mejorar: separar en mensaje de sistema y de 
 código marcas de víspera/puente (76 de 78). **Limitación conocida:** ninguna variante aplica el ajuste de víspera
 (el índice medio de las vísperas sale ≈ 1.0); si te importa, habría que calcular ese ajuste en código.
 
+### Caché de resultados del LLM
+
+Generar los 92 días tarda ~2,5 min con `mistral-nemo`. La predicción guarda cada respuesta del LLM en
+`data/cache/prediccion/<hash>.json` (`PREDICCION_CACHE_DIR`; `data/` no se versiona). La clave es el hash de **todo lo
+que determina la respuesta**: el prompt completo (instrucciones, calendario, totales e histórico), el modelo, la
+semilla, el contexto, la temperatura y el schema. Si algo cambia, la clave cambia: no hay nada que invalidar a mano.
+
+- **Misma entrada, resultado al instante** (medido: de 3 min 10 s a 0,6 s), sin llamar a Ollama ni comprobar que está
+  arriba. Cada ejecución escribe igualmente su propio CSV y su fila en Gold.
+- **Otro trimestre, datos nuevos u otra versión del prompt generan una entrada nueva.**
+- `--sin-cache` (`make 06_prediccion PRED_ARGS="--sin-cache"`) regenera aunque haya respuesta; `PREDICCION_CACHE=0` la
+  desactiva del todo.
+- **Es de mejor esfuerzo:** si el directorio no se puede escribir o una entrada está corrupta o ya no cumple el
+  contrato, simplemente se llama al LLM. Los errores del LLM no se cachean.
+- La trazabilidad lo anota en los `parametros` de la carga: `cache` = `acierto`, `fallo` o `desactivada`.
+
 ### Iterar el prompt
 
 Copia `demanda_v2.md` a `demanda_v3.md`, edítalo y lánzalo con `PRED_PROMPT=demanda_v3`. Los marcadores `{{...}}`
@@ -644,6 +660,28 @@ dispersión. Úsalo para comparar versiones: un festivo con índice 1.0 o un fin
 indican que el prompt no está haciendo su trabajo. La suma diaria frente al total publicado mide solo el
 **nivel** (`--solo-nivel` lo da sin LLM), no el prompt.
 
+### Dashboard en Superset: «Predicción de demanda»
+
+Cada ejecución publica además su resultado como Parquet en Gold, en `raillytics-gold/fact_prediccion_demanda/<run_id>.parquet`
+(un fichero por ejecución: el histórico crece sin reescribir nada y se pueden comparar versiones del prompt o del modelo).
+Grano: día × ejecución. Columnas: `run_id`, `generado_en` (UTC), `trimestre`, `corredor`, `modelo`, `version_prompt`,
+`datos_sinteticos`, `total_esperado`, `fecha`, `dia_semana`, `festivo`, `eventos`, `viajeros_previstos`, `indice` y
+`motivo`. Se publica **antes** que el CSV: si falla Gold, no se escribe el CSV (la carga queda en error).
+
+El dashboard está como código en `dashboards/superset/raillytics_gold/` y se importa con `make up` o
+`make 05_superset-import`: <http://localhost:8088/superset/dashboard/prediccion-demanda/>. Tiene:
+
+- **KPIs:** viajeros previstos de la última ejecución de cada trimestre, ejecuciones publicadas, días festivos o con
+  evento e índice máximo.
+- **Curva diaria** con una línea por ejecución, para comparar versiones del prompt o del modelo.
+- **Coherencia del reparto:** índice medio por día de la semana y por tipo de día (laborable, fin de semana, festivo,
+  evento): es el mismo resumen que imprime cada ejecución, pero comparable entre ejecuciones.
+- **Calendario** de la última ejecución con el motivo de cada día, y la **tabla de ejecuciones**.
+- **Filtros:** trimestre, ejecución y datos (sintéticos o reales; las predicciones hechas con la muestra quedan marcadas).
+
+Los KPIs y el calendario usan solo la última ejecución de cada trimestre (`es_ultima`); los gráficos de comparación
+muestran todas. Superset lee con DuckDB, así que sin ninguna ejecución publicada el dashboard sale vacío.
+
 ### Modelo y rendimiento
 
 Medido el 2026-10-01 con 92 días (≈5.700 tokens de prompt y ≈4.000 de respuesta) en una RTX 2080 Ti de 11 GB:
@@ -652,6 +690,12 @@ Medido el 2026-10-01 con 92 días (≈5.700 tokens de prompt y ≈4.000 de respu
 | --- | --- | --- | --- |
 | `mistral-nemo` (por defecto) | 6 % / 94 % | ~150 s | Cabe casi entero en la GPU |
 | `phi4` | 29 % / 71 % | ~480 s | No cabe entero a `num_ctx` 12288 |
+
+El compose arranca Ollama con **flash attention y KV cache `q8_0`** (`OLLAMA_FLASH_ATTENTION` y `OLLAMA_KV_CACHE_TYPE`,
+se aplican con `make llm-up`): con `mistral-nemo` genera a **51 tok/s en vez de 21** (~80 s en vez de ~180 s para 92 días)
+y el modelo cabe entero en la GPU (100 % en vez de 94 %). La calidad del reparto no cambia (en ambos casos 78 de 78
+días siguen la rúbrica semanal). Con una GPU sin soporte, `OLLAMA_FLASH_ATTENTION=0`. Y si el resultado ya se calculó,
+la [caché](#caché-de-resultados-del-llm) lo devuelve al instante.
 
 `OLLAMA_NUM_CTX` debe ser ≥ ~10.000 para 92 días: con menos, Ollama trunca el prompt en silencio (la predicción
 lo detecta y falla pidiendo subirlo). Cambiar de modelo es `OLLAMA_MODEL` en el `.env` y `make llm-up`.

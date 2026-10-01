@@ -12,7 +12,8 @@ import logging
 import math
 import os
 import re
-from collections.abc import Mapping, Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 
@@ -97,7 +98,8 @@ def _limpiar_motivo(texto: str) -> str:
     return " ".join(texto.split())[:MAX_MOTIVO]
 
 
-def _validar(contenido: str, dias: Sequence[date]) -> list[IndiceDia]:
+def validar_respuesta(contenido: str, dias: Sequence[date]) -> list[IndiceDia]:
+    """Valida (y convierte) el JSON de la respuesta: un registro por cada día de `dias`, fecha ISO exacta e índice en rango."""
     try:
         datos = json.loads(contenido)
     except json.JSONDecodeError as exc:
@@ -148,9 +150,15 @@ def _validar(contenido: str, dias: Sequence[date]) -> list[IndiceDia]:
 
 
 class OllamaClient:
-    def __init__(self, settings: OllamaSettings, session: requests.Session | None = None) -> None:
+    def __init__(
+        self,
+        settings: OllamaSettings,
+        session: requests.Session | None = None,
+        imprimir: Callable[[str], None] | None = None,
+    ) -> None:
         self.settings = settings
         self._http = session or requests.Session()
+        self._imprimir = imprimir or (lambda _: None)
 
     def comprobar(self) -> None:
         """Falla con instrucciones si Ollama no responde o el modelo no está descargado."""
@@ -172,12 +180,13 @@ class OllamaClient:
 
     def generar_indices(self, prompt: str, dias: Sequence[date], reintentos: int = REINTENTOS) -> list[IndiceDia]:
         esquema = esquema_respuesta(len(dias))
+        self._imprimir(f"Pidiendo a {self.settings.modelo} el índice de {len(dias)} días (puede tardar varios minutos)...")
         aviso = ""
         ultimo_error = ""
         for intento in range(reintentos + 1):
-            contenido = self._chat(prompt + aviso, esquema)
+            contenido = self._chat(prompt + aviso, esquema, len(dias))
             try:
-                return _validar(contenido, dias)
+                return validar_respuesta(contenido, dias)
             except RespuestaInvalida as exc:
                 ultimo_error = str(exc)
                 logger.warning("respuesta inválida del LLM (intento %d de %d): %s", intento + 1, reintentos + 1, exc)
@@ -187,12 +196,12 @@ class OllamaClient:
                 )
         raise RespuestaInvalida(f"el LLM no devolvió una respuesta válida tras {reintentos + 1} intentos: {ultimo_error}")
 
-    def _chat(self, contenido_usuario: str, esquema: dict) -> str:
+    def _chat(self, contenido_usuario: str, esquema: dict, n_dias: int) -> str:
         s = self.settings
         cuerpo = {
             "model": s.modelo,
             "messages": [{"role": "user", "content": contenido_usuario}],
-            "stream": False,
+            "stream": True,  # en flujo: permite mostrar el progreso y el timeout es de inactividad, no de duración total
             "format": esquema,
             "options": {"temperature": 0, "seed": s.seed, "num_ctx": s.num_ctx},
             # Medido en Ollama 0.13.3: por defecto, si la respuesta no cabe en num_ctx desplaza el contexto en silencio
@@ -202,7 +211,7 @@ class OllamaClient:
             "truncate": False,
         }
         try:
-            respuesta = self._http.post(f"{s.url}/api/chat", json=cuerpo, timeout=s.timeout_s)
+            respuesta = self._http.post(f"{s.url}/api/chat", json=cuerpo, timeout=s.timeout_s, stream=True)
         except requests.ConnectionError as exc:
             raise OllamaNoDisponible(
                 f"se perdió la conexión con Ollama en {s.url} ({exc}). "
@@ -220,11 +229,7 @@ class OllamaClient:
             )
         if not respuesta.ok:
             raise OllamaError(f"Ollama respondió {respuesta.status_code}: {respuesta.text[:300]}")
-        try:
-            datos = respuesta.json()
-            contenido = datos["message"]["content"]
-        except (ValueError, KeyError, TypeError) as exc:
-            raise RespuestaInvalida("la respuesta de Ollama no trae message.content") from exc
+        contenido, datos = self._leer_flujo(respuesta, n_dias)
         if datos.get("done_reason") == "length":
             raise ContextoInsuficiente(
                 f"la respuesta de {s.modelo} se cortó por falta de contexto (num_ctx={s.num_ctx}). "
@@ -242,3 +247,56 @@ class OllamaClient:
                 "la respuesta no es fiable. Sube OLLAMA_NUM_CTX (92 días necesitan ~10.000)"
             )
         return contenido
+
+    def _leer_flujo(self, respuesta: requests.Response, n_dias: int) -> tuple[str, dict]:
+        """Recompone la respuesta (un JSON por línea) y va mostrando cuántos días lleva generados.
+
+        Devuelve el contenido completo y el último mensaje (`done`), que trae `done_reason` y los contadores de tokens.
+        """
+        s = self.settings
+        acumulado = ""
+        final = None
+        inicio = time.monotonic()
+        paso = max(1, n_dias // 10)  # una línea de progreso cada ~10 %
+        mostrados = 0
+        try:
+            for linea in respuesta.iter_lines():
+                if not linea:
+                    continue
+                try:
+                    trozo = json.loads(linea)
+                except ValueError as exc:
+                    raise RespuestaInvalida("Ollama devolvió una línea que no es JSON en la respuesta en flujo") from exc
+                if trozo.get("error"):
+                    raise OllamaError(f"Ollama falló durante la generación: {trozo['error']}")
+                texto = (trozo.get("message") or {}).get("content") or ""
+                if texto:
+                    acumulado += texto
+                    hechos = min(n_dias, acumulado.count('"fecha"'))
+                    if hechos - mostrados >= paso:
+                        mostrados = hechos
+                        transcurrido = time.monotonic() - inicio
+                        quedan = transcurrido * (n_dias - hechos) / hechos
+                        self._imprimir(
+                            f"  {hechos}/{n_dias} días ({hechos * 100 // n_dias} %) · {transcurrido:.0f} s · quedan ~{quedan:.0f} s"
+                        )
+                if trozo.get("done"):
+                    final = trozo
+                    break
+        except requests.Timeout as exc:
+            raise OllamaError(
+                f"Ollama dejó de responder durante {s.timeout_s:.0f} s. Sube OLLAMA_TIMEOUT_S o usa un modelo más rápido"
+            ) from exc
+        except requests.RequestException as exc:  # conexión cortada a mitad del flujo
+            raise OllamaNoDisponible(
+                f"se perdió la conexión con Ollama en {s.url} durante la generación ({exc}). "
+                "Levántalo con: make llm-up (o docker compose --profile llm up -d)"
+            ) from exc
+        if final is None:
+            raise OllamaError(
+                "la respuesta de Ollama se cortó antes de terminar (el modelo se habrá parado o el servidor se reinició)"
+            )
+        tokens, duracion = final.get("eval_count", 0), final.get("eval_duration", 0)
+        velocidad = f" ({tokens / (duracion / 1e9):.0f} tok/s)" if tokens and duracion else ""
+        self._imprimir(f"  {n_dias}/{n_dias} días generados en {time.monotonic() - inicio:.0f} s{velocidad}")
+        return acumulado, final

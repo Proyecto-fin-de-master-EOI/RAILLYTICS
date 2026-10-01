@@ -17,6 +17,7 @@ import duckdb
 import pandas as pd
 
 from raillytics.calidad.registro import exigir, registrar_calidad
+from raillytics.prediccion.cache import CacheLLM, ClienteConCache
 from raillytics.prediccion.calendario import Calendario, construir_calendario
 from raillytics.prediccion.entradas import Entradas, cargar_config, cargar_entradas, raiz_bronze
 from raillytics.prediccion.gates import TABLA, evaluar_gates
@@ -24,6 +25,7 @@ from raillytics.prediccion.nivel import NivelEsperado, calcular_nivel, desviacio
 from raillytics.prediccion.normalizar import IndiceDia, normalizar_indices, repartir
 from raillytics.prediccion.ollama import OllamaClient, OllamaSettings
 from raillytics.prediccion.prompt import cargar_plantilla, construir_prompt
+from raillytics.prediccion.publicacion import GOLD_TABLA, construir_gold, publicar_gold
 from raillytics.prediccion.salida import (
     CORREDOR,
     construir_dataframe,
@@ -72,10 +74,11 @@ def _preparar(
     layout: LakeLayout,
     con: duckdb.DuckDBPyConnection,
     imprimir: Callable[[str], None],
-) -> tuple[Entradas, dict[Trimestre, int], NivelEsperado | None, int]:
-    """Lee los cuatro orígenes y fija el total esperado (calculado o manual)."""
+) -> tuple[Entradas, dict[Trimestre, int], NivelEsperado | None, int, bool]:
+    """Lee los cuatro orígenes y fija el total esperado (calculado o manual). El último valor: ¿se leen fuentes sintéticas?"""
     consultas = cargar_config(Path(env.get("PREDICCION_CONFIG") or "config/prediccion.yml"))
-    if any("muestra_" in sql for sql in consultas.values()):
+    sinteticas = any("muestra_" in sql for sql in consultas.values())
+    if sinteticas:
         imprimir(
             "AVISO: las consultas leen fuentes SINTÉTICAS (muestra_*): los resultados NO son reales. Cuando Airflow "
             "ingeste las fuentes reales, apunta config/prediccion.yml a ellas"
@@ -96,7 +99,7 @@ def _preparar(
             f"{trimestre} ya está publicado ({miles(real)} viajeros reales): "
             f"el total esperado se desvía {desviacion_relativa(total, real):+.2%}"
         )
-    return entradas, publicados, nivel, total
+    return entradas, publicados, nivel, total, sinteticas
 
 
 def _prompt(
@@ -128,10 +131,10 @@ def ejecutar(
     imprimir: Callable[[str], None] = print,
 ) -> Resultado:
     if solo_nivel:
-        _, _, nivel, total = _preparar(trimestre, total_manual, env, layout, con, imprimir)
+        _, _, nivel, total, _ = _preparar(trimestre, total_manual, env, layout, con, imprimir)
         return Resultado(nivel, total, None, None, None)
     if mostrar_prompt:  # imprime el prompt y termina: ni se comprueba Ollama ni se gasta GPU ni se registra carga
-        entradas, publicados, nivel, total = _preparar(trimestre, total_manual, env, layout, con, imprimir)
+        entradas, publicados, nivel, total, _ = _preparar(trimestre, total_manual, env, layout, con, imprimir)
         prompt, _ = _prompt(trimestre, version_prompt, total, publicados, entradas, env)
         imprimir(prompt)
         return Resultado(nivel, total, None, None, None)
@@ -151,12 +154,12 @@ def ejecutar(
     raiz = Path(env.get("PREDICCIONES_ROOT") or "data/predicciones")
     with registrar_carga(PROCESO, CAPA, layout, con, parametros=parametros) as ejecucion:
         with ejecucion.tabla(TABLA, origen=f"{s.modelo} · {version_prompt}") as carga:
-            entradas, publicados, nivel, total = _preparar(trimestre, total_manual, env, layout, con, imprimir)
+            entradas, publicados, nivel, total, sinteticas = _preparar(trimestre, total_manual, env, layout, con, imprimir)
             prompt, calendario = _prompt(trimestre, version_prompt, total, publicados, entradas, env)
             cliente.comprobar()
             dias = trimestre.dias()
-            imprimir(f"Pidiendo a {s.modelo} el índice de {len(dias)} días (puede tardar varios minutos)...")
             indices = cliente.generar_indices(prompt, dias)
+            parametros["cache"] = {True: "acierto", False: "fallo", None: "desactivada"}[getattr(cliente, "resultado_en_cache", None)]
             valores = [i.indice for i in indices]
             df = construir_dataframe(
                 dias, indices, repartir(valores, total), normalizar_indices(valores),
@@ -169,6 +172,11 @@ def ejecutar(
                 if not r.pasa and not r.bloquea:
                     imprimir(f"AVISO {r.gate}: {r.detalle}")
             exigir(resultados)
+            # Primero Gold y después el CSV: si Gold falla no queda un CSV sin su fila de trazabilidad en el dashboard.
+            gold = construir_gold(df, calendario, total_esperado=total, datos_sinteticos=sinteticas)
+            with ejecucion.tabla(GOLD_TABLA, origen=f"{s.modelo} · {version_prompt}") as carga_gold:
+                carga_gold.destino = publicar_gold(con, layout, gold)
+                carga_gold.filas = len(gold)
             ruta = escribir_csv(df, raiz, trimestre, version_prompt, ahora)
             carga.destino = str(ruta)
             carga.filas = len(df)
@@ -177,6 +185,14 @@ def ejecutar(
     imprimir(f"CSV escrito: {ruta}")
     imprimir(resumen)
     return Resultado(nivel, total, ruta, df, resumen)
+
+
+def crear_cliente(env: Mapping[str, str], *, imprimir: Callable[[str], None] = print, usar_cache: bool = True) -> ClienteLLM:
+    """El cliente de Ollama, envuelto en la caché de resultados salvo que se desactive (--sin-cache o PREDICCION_CACHE=0)."""
+    cliente = OllamaClient(OllamaSettings.from_env(env), imprimir=imprimir)
+    if not usar_cache or env.get("PREDICCION_CACHE", "1").strip().lower() in ("0", "false", "no", "off"):
+        return cliente
+    return ClienteConCache(cliente, CacheLLM(Path(env.get("PREDICCION_CACHE_DIR") or "data/cache/prediccion")), imprimir)
 
 
 def predecir_desde_entorno(
@@ -202,6 +218,6 @@ def predecir_desde_entorno(
         env=env,
         layout=layout,
         con=conectar(layout, env),
-        cliente=OllamaClient(OllamaSettings.from_env(env)),
+        cliente=crear_cliente(env, imprimir=imprimir),
         imprimir=imprimir,
     )

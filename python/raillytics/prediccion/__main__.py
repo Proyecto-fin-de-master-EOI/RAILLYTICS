@@ -16,8 +16,8 @@ from dotenv import find_dotenv, load_dotenv
 
 from raillytics.calidad.registro import QualityGateError
 from raillytics.prediccion.entradas import EntradaError
-from raillytics.prediccion.ollama import OllamaClient, OllamaError, OllamaSettings
-from raillytics.prediccion.servicio import VERSION_PROMPT_POR_DEFECTO, conectar, ejecutar
+from raillytics.prediccion.ollama import OllamaError
+from raillytics.prediccion.servicio import VERSION_PROMPT_POR_DEFECTO, conectar, crear_cliente, ejecutar
 from raillytics.prediccion.trimestre import Trimestre
 from raillytics.utils.lake import LakeLayout
 
@@ -54,6 +54,9 @@ def parsear(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--mostrar-prompt", action="store_true", help="imprime el prompt exacto que se enviaría al LLM y termina (no llama al LLM)"
     )
+    parser.add_argument(
+        "--sin-cache", action="store_true", help="no usa la caché de resultados del LLM: genera de nuevo aunque ya hubiera una respuesta"
+    )
     return parser.parse_args(argv)
 
 
@@ -74,7 +77,7 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None
     layout = LakeLayout.from_env(env)
     try:
         con = conectar(layout, env)
-        cliente = None if args.solo_nivel or args.mostrar_prompt else OllamaClient(OllamaSettings.from_env(env))
+        cliente = None if args.solo_nivel or args.mostrar_prompt else crear_cliente(env, usar_cache=not args.sin_cache)
         ejecutar(
             args.trimestre,
             version_prompt=args.prompt,

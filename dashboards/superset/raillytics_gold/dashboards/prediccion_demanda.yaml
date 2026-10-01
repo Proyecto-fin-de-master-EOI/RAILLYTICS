@@ -1,0 +1,296 @@
+dashboard_title: Predicción de demanda
+description: 'Predicción diaria de demanda del corredor AVE Madrid–Barcelona con un LLM (raillytics.prediccion): curva diaria, comparación
+  entre versiones del prompt o del modelo, coherencia del reparto y calendario con el motivo de cada día. Fuente: s3://raillytics-gold/fact_prediccion_demanda/.'
+css: ''
+slug: prediccion-demanda
+uuid: e2978d8b-5d74-517c-b6f4-ecc2e154ff38
+position:
+  DASHBOARD_VERSION_KEY: v2
+  ROOT_ID:
+    type: ROOT
+    id: ROOT_ID
+    children:
+    - GRID_ID
+  GRID_ID:
+    type: GRID
+    id: GRID_ID
+    children:
+    - ROW-pred-1
+    - ROW-pred-2
+    - ROW-pred-3
+    - ROW-pred-4
+    - ROW-pred-5
+    parents:
+    - ROOT_ID
+  HEADER_ID:
+    id: HEADER_ID
+    type: HEADER
+    meta:
+      text: Predicción de demanda
+  ROW-pred-1:
+    type: ROW
+    id: ROW-pred-1
+    children:
+    - CHART-pred_kpi_viajeros
+    - CHART-pred_kpi_ejecuciones
+    - CHART-pred_kpi_dias_especiales
+    - CHART-pred_kpi_indice_maximo
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-pred_kpi_viajeros:
+    type: CHART
+    id: CHART-pred_kpi_viajeros
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-pred-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 201
+      uuid: ddffe803-4c03-5d69-8b2c-8173c6e123c2
+      sliceName: Viajeros previstos (última ejecución)
+  CHART-pred_kpi_ejecuciones:
+    type: CHART
+    id: CHART-pred_kpi_ejecuciones
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-pred-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 202
+      uuid: 64b808ad-4b12-558b-8aaa-504dacde5682
+      sliceName: Ejecuciones
+  CHART-pred_kpi_dias_especiales:
+    type: CHART
+    id: CHART-pred_kpi_dias_especiales
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-pred-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 203
+      uuid: 8c734fd2-3a50-580f-b7ca-9391fb036a6c
+      sliceName: Días festivos o con evento
+  CHART-pred_kpi_indice_maximo:
+    type: CHART
+    id: CHART-pred_kpi_indice_maximo
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-pred-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 204
+      uuid: 21efbab6-a731-50e0-98d7-1553e746d495
+      sliceName: Índice máximo
+  ROW-pred-2:
+    type: ROW
+    id: ROW-pred-2
+    children:
+    - CHART-pred_curva_diaria
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-pred_curva_diaria:
+    type: CHART
+    id: CHART-pred_curva_diaria
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-pred-2
+    meta:
+      width: 12
+      height: 70
+      chartId: 205
+      uuid: 0b49c9cc-61b3-5fae-bf02-37e21e2e383f
+      sliceName: Viajeros previstos por día y ejecución
+  ROW-pred-3:
+    type: ROW
+    id: ROW-pred-3
+    children:
+    - CHART-pred_indice_dia_semana
+    - CHART-pred_indice_tipo_dia
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-pred_indice_dia_semana:
+    type: CHART
+    id: CHART-pred_indice_dia_semana
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-pred-3
+    meta:
+      width: 6
+      height: 60
+      chartId: 206
+      uuid: e5dcc122-b769-529b-a1d1-9edc8296fb21
+      sliceName: Índice medio por día de la semana
+  CHART-pred_indice_tipo_dia:
+    type: CHART
+    id: CHART-pred_indice_tipo_dia
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-pred-3
+    meta:
+      width: 6
+      height: 60
+      chartId: 207
+      uuid: 58ac4772-8dff-5963-bc35-179b805c08da
+      sliceName: Índice medio por tipo de día
+  ROW-pred-4:
+    type: ROW
+    id: ROW-pred-4
+    children:
+    - CHART-pred_calendario
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-pred_calendario:
+    type: CHART
+    id: CHART-pred_calendario
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-pred-4
+    meta:
+      width: 12
+      height: 90
+      chartId: 208
+      uuid: 00c026b0-a9ca-5127-a39d-a56d655cee2c
+      sliceName: Calendario previsto (última ejecución)
+  ROW-pred-5:
+    type: ROW
+    id: ROW-pred-5
+    children:
+    - CHART-pred_ejecuciones
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-pred_ejecuciones:
+    type: CHART
+    id: CHART-pred_ejecuciones
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-pred-5
+    meta:
+      width: 12
+      height: 60
+      chartId: 209
+      uuid: a9d31db6-2a49-5f53-a14d-f78bcd174352
+      sliceName: Ejecuciones publicadas
+metadata:
+  color_scheme: supersetColors
+  refresh_frequency: 0
+  timed_refresh_immune_slices: []
+  expanded_slices: {}
+  label_colors: {}
+  default_filters: '{}'
+  cross_filters_enabled: true
+  native_filter_configuration:
+  - id: NATIVE_FILTER-pred-trimestre
+    name: Trimestre
+    filterType: filter_select
+    targets:
+    - datasetUuid: ce2482b5-226e-5980-80be-4ed2706e8696
+      column:
+        name: trimestre
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: false
+      inverseSelection: false
+    type: NATIVE_FILTER
+    description: ''
+  - id: NATIVE_FILTER-pred-ejecucion
+    name: Ejecución
+    filterType: filter_select
+    targets:
+    - datasetUuid: ce2482b5-226e-5980-80be-4ed2706e8696
+      column:
+        name: ejecucion
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: false
+      inverseSelection: false
+    type: NATIVE_FILTER
+    description: ''
+  - id: NATIVE_FILTER-pred-datos
+    name: Datos (sintéticos o reales)
+    filterType: filter_select
+    targets:
+    - datasetUuid: ce2482b5-226e-5980-80be-4ed2706e8696
+      column:
+        name: datos
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: false
+      inverseSelection: false
+    type: NATIVE_FILTER
+    description: ''
+version: 1.0.0
+is_managed_externally: false
+external_url: null
+certified_by: null
+certification_details: null
+published: true

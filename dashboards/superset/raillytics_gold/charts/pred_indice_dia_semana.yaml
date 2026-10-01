@@ -1,0 +1,60 @@
+slice_name: Índice medio por día de la semana
+description: 'Coherencia del reparto: con el prompt actual se espera más demanda el viernes y el domingo que el martes o el miércoles.'
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_bar
+params:
+  viz_type: echarts_timeseries_bar
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  x_axis: dia_semana_etiqueta
+  time_grain_sqla: null
+  x_axis_sort_asc: true
+  x_axis_sort_series: name
+  x_axis_sort_series_ascending: true
+  metrics:
+  - indice_medio
+  groupby:
+  - ejecucion
+  order_desc: true
+  row_limit: 10000
+  truncate_metric: true
+  show_empty_columns: true
+  comparison_type: values
+  annotation_layers: []
+  forecastPeriods: 10
+  forecastInterval: 0.8
+  x_axis_title_margin: 15
+  y_axis_title_margin: 15
+  y_axis_title_position: Left
+  sort_series_type: sum
+  color_scheme: supersetColors
+  only_total: true
+  show_legend: true
+  legendType: scroll
+  legendOrientation: top
+  x_axis_time_format: smart_date
+  rich_tooltip: true
+  tooltipTimeFormat: smart_date
+  y_axis_format: .2f
+  truncateXAxis: true
+  y_axis_bounds:
+  - null
+  - null
+  orientation: vertical
+  show_value: true
+  stack: null
+  x_axis_sort: dia_semana_etiqueta
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: e5dcc122-b769-529b-a1d1-9edc8296fb21
+version: 1.0.0
+dataset_uuid: ce2482b5-226e-5980-80be-4ed2706e8696
+is_managed_externally: false
+external_url: null

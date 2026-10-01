@@ -116,7 +116,7 @@ def test_generar_indices_devuelve_un_indice_por_dia_en_orden_y_envia_la_peticion
 
     assert [(i.fecha, i.indice, i.motivo) for i in indices] == [(d, 1.2, f"día {d.day}") for d in DIAS]
     cuerpo = requests_mock.last_request.json()
-    assert cuerpo["model"] == "phi4" and cuerpo["stream"] is False
+    assert cuerpo["model"] == "phi4" and cuerpo["stream"] is True  # en flujo: permite mostrar el progreso
     assert cuerpo["options"] == {"temperature": 0, "seed": 7, "num_ctx": 1024}
     assert cuerpo["format"]["properties"]["dias"]["minItems"] == 3
     assert cuerpo["messages"] == [{"role": "user", "content": "PROMPT"}]
@@ -259,6 +259,47 @@ def test_prompt_mas_respuesta_que_llenan_el_contexto_aunque_diga_stop_es_context
         cliente.generar_indices("PROMPT", DIAS)
 
     assert requests_mock.call_count == 1
+
+
+def _flujo(contenido, partes=8, **final):
+    """La respuesta de Ollama en flujo: un JSON por línea, con el contenido troceado y un último mensaje `done`."""
+    paso = max(1, len(contenido) // partes)
+    trozos = [contenido[i : i + paso] for i in range(0, len(contenido), paso)]
+    lineas = [json.dumps({"message": {"role": "assistant", "content": t}, "done": False}) for t in trozos]
+    lineas.append(json.dumps({"message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop",
+                              "prompt_eval_count": 100, "eval_count": 50, "eval_duration": 2_000_000_000, **final}))
+    return {"text": "\n".join(lineas)}
+
+
+def test_la_respuesta_en_flujo_se_recompone_y_se_muestra_el_progreso(requests_mock):
+    dias = [date(2026, 10, 1) + timedelta(days=i) for i in range(20)]
+    mensajes = []
+    cliente = OllamaClient(OllamaSettings(url=URL, modelo="phi4", num_ctx=100_000, timeout_s=5, seed=7), imprimir=mensajes.append)
+    requests_mock.post(CHAT, **_flujo(contenido_ok(dias), partes=40))
+
+    indices = cliente.generar_indices("PROMPT", dias)
+
+    assert [i.fecha for i in indices] == dias
+    assert mensajes[0].startswith("Pidiendo a phi4 el índice de 20 días")
+    progreso = [m for m in mensajes if "/20 días" in m]
+    hechos = [int(m.split("/")[0]) for m in progreso]
+    assert len(progreso) >= 3 and hechos == sorted(hechos) and hechos[-1] == 20  # sube y termina en el total
+    assert "tok/s" in progreso[-1]
+
+
+def test_un_error_a_mitad_del_flujo_se_traduce_a_un_error_de_ollama(cliente, requests_mock):
+    lineas = [json.dumps({"message": {"content": '{"dias": ['}, "done": False}), json.dumps({"error": "CUDA out of memory"})]
+    requests_mock.post(CHAT, text="\n".join(lineas))
+
+    with pytest.raises(OllamaError, match="CUDA out of memory"):
+        cliente.generar_indices("PROMPT", DIAS)
+
+
+def test_un_flujo_cortado_antes_del_done_falla_con_un_mensaje_claro(cliente, requests_mock):
+    requests_mock.post(CHAT, text=json.dumps({"message": {"content": '{"dias": ['}, "done": False}))
+
+    with pytest.raises(OllamaError, match="se cortó"):
+        cliente.generar_indices("PROMPT", DIAS)
 
 
 def test_http_404_es_un_modelo_no_descargado(cliente, requests_mock):

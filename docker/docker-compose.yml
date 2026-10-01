@@ -35,6 +35,7 @@ x-airflow-common:
     PREDICCION_CONFIG: /opt/airflow/raillytics_config/prediccion.yml
     PROMPTS_DIR: /opt/airflow/raillytics_config/prompts
     PREDICCIONES_ROOT: /opt/airflow/raillytics_data/predicciones
+    PREDICCION_CACHE_DIR: /opt/airflow/raillytics_data/cache/prediccion
     _PIP_ADDITIONAL_REQUIREMENTS: "requests~=2.32 PyYAML~=6.0 duckdb~=1.5.5"
   volumes:
     - ../dags:/opt/airflow/dags
@@ -264,6 +265,12 @@ services:
     container_name: raillytics-ollama
     profiles: ["llm"]
     restart: unless-stopped
+    environment:
+      # Medido (RTX 2080 Ti, mistral-nemo, 92 días): flash attention + KV cache q8_0 = 51 tok/s frente a 21, y el modelo cabe
+      # entero en la GPU (100 % en vez de 94 %). La calidad del reparto no cambia (78/78 días siguen la rúbrica en ambos casos).
+      # Con una GPU sin soporte, OLLAMA_FLASH_ATTENTION=0 en el .env lo desactiva. Cambiarlo recrea el contenedor (make llm-up).
+      OLLAMA_FLASH_ATTENTION: ${OLLAMA_FLASH_ATTENTION:-1}
+      OLLAMA_KV_CACHE_TYPE: ${OLLAMA_KV_CACHE_TYPE:-q8_0}
     ports:
       - "${OLLAMA_PORT:-11435}:11434"
     volumes:

@@ -10,11 +10,14 @@ import yaml
 from raillytics.calidad.registro import QualityGateError
 from raillytics.prediccion.entradas import EntradaError
 from raillytics.prediccion.gates import TABLA
+from raillytics.prediccion.publicacion import GOLD_TABLA
 from raillytics.prediccion.nivel import NivelError
 from raillytics.prediccion.normalizar import IndiceDia
 from raillytics.prediccion.ollama import OllamaSettings, RespuestaInvalida
 from raillytics.prediccion.prompt import PlantillaError
 from raillytics.prediccion import servicio
+from raillytics.prediccion.cache import CacheLLM, ClienteConCache
+from raillytics.prediccion.ollama import OllamaClient
 from raillytics.prediccion.servicio import ejecutar
 from raillytics.prediccion.trimestre import Trimestre
 
@@ -54,10 +57,17 @@ def _lanzar(entorno, cliente, **extra):
     return ejecutar(T4, **argumentos), salida
 
 
-def _cargas(entorno):
+def _cargas(entorno, tabla=TABLA):
     return duckdb.connect().execute(
         f"SELECT proceso, capa, tabla, destino, filas, estado, error, parametros "
-        f"FROM read_parquet('{entorno.layout.cargas_glob()}')"
+        f"FROM read_parquet('{entorno.layout.cargas_glob()}') WHERE tabla = '{tabla}'"
+    ).fetchall()
+
+
+def _gold(entorno):
+    return duckdb.connect().execute(
+        f"SELECT run_id, fecha, viajeros_previstos, total_esperado, datos_sinteticos, festivo, eventos "
+        f"FROM read_parquet('{entorno.layout.gold_glob(GOLD_TABLA)}') ORDER BY run_id, fecha"
     ).fetchall()
 
 
@@ -93,7 +103,7 @@ def test_deja_constancia_de_la_carga_y_de_los_gates(entorno):
     assert destino == str(resultado.ruta)
     assert json.loads(parametros) == {
         "trimestre": "2026-T4", "modelo": "falso", "version_prompt": "demanda_v1", "seed": 1, "num_ctx": 1024,
-        "total_manual": None,
+        "total_manual": None, "cache": "desactivada",
     }
     assert len(_calidad(entorno)) == 7 and all(r == "ok" for _, _, r in _calidad(entorno))
 
@@ -225,9 +235,9 @@ def test_sin_nivel_calculable_pide_el_total_a_mano(entorno):
 def desde_entorno(entorno, monkeypatch):
     """Sustituye Ollama y la conexión al lake; el resto (config, prompts, CSV) es el código real."""
     cliente = ClienteFalso()
-    monkeypatch.setattr(servicio, "OllamaClient", lambda settings: cliente)
+    monkeypatch.setattr(servicio, "OllamaClient", lambda settings, **kwargs: cliente)
     monkeypatch.setattr(servicio, "conectar", lambda layout, env: entorno.con)
-    env = dict(entorno.env, SILVER_ROOT=entorno.layout.silver_root, GOLD_ROOT=entorno.layout.gold_root)
+    env = dict(entorno.env, SILVER_ROOT=entorno.layout.silver_root, GOLD_ROOT=entorno.layout.gold_root, PREDICCION_CACHE="0")
     return entorno, cliente, env
 
 
@@ -267,3 +277,74 @@ def test_la_plantilla_por_defecto_es_la_v2_y_se_puede_cambiar_con_el_entorno(des
         None, date(2026, 10, 1), dict(env, PRED_PROMPT="demanda_v1"), imprimir=lambda _: None
     )
     assert "demanda_v1" in resultado.ruta.name
+
+
+# --- caché de resultados del LLM ---
+
+
+def test_crear_cliente_envuelve_a_ollama_en_la_cache_salvo_que_se_desactive(tmp_path):
+    env = {"PREDICCION_CACHE_DIR": str(tmp_path / "cache")}
+
+    cliente = servicio.crear_cliente(env)
+
+    assert isinstance(cliente, ClienteConCache) and cliente.settings.modelo == "mistral-nemo"
+    assert isinstance(servicio.crear_cliente(env, usar_cache=False), OllamaClient)
+    for apagado in ("0", "false", "NO", "off"):
+        assert isinstance(servicio.crear_cliente(dict(env, PREDICCION_CACHE=apagado)), OllamaClient)
+
+
+def test_la_segunda_ejecucion_identica_sale_de_la_cache_y_queda_anotado_en_la_carga(entorno, tmp_path):
+    real = ClienteFalso()
+    cliente = ClienteConCache(real, CacheLLM(tmp_path / "cache"), lambda _: None)
+
+    _lanzar(entorno, cliente, ahora=AHORA)
+    segunda, salida = _lanzar(entorno, cliente, ahora=datetime(2026, 10, 1, 16, 52, 0))
+
+    assert len(real.prompts) == 1  # el LLM solo se llamó en la primera
+    assert segunda.ruta.is_file() and len(segunda.dataframe) == 92  # pero cada ejecución escribe su CSV
+    caches = sorted(json.loads(fila[7])["cache"] for fila in _cargas(entorno))
+    assert caches == ["acierto", "fallo"]
+
+
+def test_sin_cache_la_carga_dice_que_estaba_desactivada(entorno):
+    _lanzar(entorno, ClienteFalso())
+
+    assert json.loads(_cargas(entorno)[0][7])["cache"] == "desactivada"
+
+
+# --- publicación en Gold (para el dashboard de Superset) ---
+
+
+def test_cada_ejecucion_se_publica_en_gold_y_queda_constancia_en_la_trazabilidad(entorno):
+    resultado, _ = _lanzar(entorno, ClienteFalso())
+
+    filas = _gold(entorno)
+    assert len(filas) == 92 and {f[0] for f in filas} == {resultado.dataframe["run_id"].iloc[0]}
+    assert sum(f[2] for f in filas) == resultado.total_esperado == filas[0][3]
+    assert {f[4] for f in filas} == {False}  # las consultas de la fixture no leen fuentes sintéticas
+    assert {f[5] for f in filas if f[5]} == {"Navidad", "Inmaculada"} and any(f[6] for f in filas)  # festivos y evento del lake de prueba
+    (destino, filas_gold, estado), = [(f[3], f[4], f[5]) for f in _cargas(entorno, GOLD_TABLA)]
+    assert destino.endswith(f"/{GOLD_TABLA}/{resultado.dataframe['run_id'].iloc[0]}.parquet") and (filas_gold, estado) == (92, "ok")
+
+
+def test_las_predicciones_con_fuentes_sinteticas_quedan_marcadas_en_gold(entorno):
+    shutil.copytree(entorno.silver / "festivos", entorno.silver / "muestra_festivos")
+    config = yaml.safe_load(entorno.config.read_text(encoding="utf-8"))
+    config["origenes"]["festivos"]["sql"] = "SELECT fecha, nombre FROM read_parquet('{silver}/muestra_festivos/*.parquet')"
+    entorno.config.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    _lanzar(entorno, ClienteFalso())
+
+    assert {f[4] for f in _gold(entorno)} == {True}
+
+
+def test_si_falla_la_publicacion_en_gold_no_se_escribe_el_csv(entorno, monkeypatch):
+    def falla(*args, **kwargs):
+        raise OSError("MinIO no responde")
+
+    monkeypatch.setattr(servicio, "publicar_gold", falla)
+
+    with pytest.raises(OSError, match="MinIO"):
+        _lanzar(entorno, ClienteFalso())
+
+    assert _csvs(entorno) == [] and _cargas(entorno)[0][5] == "error"

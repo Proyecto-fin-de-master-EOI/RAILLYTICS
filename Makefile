@@ -69,7 +69,7 @@ help:
 	@echo "  04_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold), con quality gates"
 	@echo "  05_superset-import    Reimporta los dashboards de dashboards/superset/ en Superset"
 	@echo "  06_prediccion         Predicción diaria de demanda AVE Madrid-Barcelona con un LLM (make 06_prediccion TRIMESTRE=2026-T4)"
-	@echo "                        (PRED_PROMPT=demanda_v2 elige la plantilla; PRED_ARGS=\"--solo-nivel\" o \"--total-esperado N\" pasan opciones)"
+	@echo "                        (PRED_PROMPT=demanda_v2 elige la plantilla; PRED_ARGS=\"--solo-nivel\", \"--sin-cache\" o \"--total-esperado N\" pasan opciones)"
 	@echo "  prediccion-sample     Genera fuentes SINTETICAS de la prediccion (demanda trimestral, festivos, eventos y meteo) en Bronze L2"
 	@echo "  llm-up                Levanta Ollama (perfil llm del compose) y descarga OLLAMA_MODEL (LLM_GPU=1 reserva la GPU NVIDIA)"
 	@echo "  llm-down              Para y elimina los contenedores de Ollama (los modelos se conservan en su volumen)"

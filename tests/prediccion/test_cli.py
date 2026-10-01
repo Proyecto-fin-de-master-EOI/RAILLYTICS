@@ -15,6 +15,7 @@ def test_los_valores_por_defecto():
 
     assert args.trimestre == Trimestre(2026, 4)
     assert (args.prompt, args.total_esperado, args.solo_nivel, args.mostrar_prompt) == ("demanda_v2", None, False, False)
+    assert args.sin_cache is False
 
 
 def test_todas_las_opciones():
@@ -67,6 +68,16 @@ def test_main_crea_el_cliente_de_ollama_salvo_en_solo_nivel(monkeypatch, sin_inf
     cli.main(["--trimestre", "2026-T4"], env={"OLLAMA_MODEL": "phi4"})
 
     assert clientes[0].settings.modelo == "phi4"
+
+
+def test_sin_cache_se_pasa_al_crear_el_cliente(monkeypatch, sin_infraestructura):
+    creados = []
+    monkeypatch.setattr(cli, "crear_cliente", lambda env, **kwargs: creados.append(kwargs) or object())
+    monkeypatch.setattr(cli, "ejecutar", lambda t, **kw: Resultado(None, 1, None, None, None))
+
+    assert cli.main(["--trimestre", "2026-T4"], env={}) == 0
+    assert cli.main(["--trimestre", "2026-T4", "--sin-cache"], env={}) == 0
+    assert [c["usar_cache"] for c in creados] == [True, False]
 
 
 def test_main_no_crea_el_cliente_con_mostrar_prompt(monkeypatch, sin_infraestructura):
