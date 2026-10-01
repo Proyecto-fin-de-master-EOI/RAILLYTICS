@@ -234,7 +234,7 @@ make install-dev-env        # crea .venv (Python 3.9–3.12), instala requiremen
                             # activa los git hooks y copia .env.example -> .env
                             # (rellena las credenciales: nunca valores por defecto)
 make up                     # levanta MinIO + Postgres + Airflow + Superset
-make 00_ingest              # dispara el DAG de descarga una vez
+make 00_ingest              # levanta Ollama y dispara el DAG de descarga una vez (+ predicción de demanda al final)
 make 01_raw-uploader        # en una terminal aparte — app L1 (queda en primer plano)
 make 02_parquet-converter   # en otra terminal aparte — app L2 (queda en primer plano)
 make 03_silver-sample       # Silver sintético en MinIO (mientras no existan los jobs PySpark)
@@ -525,6 +525,29 @@ make llm-down
 `--solo-nivel` (calcula el total y termina) y `--mostrar-prompt` (imprime el prompt exacto y termina) no llaman al LLM: sirven para iterar sin gastar minutos de GPU. Si el trimestre ya está
 publicado, se relanza como **backtest** (el nivel nunca mira al propio trimestre) y se informa de cuánto se
 desvió el total esperado del real.
+
+### Encadenada con la ingesta: `make 00_ingest`
+
+`make 00_ingest` levanta Ollama (`make llm-up`) y dispara el DAG `ingesta_data_sources` con la predicción al final
+(`predecir=true` en su conf). Es la tarea `predecir`, que llama a `raillytics.prediccion.servicio.predecir_desde_entorno`:
+
+```bash
+make 00_ingest                                  # ingesta + predicción del trimestre en curso
+make 00_ingest TRIMESTRE=2026-T4 PRED_PROMPT=demanda_v3
+```
+
+- **Solo a petición.** Las ejecuciones programadas del DAG (`@daily`) solo ingestan: la tarea se salta si la conf no
+  trae `predecir`. Una predicción diaria gastaría minutos de GPU para un dato que cambia cada trimestre.
+- **No espera a L1/L2.** Esas apps Spark corren fuera de Airflow, así que la predicción usa lo que ya esté procesado en
+  el lake, no las descargas de esta misma ejecución. La tarea corre aunque falle la descarga de alguna fuente.
+- **Trimestre:** `TRIMESTRE=` o, si falta, el trimestre en curso según la fecha de ejecución.
+- **Salida:** `data/predicciones/AVE-MAD-BCN/<trimestre>/…csv`, escrito desde el contenedor de Airflow.
+- **Antes de usarlo** (una sola vez): Airflow necesita las variables nuevas del compose (`make up` recrea los servicios
+  cuyo `docker-compose.yml` cambió) y poder escribir en `data/`: pon `AIRFLOW_UID=$(id -u)` en el `.env` y recrea el
+  stack (`make down && make up`); sin eso la tarea falla con un mensaje que lo explica.
+- **Las fuentes:** `00_ingest` solo descarga lo que esté en `config/data_sources.yml`. Da de alta ahí las cuatro de la
+  predicción (demanda trimestral, festivos, eventos y meteo) cuando tengas sus URLs; el DAG descarga URLs directas en
+  `csv`, `json` o `zip`. Sin esos datos en el lake, la tarea falla cerrada diciendo qué origen no se pudo leer.
 
 ### Entradas (las deja Airflow)
 

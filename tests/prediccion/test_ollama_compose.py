@@ -53,3 +53,12 @@ def test_el_init_solo_descarga_cuando_el_modelo_no_esta_y_lo_dice(tmp_path, mode
     assert salida.returncode == 0
     assert ("pull" in llamadas.read_text().split()) is (not modelo_presente)
     assert ("ya descargado" in salida.stdout) is modelo_presente
+
+
+def test_airflow_ve_ollama_en_la_red_de_compose_y_las_rutas_montadas_para_la_prediccion():
+    entorno = COMPOSE["x-airflow-common"]["environment"]
+
+    assert entorno["OLLAMA_URL"] == "http://ollama:11434"
+    assert entorno["PREDICCION_CONFIG"] == "/opt/airflow/raillytics_config/prediccion.yml"
+    assert entorno["PROMPTS_DIR"] == "/opt/airflow/raillytics_config/prompts"
+    assert entorno["PREDICCIONES_ROOT"] == "/opt/airflow/raillytics_data/predicciones"

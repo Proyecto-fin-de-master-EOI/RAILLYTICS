@@ -62,7 +62,7 @@ help:
 	@echo "  test               Corre los tests de Python y de Scala"
 	@echo "  test-python        Corre solo los tests de Python (pytest)"
 	@echo "  test-scala         Corre solo los tests de Scala (sbt test)"
-	@echo "  00_ingest             Dispara manualmente el DAG de descarga en Airflow"
+	@echo "  00_ingest             Levanta Ollama y dispara el DAG de descarga en Airflow, con la predicción de demanda al final (TRIMESTRE=2026-T4)"
 	@echo "  01_raw-uploader       Lanza la app Spark L1 raw-uploader (primer plano)"
 	@echo "  02_parquet-converter  Lanza la app Spark L2 parquet-converter (primer plano)"
 	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
@@ -119,8 +119,11 @@ test-python: $(VENV)/.deps-installed
 test-scala:
 	$(SBT) -batch test
 
-00_ingest:
-	$(COMPOSE) exec airflow-scheduler airflow dags trigger ingesta_data_sources
+# Levanta Ollama y dispara el DAG de ingesta con la predicción de demanda encadenada al final (conf predecir=true).
+# TRIMESTRE=2026-T4 fija el trimestre a predecir (por defecto, el trimestre en curso); PRED_PROMPT elige la plantilla.
+# Las ejecuciones programadas del DAG (@daily) solo ingestan. Orden de las variables: ver 06_prediccion.
+00_ingest: llm-up
+	$(COMPOSE) exec airflow-scheduler airflow dags trigger ingesta_data_sources --conf "{\"predecir\": true, \"trimestre\": \"$(TRIMESTRE)\", \"prompt\": \"$(PRED_PROMPT)\"}"
 
 01_raw-uploader:
 	$(SBT) -batch "runMain raillytics.ingesta.l1.RawUploaderApp"

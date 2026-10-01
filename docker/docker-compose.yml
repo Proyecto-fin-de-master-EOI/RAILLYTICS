@@ -28,6 +28,13 @@ x-airflow-common:
     # descargas si AIRFLOW_CA_BUNDLE apunta a un .pem (ver .env.example);
     # vacío = certificados del sistema.
     REQUESTS_CA_BUNDLE: ${AIRFLOW_CA_BUNDLE:-}
+    # Predicción diaria de demanda (tarea `predecir` del DAG ingesta_data_sources, raillytics.prediccion): Ollama vive
+    # en la misma red de compose (perfil llm, `make llm-up`) y config/ y data/ se montan en /opt/airflow/raillytics_*.
+    # OLLAMA_MODEL, OLLAMA_NUM_CTX, OLLAMA_TIMEOUT_S y OLLAMA_SEED salen del .env (env_file) si se definen.
+    OLLAMA_URL: http://ollama:11434
+    PREDICCION_CONFIG: /opt/airflow/raillytics_config/prediccion.yml
+    PROMPTS_DIR: /opt/airflow/raillytics_config/prompts
+    PREDICCIONES_ROOT: /opt/airflow/raillytics_data/predicciones
     _PIP_ADDITIONAL_REQUIREMENTS: "requests~=2.32 PyYAML~=6.0 duckdb~=1.5.5"
   volumes:
     - ../dags:/opt/airflow/dags
