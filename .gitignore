@@ -35,6 +35,8 @@ htmlcov/
 .env
 *.local.yml
 secrets/
+# Certificado raíz del proxy TLS corporativo (AIRFLOW_CA_BUNDLE): específico de cada máquina
+config/certs/
 
 # === Data Lake (Bronze/Silver/Gold) — datos generados, no se versionan ===
 # Se ignora el contenido de data/ pero se conserva el esqueleto de carpetas (.gitkeep)
@@ -50,18 +52,33 @@ derby.log
 *.crc
 _delta_log/
 
-# === dbt ===
-dbt/target/
-dbt/dbt_packages/
-dbt/logs/
-logs/
+# === Airflow (docker-compose) — artefactos generados, no se versionan ===
+!docker/airflow/logs/
+docker/airflow/logs/**
+!docker/airflow/logs/**/
+!docker/airflow/logs/**/.gitkeep
+docker/airflow/config/airflow.cfg
 
 # === Power BI (ficheros temporales) ===
 *.pbix.tmp
 ~$*.pbix
+
+# === Scala / SBT ===
+/target/
+project/target/
+project/project/
+.bloop/
+.bsp/
+.metals/
+.ammonite/
+metals.sbt
+
+# === Documentación de trabajo (specs/planes de Claude Code) — no se versiona ===
+docs/superpowers/
 
 # === Sistema operativo ===
 .DS_Store
 Thumbs.db
 .claude
 .remember
+/.superpowers/

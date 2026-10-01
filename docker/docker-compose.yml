@@ -1,0 +1,253 @@
+# Arrancar desde la raíz del repo para que se lea el .env raíz:
+#   docker compose -f docker/docker-compose.yml --env-file .env up -d
+#
+# Airflow usa LocalExecutor (sin Celery/Redis): suficiente para orquestar
+# la ingesta y los jobs PySpark en local/desarrollo con el tamaño de este equipo.
+---
+x-airflow-common:
+  &airflow-common
+  image: apache/airflow:3.3.2-python3.12
+  env_file:
+    - ../.env
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-raillytics}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD debe definirse en .env}@postgres/${AIRFLOW_POSTGRES_DB:-airflow}
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?AIRFLOW_FERNET_KEY debe definirse en .env}
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?AIRFLOW_JWT_SECRET debe definirse en .env}
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    PYTHONPATH: /opt/airflow/python
+    # Dentro de la red de compose MinIO es minio:9000; el MINIO_ENDPOINT del
+    # .env apunta al puerto publicado en el host y aquí no aplica. Lo usa la
+    # trazabilidad de la descarga Bronze (raillytics.utils.cargas).
+    MINIO_ENDPOINT: http://minio:9000
+    # Proxy TLS corporativo: `requests` usa este bundle para verificar las
+    # descargas si AIRFLOW_CA_BUNDLE apunta a un .pem (ver .env.example);
+    # vacío = certificados del sistema.
+    REQUESTS_CA_BUNDLE: ${AIRFLOW_CA_BUNDLE:-}
+    _PIP_ADDITIONAL_REQUIREMENTS: "requests~=2.32 PyYAML~=6.0 duckdb~=1.5.5"
+  volumes:
+    - ../dags:/opt/airflow/dags
+    - ../python:/opt/airflow/python
+    - ../config:/opt/airflow/raillytics_config
+    - ../data:/opt/airflow/raillytics_data
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./airflow/config:/opt/airflow/config
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+
+# Superset consulta la capa Gold directamente en MinIO con DuckDB (sin data
+# warehouse): ver docker/superset/ y dashboards/superset/. La imagen se
+# construye desde docker/superset/Dockerfile la primera vez que se levanta el
+# stack (`docker compose build superset` para reconstruirla).
+x-superset-common:
+  &superset-common
+  build: ./superset
+  image: raillytics-superset:6.1.0
+  env_file:
+    - ../.env
+  environment:
+    SUPERSET_CONFIG_PATH: /app/raillytics/docker/superset_config.py
+    SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?SUPERSET_SECRET_KEY debe definirse en .env}
+    # Dentro de la red de compose MinIO es minio:9000 (el .env apunta al host).
+    MINIO_ENDPOINT: http://minio:9000
+    # raillytics.utils.lake (el mismo código del job Gold) crea el secret de
+    # DuckDB con las credenciales de MinIO al arrancar (superset-run.sh).
+    PYTHONPATH: /app/pythonpath:/app/raillytics/python
+    # Un único worker de gunicorn: sin Redis la caché en memoria solo es
+    # coherente dentro de un proceso. Suficiente para desarrollo.
+    SERVER_WORKER_AMOUNT: "1"
+  volumes:
+    - ./superset:/app/raillytics/docker:ro
+    - ../python:/app/raillytics/python:ro
+    - ../dashboards/superset:/app/raillytics/dashboards:ro
+  depends_on:
+    &superset-common-depends-on
+    postgres:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+
+services:
+  minio:
+    # MinIO ya no distribuye imágenes de la edición community (quay.io/minio y
+    # minio/* en Docker Hub devuelven 401). pgsty/* es el fork de la comunidad
+    # (Pigsty) que sigue publicando builds del mismo código, e incluye sh y mc
+    # (necesarios para el healthcheck y para init-buckets.sh).
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    container_name: raillytics-minio
+    restart: unless-stopped
+    ports:
+      # Puertos del host configurables: en equipos con Zscaler (ZSATunnel) el
+      # 9000 ya está ocupado. Dentro de la red de compose sigue siendo minio:9000.
+      - "${MINIO_API_PORT:-9000}:9000"       # API S3
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"   # Consola web
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER debe definirse en .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD debe definirse en .env}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
+    container_name: raillytics-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER debe definirse en .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD debe definirse en .env}
+    volumes:
+      - ./init-buckets.sh:/init-buckets.sh:ro
+    entrypoint: ["/bin/sh", "/init-buckets.sh"]
+
+  # Un único Postgres para los metadatos de Airflow y de Superset: una base de
+  # datos para cada uno en el mismo servidor (docker/postgres/init-databases.sh
+  # crea la de Superset al inicializar el volumen). No es el Data Warehouse.
+  postgres:
+    image: postgres:16-alpine
+    container_name: raillytics-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-raillytics}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD debe definirse en .env}
+      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB:-airflow}
+      SUPERSET_POSTGRES_DB: ${SUPERSET_POSTGRES_DB:-superset}
+      # La imagen base declara LANG=en_US.utf8, pero Alpine (musl) no trae esa
+      # locale instalada -> initdb avisa "no usable system locales were found".
+      # C.UTF-8 sí es nativa de musl, así que initdb no tiene que buscar nada.
+      LANG: C.UTF-8
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-raillytics}", "-d", "${AIRFLOW_POSTGRES_DB:-airflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: raillytics-airflow-init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -v -p /opt/airflow/{logs,dags,plugins,config}
+        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/
+        exec /entrypoint airflow version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER:-airflow}
+      _PIP_ADDITIONAL_REQUIREMENTS: ''
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?AIRFLOW_ADMIN_PASSWORD debe definirse en .env}
+    user: "0:0"
+
+  airflow-apiserver:
+    <<: *airflow-common
+    container_name: raillytics-airflow-apiserver
+    command: api-server
+    ports:
+      - "8080:8080"   # UI web de Airflow
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: raillytics-airflow-scheduler
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    container_name: raillytics-airflow-dag-processor
+    command: dag-processor
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-triggerer:
+    <<: *airflow-common
+    container_name: raillytics-airflow-triggerer
+    command: triggerer
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  # Migra el metastore, crea el admin e importa dashboards/superset/ (idempotente).
+  superset-init:
+    <<: *superset-common
+    container_name: raillytics-superset-init
+    command: ["bash", "/app/raillytics/docker/superset-init.sh"]
+
+  superset:
+    <<: *superset-common
+    container_name: raillytics-superset
+    restart: unless-stopped
+    command: ["bash", "/app/raillytics/docker/superset-run.sh"]
+    ports:
+      - "${SUPERSET_PORT:-8088}:8088"   # UI web de Superset
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      <<: *superset-common-depends-on
+      superset-init:
+        condition: service_completed_successfully
+
+volumes:
+  minio_data:
+  postgres_data:

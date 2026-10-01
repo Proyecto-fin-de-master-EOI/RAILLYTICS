@@ -1,0 +1,45 @@
+slice_name: Retraso medio por franja horaria y tipo de tren
+description: null
+certified_by: null
+certification_details: null
+viz_type: heatmap_v2
+params:
+  viz_type: heatmap_v2
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  x_axis: franja_horaria
+  time_grain_sqla: null
+  groupby: tipo_tren
+  metric: retraso_medio
+  row_limit: 10000
+  sort_x_axis: alpha_asc
+  sort_y_axis: alpha_asc
+  normalize_across: heatmap
+  legend_type: continuous
+  linear_color_scheme: superset_seq_1
+  xscale_interval: -1
+  yscale_interval: -1
+  left_margin: auto
+  bottom_margin: auto
+  value_bounds:
+  - null
+  - null
+  y_axis_format: .1f
+  x_axis_time_format: smart_date
+  show_legend: true
+  show_percentage: false
+  show_values: true
+  normalized: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 53c0a3b4-2fc8-5908-a6d9-646e2f38bb69
+version: 1.0.0
+dataset_uuid: af719c1c-3a54-5f0d-b18c-bb5dcda219dd
+is_managed_externally: false
+external_url: null

@@ -1,0 +1,48 @@
+slice_name: Puntualidad por línea
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  query_mode: aggregate
+  groupby:
+  - linea
+  - tipo_tren
+  time_grain_sqla: P1D
+  temporal_columns_lookup: {}
+  metrics:
+  - n_servicios
+  - pct_puntuales
+  - retraso_medio
+  - retraso_p90
+  - pct_cancelados
+  all_columns: []
+  percent_metrics: []
+  timeseries_limit_metric: pct_puntuales
+  order_by_cols: []
+  order_desc: false
+  row_limit: 1000
+  server_page_length: 10
+  show_totals: false
+  table_timestamp_format: smart_date
+  show_cell_bars: true
+  color_pn: true
+  allow_render_html: true
+  column_config: {}
+  conditional_formatting: []
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 81336db4-f072-59f4-84cd-11d76c6e5ab1
+version: 1.0.0
+dataset_uuid: af719c1c-3a54-5f0d-b18c-bb5dcda219dd
+is_managed_externally: false
+external_url: null

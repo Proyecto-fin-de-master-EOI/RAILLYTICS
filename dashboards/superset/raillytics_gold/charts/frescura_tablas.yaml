@@ -1,0 +1,58 @@
+slice_name: Última carga por tabla
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: ultima_carga
+  query_mode: raw
+  groupby: []
+  metrics: []
+  all_columns:
+  - capa
+  - proceso
+  - tabla
+  - ultima_carga
+  - horas_desde_ultima_carga
+  - ultimo_estado
+  - ultimas_filas
+  - n_cargas
+  - n_errores
+  percent_metrics: []
+  order_by_cols:
+  - '["ultima_carga", false]'
+  row_limit: 200
+  server_page_length: 10
+  include_search: true
+  show_totals: false
+  table_timestamp_format: '%Y-%m-%d %H:%M:%S'
+  show_cell_bars: false
+  color_pn: false
+  allow_render_html: false
+  column_config: {}
+  conditional_formatting:
+  - column: horas_desde_ultima_carga
+    operator: '>'
+    targetValue: 24
+    colorScheme: '#EFA1AA'
+  - column: n_errores
+    operator: '>'
+    targetValue: 0
+    colorScheme: '#FDE380'
+  temporal_columns_lookup: {}
+  time_grain_sqla: null
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 540e92d3-00c1-54ce-9bb2-02e780a63f07
+version: 1.0.0
+dataset_uuid: 01c91479-9176-5590-bd0d-564623f06aee
+is_managed_externally: false
+external_url: null

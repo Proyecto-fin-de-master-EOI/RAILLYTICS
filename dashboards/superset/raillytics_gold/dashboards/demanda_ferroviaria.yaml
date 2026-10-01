@@ -1,0 +1,319 @@
+dashboard_title: Demanda ferroviaria
+description: 'Dashboard 1 del diseño: viajeros por estación, evolución temporal, comparativa por tipo de tren e impacto de
+  festivos y meteorología. Fuente: capa Gold (DuckDB sobre MinIO).'
+css: ''
+slug: demanda-ferroviaria
+uuid: 3acb9fbe-1091-55f4-9d83-80e6e697cc4d
+position:
+  DASHBOARD_VERSION_KEY: v2
+  ROOT_ID:
+    type: ROOT
+    id: ROOT_ID
+    children:
+    - GRID_ID
+  GRID_ID:
+    type: GRID
+    id: GRID_ID
+    children:
+    - ROW-demanda-1
+    - ROW-demanda-2
+    - ROW-demanda-3
+    - ROW-demanda-4
+    - ROW-demanda-5
+    parents:
+    - ROOT_ID
+  HEADER_ID:
+    id: HEADER_ID
+    type: HEADER
+    meta:
+      text: Demanda ferroviaria
+  ROW-demanda-1:
+    type: ROW
+    id: ROW-demanda-1
+    children:
+    - CHART-kpi_viajeros_totales
+    - CHART-kpi_viajeros_dia
+    - CHART-kpi_estaciones
+    - CHART-kpi_lineas
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-kpi_viajeros_totales:
+    type: CHART
+    id: CHART-kpi_viajeros_totales
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-demanda-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 1
+      uuid: 56df3f2f-a221-52b8-b5b3-2e710612d5ac
+      sliceName: Viajeros totales
+  CHART-kpi_viajeros_dia:
+    type: CHART
+    id: CHART-kpi_viajeros_dia
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-demanda-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 2
+      uuid: 8dda25b4-5f6a-546a-bd82-e8cc4c9ad149
+      sliceName: Viajeros por día
+  CHART-kpi_estaciones:
+    type: CHART
+    id: CHART-kpi_estaciones
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-demanda-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 3
+      uuid: 9331b3fd-022d-550f-888a-4dea42607711
+      sliceName: Estaciones
+  CHART-kpi_lineas:
+    type: CHART
+    id: CHART-kpi_lineas
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-demanda-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 4
+      uuid: 9be5d7ce-bb59-582f-8fe7-43b5bc1220a4
+      sliceName: Líneas
+  ROW-demanda-2:
+    type: ROW
+    id: ROW-demanda-2
+    children:
+    - CHART-evolucion_viajeros
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-evolucion_viajeros:
+    type: CHART
+    id: CHART-evolucion_viajeros
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-demanda-2
+    meta:
+      width: 12
+      height: 60
+      chartId: 5
+      uuid: e6a2624f-f23b-59f4-a4fe-903edfe90c84
+      sliceName: Evolución diaria de viajeros por tipo de tren
+  ROW-demanda-3:
+    type: ROW
+    id: ROW-demanda-3
+    children:
+    - CHART-top_estaciones
+    - CHART-reparto_tipo_tren
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-top_estaciones:
+    type: CHART
+    id: CHART-top_estaciones
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-demanda-3
+    meta:
+      width: 7
+      height: 70
+      chartId: 6
+      uuid: 3de2b2d9-5c4a-5800-97eb-4dca352b6e10
+      sliceName: Top 10 estaciones por viajeros
+  CHART-reparto_tipo_tren:
+    type: CHART
+    id: CHART-reparto_tipo_tren
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-demanda-3
+    meta:
+      width: 5
+      height: 70
+      chartId: 7
+      uuid: 29bf08c0-a505-59a9-9227-fe25b263c3c3
+      sliceName: Reparto de viajeros por tipo de tren
+  ROW-demanda-4:
+    type: ROW
+    id: ROW-demanda-4
+    children:
+    - CHART-viajeros_dia_semana
+    - CHART-impacto_festivos
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-viajeros_dia_semana:
+    type: CHART
+    id: CHART-viajeros_dia_semana
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-demanda-4
+    meta:
+      width: 6
+      height: 60
+      chartId: 8
+      uuid: 4cb2e688-6c1a-574f-bf02-4b03baf13d52
+      sliceName: Viajeros por día de la semana (media diaria)
+  CHART-impacto_festivos:
+    type: CHART
+    id: CHART-impacto_festivos
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-demanda-4
+    meta:
+      width: 6
+      height: 60
+      chartId: 9
+      uuid: 5b7a4eae-9c60-5caa-92f1-c69c1a62df94
+      sliceName: Impacto de festivos y fines de semana (media diaria por tipo de tren)
+  ROW-demanda-5:
+    type: ROW
+    id: ROW-demanda-5
+    children:
+    - CHART-impacto_meteo_viajeros
+    - CHART-viajeros_comunidad
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-impacto_meteo_viajeros:
+    type: CHART
+    id: CHART-impacto_meteo_viajeros
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-demanda-5
+    meta:
+      width: 6
+      height: 60
+      chartId: 10
+      uuid: 378d395a-170d-5973-ac92-e9e5f76d8a4d
+      sliceName: Viajeros y meteorología (media diaria por tipo de tren)
+  CHART-viajeros_comunidad:
+    type: CHART
+    id: CHART-viajeros_comunidad
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-demanda-5
+    meta:
+      width: 6
+      height: 60
+      chartId: 11
+      uuid: 7bee4138-f499-57d8-90a5-674000b57bbe
+      sliceName: Viajeros por comunidad autónoma
+metadata:
+  color_scheme: supersetColors
+  refresh_frequency: 0
+  timed_refresh_immune_slices: []
+  expanded_slices: {}
+  label_colors: {}
+  default_filters: '{}'
+  cross_filters_enabled: true
+  native_filter_configuration:
+  - id: NATIVE_FILTER-demanda-fechas
+    name: Rango de fechas
+    filterType: filter_time
+    targets:
+    - {}
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues: {}
+    type: NATIVE_FILTER
+    description: ''
+  - id: NATIVE_FILTER-demanda-tipo-tren
+    name: Tipo de tren
+    filterType: filter_select
+    targets:
+    - datasetUuid: 96722fb6-8e32-5c11-a4ed-d77abe207f92
+      column:
+        name: tipo_tren
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: false
+      inverseSelection: false
+    type: NATIVE_FILTER
+    description: ''
+  - id: NATIVE_FILTER-demanda-comunidad
+    name: Comunidad autónoma
+    filterType: filter_select
+    targets:
+    - datasetUuid: 96722fb6-8e32-5c11-a4ed-d77abe207f92
+      column:
+        name: comunidad
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: false
+      inverseSelection: false
+    type: NATIVE_FILTER
+    description: ''
+version: 1.0.0
+is_managed_externally: false
+external_url: null
+certified_by: null
+certification_details: null
+published: true

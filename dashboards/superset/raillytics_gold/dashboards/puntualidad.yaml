@@ -1,0 +1,319 @@
+dashboard_title: Puntualidad
+description: 'Dashboard 2 del diseño: retrasos por línea, impacto de la meteorología y estaciones críticas. Fuente: capa Gold
+  (DuckDB sobre MinIO).'
+css: ''
+slug: puntualidad
+uuid: 68ac736c-7245-51f8-9308-c394a5125a22
+position:
+  DASHBOARD_VERSION_KEY: v2
+  ROOT_ID:
+    type: ROOT
+    id: ROOT_ID
+    children:
+    - GRID_ID
+  GRID_ID:
+    type: GRID
+    id: GRID_ID
+    children:
+    - ROW-puntualidad-1
+    - ROW-puntualidad-2
+    - ROW-puntualidad-3
+    - ROW-puntualidad-4
+    - ROW-puntualidad-5
+    parents:
+    - ROOT_ID
+  HEADER_ID:
+    id: HEADER_ID
+    type: HEADER
+    meta:
+      text: Puntualidad
+  ROW-puntualidad-1:
+    type: ROW
+    id: ROW-puntualidad-1
+    children:
+    - CHART-kpi_pct_puntuales
+    - CHART-kpi_retraso_medio
+    - CHART-kpi_servicios
+    - CHART-kpi_pct_cancelados
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-kpi_pct_puntuales:
+    type: CHART
+    id: CHART-kpi_pct_puntuales
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-puntualidad-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 12
+      uuid: c04ae53a-3417-598d-9465-428881e00d06
+      sliceName: Servicios puntuales (%)
+  CHART-kpi_retraso_medio:
+    type: CHART
+    id: CHART-kpi_retraso_medio
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-puntualidad-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 13
+      uuid: fdc8854e-bd36-5674-a0b8-f0f6cd387aa2
+      sliceName: Retraso medio en llegada (min)
+  CHART-kpi_servicios:
+    type: CHART
+    id: CHART-kpi_servicios
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-puntualidad-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 14
+      uuid: e9e26c71-69ef-5351-892a-f82f38f3ecfa
+      sliceName: Servicios analizados
+  CHART-kpi_pct_cancelados:
+    type: CHART
+    id: CHART-kpi_pct_cancelados
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-puntualidad-1
+    meta:
+      width: 3
+      height: 50
+      chartId: 15
+      uuid: b7d3af59-8520-5c99-88c7-e268211ace8e
+      sliceName: Servicios cancelados (%)
+  ROW-puntualidad-2:
+    type: ROW
+    id: ROW-puntualidad-2
+    children:
+    - CHART-evolucion_puntualidad_mes
+    - CHART-evolucion_retraso
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-evolucion_puntualidad_mes:
+    type: CHART
+    id: CHART-evolucion_puntualidad_mes
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-puntualidad-2
+    meta:
+      width: 6
+      height: 60
+      chartId: 16
+      uuid: 72e024e6-8b1e-595e-bf19-2d7ece42d172
+      sliceName: Evolución mensual de la puntualidad (%) por tipo de tren
+  CHART-evolucion_retraso:
+    type: CHART
+    id: CHART-evolucion_retraso
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-puntualidad-2
+    meta:
+      width: 6
+      height: 60
+      chartId: 17
+      uuid: 9510fbe3-eae2-5ab7-be55-e562ab8869c9
+      sliceName: Evolución diaria del retraso medio por tipo de tren
+  ROW-puntualidad-3:
+    type: ROW
+    id: ROW-puntualidad-3
+    children:
+    - CHART-puntualidad_linea
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-puntualidad_linea:
+    type: CHART
+    id: CHART-puntualidad_linea
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-puntualidad-3
+    meta:
+      width: 12
+      height: 70
+      chartId: 18
+      uuid: 81336db4-f072-59f4-84cd-11d76c6e5ab1
+      sliceName: Puntualidad por línea
+  ROW-puntualidad-4:
+    type: ROW
+    id: ROW-puntualidad-4
+    children:
+    - CHART-retraso_hora_tipo
+    - CHART-impacto_meteo_retraso
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-retraso_hora_tipo:
+    type: CHART
+    id: CHART-retraso_hora_tipo
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-puntualidad-4
+    meta:
+      width: 7
+      height: 65
+      chartId: 19
+      uuid: 53c0a3b4-2fc8-5908-a6d9-646e2f38bb69
+      sliceName: Retraso medio por franja horaria y tipo de tren
+  CHART-impacto_meteo_retraso:
+    type: CHART
+    id: CHART-impacto_meteo_retraso
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-puntualidad-4
+    meta:
+      width: 5
+      height: 65
+      chartId: 20
+      uuid: b31e65a1-809f-5132-94b8-41e3726fc4be
+      sliceName: Impacto de la meteorología en el retraso medio
+  ROW-puntualidad-5:
+    type: ROW
+    id: ROW-puntualidad-5
+    children:
+    - CHART-retraso_linea
+    - CHART-estaciones_criticas
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-retraso_linea:
+    type: CHART
+    id: CHART-retraso_linea
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-puntualidad-5
+    meta:
+      width: 6
+      height: 70
+      chartId: 21
+      uuid: 8280fa75-f009-5d62-b91c-5370e771d4df
+      sliceName: Retraso medio por línea
+  CHART-estaciones_criticas:
+    type: CHART
+    id: CHART-estaciones_criticas
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-puntualidad-5
+    meta:
+      width: 6
+      height: 70
+      chartId: 22
+      uuid: 46167dd0-4b55-5da4-8cc0-7d6d60e59770
+      sliceName: 'Estaciones críticas: retraso medio en llegada'
+metadata:
+  color_scheme: supersetColors
+  refresh_frequency: 0
+  timed_refresh_immune_slices: []
+  expanded_slices: {}
+  label_colors: {}
+  default_filters: '{}'
+  cross_filters_enabled: true
+  native_filter_configuration:
+  - id: NATIVE_FILTER-puntualidad-fechas
+    name: Rango de fechas
+    filterType: filter_time
+    targets:
+    - {}
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues: {}
+    type: NATIVE_FILTER
+    description: ''
+  - id: NATIVE_FILTER-puntualidad-tipo-tren
+    name: Tipo de tren
+    filterType: filter_select
+    targets:
+    - datasetUuid: af719c1c-3a54-5f0d-b18c-bb5dcda219dd
+      column:
+        name: tipo_tren
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: false
+      inverseSelection: false
+    type: NATIVE_FILTER
+    description: ''
+  - id: NATIVE_FILTER-puntualidad-linea
+    name: Línea
+    filterType: filter_select
+    targets:
+    - datasetUuid: af719c1c-3a54-5f0d-b18c-bb5dcda219dd
+      column:
+        name: linea
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: false
+      inverseSelection: false
+    type: NATIVE_FILTER
+    description: ''
+version: 1.0.0
+is_managed_externally: false
+external_url: null
+certified_by: null
+certification_details: null
+published: true
