@@ -274,8 +274,9 @@ services:
     ports:
       - "${OLLAMA_PORT:-11435}:11434"
     volumes:
-      # Sin OLLAMA_MODELS_DIR, un volumen Docker; con una ruta (p. ej. $HOME/.ollama) se reutilizan los
-      # modelos ya descargados en el host. El contenedor corre como root: lo que descargue será de root.
+      # Sin OLLAMA_MODELS_DIR, un volumen Docker; con una ruta absoluta (p. ej. /home/usuario/.ollama) se reutilizan los
+      # modelos ya descargados en el host. Ojo: el Makefile también lee el .env, así que no uses $HOME (Make lo expandiría
+      # mal): escribe la ruta completa. El contenedor corre como root: lo que descargue será de root.
       - ${OLLAMA_MODELS_DIR:-ollama_data}:/root/.ollama
     healthcheck:
       test: ["CMD", "ollama", "list"]
