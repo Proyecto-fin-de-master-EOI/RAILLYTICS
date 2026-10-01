@@ -1,4 +1,5 @@
 import json
+import shutil
 from datetime import date, datetime
 from pathlib import Path
 
@@ -123,6 +124,23 @@ def test_total_manual_sustituye_al_nivel(entorno):
 
     assert resultado.nivel is None and resultado.dataframe["viajeros_previstos"].sum() == 500_000
     assert json.loads(_cargas(entorno)[0][7])["total_manual"] == 500_000
+
+
+def test_avisa_cuando_las_consultas_leen_fuentes_sinteticas(entorno):
+    shutil.copytree(entorno.silver / "festivos", entorno.silver / "muestra_festivos")
+    config = yaml.safe_load(entorno.config.read_text(encoding="utf-8"))
+    config["origenes"]["festivos"]["sql"] = "SELECT fecha, nombre FROM read_parquet('{silver}/muestra_festivos/*.parquet')"
+    entorno.config.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    _, salida = _lanzar(entorno, ClienteFalso())
+
+    assert any(linea.startswith("AVISO") and "SINTÉTICAS" in linea and "NO son reales" in linea for linea in salida)
+
+
+def test_no_avisa_de_datos_sinteticos_si_las_consultas_leen_fuentes_reales(entorno):
+    _, salida = _lanzar(entorno, ClienteFalso())
+
+    assert not any("SINTÉTICAS" in linea for linea in salida)
 
 
 def test_mostrar_prompt_imprime_el_prompt_y_termina_sin_llamar_al_llm(entorno):

@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest 01_raw-uploader 02_parquet-converter 03_silver-sample 04_gold 05_superset-import 06_prediccion llm-up llm-down quality-gates cargas calidad clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest 01_raw-uploader 02_parquet-converter 03_silver-sample 04_gold 05_superset-import 06_prediccion prediccion-sample llm-up llm-down quality-gates cargas calidad clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -70,6 +70,7 @@ help:
 	@echo "  05_superset-import    Reimporta los dashboards de dashboards/superset/ en Superset"
 	@echo "  06_prediccion         Predicción diaria de demanda AVE Madrid-Barcelona con un LLM (make 06_prediccion TRIMESTRE=2026-T4)"
 	@echo "                        (PRED_PROMPT=demanda_v2 elige la plantilla; PRED_ARGS=\"--solo-nivel\" o \"--total-esperado N\" pasan opciones)"
+	@echo "  prediccion-sample     Genera fuentes SINTETICAS de la prediccion (demanda trimestral, festivos, eventos y meteo) en Bronze L2"
 	@echo "  llm-up                Levanta Ollama (perfil llm del compose) y descarga OLLAMA_MODEL (LLM_GPU=1 reserva la GPU NVIDIA)"
 	@echo "  llm-down              Para y elimina los contenedores de Ollama (los modelos se conservan en su volumen)"
 	@echo "  quality-gates      Evalúa config/quality_gates.yml sobre Silver y Gold del lake (app Spark; falla si hay gates bloqueantes)"
@@ -151,6 +152,12 @@ test-scala:
 TRIMESTRE ?=
 PRED_PROMPT ?= demanda_v2
 PRED_ARGS ?=
+# Fuentes SINTETICAS (no reales) de la prediccion en Bronze L2, en las rutas que espera config/prediccion.yml, para
+# probar 06_prediccion y 00_ingest mientras Airflow no ingiera las reales. make prediccion-sample MUESTRA_ARGS="--hasta 2026-T3"
+MUESTRA_ARGS ?=
+prediccion-sample: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.prediccion.muestra $(MUESTRA_ARGS)
+
 06_prediccion: $(VENV)/.deps-installed
 	$(if $(TRIMESTRE),,$(error Falta TRIMESTRE: make 06_prediccion TRIMESTRE=2026-T4))
 	$(VENV_PY) -m raillytics.prediccion --trimestre $(TRIMESTRE) --prompt $(PRED_PROMPT) $(PRED_ARGS)

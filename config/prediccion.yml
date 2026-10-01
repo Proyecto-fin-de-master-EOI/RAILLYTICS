@@ -13,27 +13,31 @@
 #
 # Marcadores de ruta: {bronze}, {silver}, {gold} (bucket de MinIO o directorio local, según el .env).
 #
-# IMPORTANTE: las rutas y las columnas de ORIGEN de abajo son SUPUESTAS. Cuando se escribió este fichero
-# los DAGs de Airflow aún no habían ingestado estas fuentes. Ajústalas a lo que haya en el lake. Para ver
-# las columnas reales de una fuente, en DuckDB:
+# ATENCIÓN — ESTA CONFIGURACIÓN LEE LA MUESTRA SINTÉTICA (NO son datos reales). `make prediccion-sample` genera las cuatro
+# fuentes en {bronze}/l2/muestra_<fuente>/ con las columnas que asumen estas consultas, para poder probar 06_prediccion y
+# 00_ingest mientras Airflow no ingiera las reales. La predicción lo avisa cada vez que corre.
+#
+# Cuando existan las fuentes REALES: cambia en cada consulta la ruta `muestra_<fuente>` por la de la fuente real y ajusta
+# las columnas a las suyas. Para ver las columnas reales de una fuente, en DuckDB:
 #   DESCRIBE SELECT * FROM read_parquet('s3://raillytics-bronze/l2/<fuente>/*/*.parquet');
+# No dejes las dos a la vez: se leerían juntas y los totales saldrían duplicados sin ningún error.
 origenes:
   trimestrales:
     sql: |
       SELECT concat(anio, '-T', trimestre) AS trimestre, sum(viajeros) AS viajeros
-      FROM read_parquet('{bronze}/l2/demanda_trimestral/*/*.parquet')
+      FROM read_parquet('{bronze}/l2/muestra_demanda_trimestral/*/*.parquet')
       WHERE corredor = 'AVE-MAD-BCN'
       GROUP BY 1
       ORDER BY 1
   festivos:
     sql: |
       SELECT fecha, nombre
-      FROM read_parquet('{bronze}/l2/festivos/*/*.parquet')
+      FROM read_parquet('{bronze}/l2/muestra_festivos/*/*.parquet')
   eventos:
     sql: |
       SELECT fecha, descripcion, ciudad
-      FROM read_parquet('{bronze}/l2/eventos/*/*.parquet')
+      FROM read_parquet('{bronze}/l2/muestra_eventos/*/*.parquet')
   meteo:
     sql: |
       SELECT fecha, ciudad, tmed AS temperatura_media, prec AS precipitacion_mm
-      FROM read_parquet('{bronze}/l2/aemet/*/*.parquet')
+      FROM read_parquet('{bronze}/l2/muestra_aemet/*/*.parquet')

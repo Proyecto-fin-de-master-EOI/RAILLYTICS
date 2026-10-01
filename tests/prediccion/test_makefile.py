@@ -25,6 +25,12 @@ def _receta(**entorno):
     return _make_n("06_prediccion", "TRIMESTRE=2026-T4", **entorno)
 
 
+def test_prediccion_sample_lanza_el_generador_de_fuentes_sinteticas():
+    salida = _make_n("prediccion-sample", MUESTRA_ARGS="--hasta 2026-T3")
+
+    assert "-m raillytics.prediccion.muestra --hasta 2026-T3" in salida
+
+
 def test_la_plantilla_por_defecto_resiste_la_variable_PROMPT_de_cmd_exe():
     assert "--prompt demanda_v2" in _receta(PROMPT="$P$G")
 

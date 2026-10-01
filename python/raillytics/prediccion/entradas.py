@@ -103,12 +103,24 @@ def _cargar(
     try:
         df = con.execute(sql).df()
     except duckdb.Error as exc:
-        rutas = re.findall(r"read_parquet\('([^']+)'", sql)
+        motivo = _resumir(exc)
+        # La ruta ya suele ir en el motivo (IO Error); solo se añade la que no esté, para no repetirla.
+        rutas = [r for r in re.findall(r"read_parquet\('([^']+)'", sql) if r not in motivo]
+        consultadas = f" Rutas consultadas: {rutas}." if rutas else ""
         raise EntradaError(
-            f"origen '{nombre}': no se pudo leer ({exc}). Rutas consultadas: {rutas or 'ninguna'}. "
+            f"origen '{nombre}': no se pudo leer ({motivo}).{consultadas} "
             "¿Ha ingestado Airflow esta fuente? Revisa también su consulta en config/prediccion.yml"
         ) from exc
     return _validar(nombre, df)
+
+
+def _resumir(exc: Exception) -> str:
+    """Mensaje de DuckDB en una sola línea: sin el fragmento de SQL (`LINE n: …` y su `^`), que solo estorba al leerlo.
+
+    Se conservan las pistas útiles, como `Candidate bindings: "fecha", "tmed"` en un error de columna.
+    """
+    lineas = [linea.strip() for linea in str(exc).splitlines()]
+    return " ".join(linea for linea in lineas if linea and not linea.startswith("LINE ") and set(linea) != {"^"})
 
 
 def _validar(nombre: str, df: pd.DataFrame) -> pd.DataFrame:

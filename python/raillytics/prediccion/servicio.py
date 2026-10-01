@@ -75,6 +75,11 @@ def _preparar(
 ) -> tuple[Entradas, dict[Trimestre, int], NivelEsperado | None, int]:
     """Lee los cuatro orígenes y fija el total esperado (calculado o manual)."""
     consultas = cargar_config(Path(env.get("PREDICCION_CONFIG") or "config/prediccion.yml"))
+    if any("muestra_" in sql for sql in consultas.values()):
+        imprimir(
+            "AVISO: las consultas leen fuentes SINTÉTICAS (muestra_*): los resultados NO son reales. Cuando Airflow "
+            "ingeste las fuentes reales, apunta config/prediccion.yml a ellas"
+        )
     entradas = cargar_entradas(consultas, layout, con, env)
     publicados = entradas.trimestrales_dict()
     nivel = None

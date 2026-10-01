@@ -554,9 +554,27 @@ make 00_ingest TRIMESTRE=2026-T4 PRED_PROMPT=demanda_v3
 La ingesta de los cuatro orígenes (demanda trimestral, festivos, eventos, meteo) la hacen los DAGs de Airflow
 (`config/data_sources.yml`). Esta predicción solo los lee: `config/prediccion.yml` define, **para cada origen, un
 `SELECT` de DuckDB** que traduce lo que haya en el lake a un contrato fijo (columnas documentadas en el propio
-fichero). **Las rutas y columnas de origen que trae son supuestas: ajústalas cuando Airflow haya ingestado las
-fuentes.** Si un origen falta o no cumple el contrato, la predicción falla con el nombre de la fuente y la ruta
-consultada, y no escribe nada.
+fichero). Si un origen falta o no cumple el contrato, la predicción falla con el nombre de la fuente y la ruta
+consultada (en una sola línea, con las columnas candidatas si el error es de columna), y no escribe nada.
+
+**Mientras Airflow no ingiera las fuentes reales, `config/prediccion.yml` lee una muestra SINTÉTICA** (no son datos
+reales). Se genera con:
+
+```bash
+make prediccion-sample                              # 11 trimestres publicados hasta el anterior al en curso
+make prediccion-sample MUESTRA_ARGS="--hasta 2026-T3 --semilla 7"
+```
+
+Escribe las cuatro fuentes en Bronze L2 (`raillytics-bronze/l2/muestra_<fuente>/sintetico/`), de forma determinista
+(mismos argumentos y semilla, mismos datos) y con las columnas que asumen las consultas: la demanda sigue un modelo
+simple (nivel, estacionalidad trimestral y +4 % anual; incluye un corredor «distractor» que la consulta filtra), los
+festivos son los nacionales, y los eventos y la meteo son inventados (los eventos acaban en «(muestra)»). Cada
+ejecución de la predicción avisa de que está leyendo datos sintéticos.
+
+Va a prefijos **propios** a propósito: si compartiera prefijo con una fuente real, la consulta (`*/*.parquet`) leería
+ambas a la vez y los totales saldrían duplicados sin ningún error. **Cuando existan las fuentes reales**, cambia en
+`config/prediccion.yml` la ruta `muestra_<fuente>` de cada consulta por la de la fuente real (y ajusta las columnas);
+el comentario del propio fichero lo explica. La muestra no estorba: puedes borrar `l2/muestra_*` del bucket.
 
 La meteo de un trimestre futuro **no es una previsión** (AEMET prevé a ~7 días): para los días sin dato observado
 se usa la **climatología** (promedio histórico del mes y la ciudad) y el prompt la marca como tal.
@@ -646,7 +664,7 @@ lo detecta y falla pidiendo subirlo). Cambiar de modelo es `OLLAMA_MODEL` en el 
 | --- | --- |
 | `no se puede conectar con Ollama` | `make llm-up` |
 | `el modelo '…' no está` | `ollama pull <modelo>` o `make llm-up` |
-| `origen '…': no se pudo leer` | Airflow no ha ingestado esa fuente, o la ruta de `config/prediccion.yml` no es la real |
+| `origen '…': no se pudo leer` | No hay datos en esa ruta: `make prediccion-sample` (muestra sintética), o que Airflow ingiera la fuente real y la ruta de `config/prediccion.yml` sea la suya |
 | `faltan trimestres publicados` | Falta el mismo trimestre del año anterior (o el de referencia); usa `--total-esperado N` |
 | `se cortó por falta de contexto` | Sube `OLLAMA_NUM_CTX` |
 | `Ollama no respondió en N s` | Sube `OLLAMA_TIMEOUT_S` o usa un modelo más rápido |

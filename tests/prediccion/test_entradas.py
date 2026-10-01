@@ -115,6 +115,35 @@ def test_un_origen_inexistente_nombra_la_fuente_y_la_ruta(lake):
     assert "origen 'eventos'" in str(error.value) and "sin_ingestar" in str(error.value)
 
 
+def test_el_error_de_duckdb_se_resume_sin_el_fragmento_de_sql(lake):
+    layout, con = lake
+    consultas = dict(
+        CONSULTAS, eventos="SELECT fecha, descripcion, ciudad FROM read_parquet('{silver}/sin_ingestar/*.parquet')"
+    )
+
+    with pytest.raises(EntradaError) as error:
+        cargar_entradas(consultas, layout, con, env={})
+
+    mensaje = str(error.value)
+    assert "LINE" not in mensaje and "^" not in mensaje and "\n" not in mensaje  # una sola línea legible
+    assert "origen 'eventos'" in mensaje and "No files found" in mensaje and "sin_ingestar" in mensaje
+    assert mensaje.count("sin_ingestar") == 1  # la ruta no se repite
+
+
+def test_un_error_de_columna_conserva_las_columnas_candidatas_para_arreglar_la_consulta(lake):
+    layout, con = lake
+    consultas = dict(CONSULTAS, festivos="SELECT fecha, nope AS nombre FROM read_parquet('{silver}/festivos/*.parquet')")
+
+    with pytest.raises(EntradaError) as error:
+        cargar_entradas(consultas, layout, con, env={})
+
+    mensaje = str(error.value)
+    assert 'Referenced column "nope" not found' in mensaje
+    assert 'Candidate bindings: "nombre"' in mensaje  # DuckDB sugiere la columna más parecida: es la pista que hay que conservar
+    assert "festivos/*.parquet" in mensaje  # y, como la ruta no va en este error, se añade aparte
+    assert "LINE" not in mensaje and "^" not in mensaje
+
+
 def test_columnas_distintas_del_contrato_se_rechazan(lake):
     layout, con = lake
     consultas = dict(CONSULTAS, trimestrales="SELECT 2025 AS anio, 1 AS viajeros")
