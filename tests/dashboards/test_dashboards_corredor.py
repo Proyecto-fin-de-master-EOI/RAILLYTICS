@@ -1,5 +1,4 @@
 """Todos los dashboards de negocio de Superset aplican al corredor AVE Madrid–Barcelona (AVE-MAD-BCN)."""
-import json
 from pathlib import Path
 
 import pytest
@@ -45,11 +44,17 @@ def test_ningun_grafico_ni_filtro_agrupa_por_linea_o_tipo_de_tren(dashboard):
             assert destino.get("column", {}).get("name") not in DIMENSIONES_DE_VARIAS_LINEAS, filtro["name"]
 
 
+def test_ningun_grafico_versionado_queda_huerfano_fuera_de_los_dashboards():
+    colocados = {c["meta"]["uuid"] for d in DASHBOARDS.values() for c in d["position"].values() if isinstance(c, dict) and c.get("type") == "CHART"}
+
+    assert sorted(n for n, g in GRAFICOS.items() if g["uuid"] not in colocados) == []  # Superset lo importaría y no se vería en ningún sitio
+
+
 @pytest.mark.parametrize("dashboard", ("demanda_ferroviaria", "puntualidad"))
 def test_cada_grafico_del_dashboard_existe_y_usa_columnas_y_metricas_de_su_dataset(dashboard):
     por_uuid = {d["uuid"]: d for d in DATASETS.values()}
     colocados = [c["meta"]["uuid"] for c in DASHBOARDS[dashboard]["position"].values() if isinstance(c, dict) and c.get("type") == "CHART"]
-    assert sorted(colocados) == sorted(g["uuid"] for g in _graficos_de(dashboard).values())  # ninguno huérfano ni inexistente
+    assert sorted(colocados) == sorted(g["uuid"] for g in _graficos_de(dashboard).values())  # ninguno inexistente ni repetido
     for nombre, grafico in _graficos_de(dashboard).items():
         dataset = por_uuid[grafico["dataset_uuid"]]
         p = grafico["params"]
