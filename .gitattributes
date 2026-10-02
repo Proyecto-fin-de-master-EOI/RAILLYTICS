@@ -1,0 +1,43 @@
+# ============================================================
+# Normalización de finales de línea
+#
+# Sin este fichero, Git for Windows (que trae core.autocrlf=true de
+# fábrica) convierte los finales de línea a CRLF al clonar. Los
+# scripts del repositorio se ejecutan dentro de contenedores Linux,
+# donde un shebang terminado en \r falla con:
+#
+#     /bin/sh^M: bad interpreter: No such file or directory
+#
+# Consecuencias observadas en Windows antes de añadir este fichero:
+#   - docker/postgres/init-databases.sh no se ejecutaba, así que la
+#     base de datos de Superset nunca se creaba y `make up` moría con
+#     "dependency failed to start: container raillytics-postgres is
+#     unhealthy".
+#   - docker/init-buckets.sh fallaba (Exited 2) y los buckets de MinIO
+#     no se creaban.
+#   - Los git hooks de .githooks/ no llegaban a ejecutarse.
+# ============================================================
+
+# Todo el texto se guarda en LF en el repositorio y se escribe en LF
+# en el working tree, también en Windows. El runtime del proyecto
+# (contenedores Linux, JVM, Python) trabaja con LF de forma nativa, y
+# los editores modernos lo respetan sin problema.
+* text=auto eol=lf
+
+# Excepción: los scripts nativos de Windows sí necesitan CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binarios: ni conversión de finales de línea ni diff de texto.
+*.pdf   binary
+*.pbix  binary
+*.parquet binary
+*.zip   binary
+*.jar   binary
+*.exe   binary
+*.dll   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
