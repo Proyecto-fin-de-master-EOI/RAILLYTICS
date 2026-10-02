@@ -4,6 +4,7 @@ import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.types._
 import org.yaml.snakeyaml.{LoaderOptions, Yaml}
 import org.yaml.snakeyaml.constructor.SafeConstructor
+import raillytics.common.fs.HadoopFs
 import raillytics.common.logging.Logging
 import raillytics.common.trazabilidad.Cargas
 
@@ -319,16 +320,19 @@ object QualityGates extends Logging {
     }
   }
 
-  // Un fichero Parquet por evaluación, añadido al directorio compartido con el lado
-  // Python. Best effort, como la trazabilidad de cargas: si no se puede escribir
-  // queda en el log, pero el resultado de los gates ya se ha aplicado a la carga.
+  // Un fichero <run_id>-<capa>.parquet por evaluación, en el directorio compartido
+  // con el lado Python. Lleva la capa además del run_id porque un mismo proceso puede
+  // evaluar gates dos veces bajo la misma ejecución: GoldBuilder lo hace a la entrada
+  // (silver) y a la salida (gold), y con solo el run_id la segunda pisaría a la primera.
+  // Best effort, como la trazabilidad de cargas: si no se puede escribir queda en el
+  // log, pero el resultado de los gates ya se ha aplicado a la carga.
   def registrar(resultados: Seq[Resultado], runId: String, proceso: String, capa: String, calidadDir: String,
                 lanzadoPor: String = Cargas.lanzadoPorDefecto())(implicit spark: SparkSession): Unit =
     if (resultados.nonEmpty) {
       try {
-        spark.createDataFrame(filasRegistro(resultados, runId, proceso, capa, lanzadoPor).asJava, Schema)
-          .coalesce(1)
-          .write.mode("append").parquet(calidadDir)
+        HadoopFs.escribirFicheroUnico(
+          spark.createDataFrame(filasRegistro(resultados, runId, proceso, capa, lanzadoPor).asJava, Schema),
+          calidadDir, s"$runId-$capa")
         logger.info(s"${resultados.size} resultado(s) de quality gates de $runId registrados en $calidadDir")
       } catch {
         case NonFatal(e) => logger.error(s"no se pudieron registrar los resultados de quality gates de $runId", e)

@@ -160,4 +160,19 @@ class QualityGatesSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll 
       Seq(QualityGates.resultado("t", "g", QualityGates.Aviso, pasa = true, 1, "= 1")),
       "run", "p", "bronze", "noexiste://bucket/calidad/")
   }
+
+  // Regresión: GoldBuilder evalúa gates dos veces dentro de la misma ejecución, a la
+  // entrada sobre Silver y a la salida sobre Gold, con el mismo run_id. El fichero
+  // lleva la capa además del run_id para que la segunda no pise a la primera.
+  it should "keep both registrations when one run evaluates two layers" in {
+    val calidadDir = TestPaths.fileUri(Files.createTempDirectory("calidad-spec").resolve("calidad"))
+    val runId = "20260925T100000-gold_build-abc123"
+    val res = Seq(QualityGates.resultado("t", "g", QualityGates.Aviso, pasa = true, 1, "= 1"))
+
+    QualityGates.registrar(res, runId, "gold_build", "silver", calidadDir, lanzadoPor = "cli")
+    QualityGates.registrar(res, runId, "gold_build", "gold", calidadDir, lanzadoPor = "cli")
+
+    spark.read.parquet(calidadDir).select("capa").collect().map(_.getString(0)).toSet shouldBe Set("silver", "gold")
+  }
+
 }
