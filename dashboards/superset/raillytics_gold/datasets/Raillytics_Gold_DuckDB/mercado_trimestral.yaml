@@ -1,0 +1,355 @@
+table_name: mercado_trimestral
+main_dttm_col: fecha_inicio
+description: 'Mercado trimestral del corredor AVE Madrid–Barcelona por operador. Datos REALES de la CNMC (no sintéticos), solo el corredor
+  AVE Madrid–Barcelona. En la demanda Avlo va dentro de Renfe (la CNMC no la separa); en los precios aparece por separado hasta 2025-T4.
+  «Viajeros por plaza ofertada» no es ocupación: un asiento sirve a varios tramos.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: |-
+  -- Fact_Mercado_Trimestral ⋈ Dim_Operador, leído con DuckDB del Parquet de Gold en MinIO (datos reales de la CNMC).
+  -- La fila TOTAL del corredor solo lleva ingresos; el resto de columnas por operador. Avlo va dentro de RENFE.
+  WITH base AS (
+      SELECT f.fecha_inicio, f.anio, f.trimestre, f.operador_id,
+             CASE f.operador_id WHEN 'RENFE' THEN 'Renfe (incl. Avlo)' WHEN 'TOTAL' THEN 'Total corredor' ELSE coalesce(o.nombre, f.operador_id) END AS operador,
+             f.viajeros, f.plazas_ofertadas, f.plazas_km, f.tren_km, f.viajeros_km, f.ingresos_eur
+      FROM read_parquet('s3://raillytics-gold/fact_mercado_trimestral/*.parquet') AS f
+      LEFT JOIN read_parquet('s3://raillytics-gold/dim_operador/*.parquet') AS o USING (operador_id)
+  ),
+  total AS (
+      SELECT fecha_inicio, SUM(viajeros) AS viajeros_corredor FROM base WHERE operador_id <> 'TOTAL' GROUP BY fecha_inicio
+  ),
+  total_yoy AS (
+      SELECT fecha_inicio, viajeros_corredor,
+             viajeros_corredor * 1.0 / LAG(viajeros_corredor, 4) OVER (ORDER BY fecha_inicio) - 1 AS variacion_interanual_corredor
+      FROM total
+  )
+  SELECT b.fecha_inicio, b.anio || '-T' || b.trimestre AS trimestre_etiqueta, b.anio, b.trimestre, b.operador_id, b.operador,
+         b.operador_id = 'TOTAL' AS es_total,
+         b.viajeros, b.plazas_ofertadas, b.plazas_km, b.tren_km, b.viajeros_km, b.ingresos_eur,
+         CASE WHEN b.operador_id <> 'TOTAL' THEN b.viajeros * 1.0 / t.viajeros_corredor END AS cuota_viajeros,
+         CASE WHEN b.plazas_ofertadas > 0 THEN b.viajeros * 1.0 / b.plazas_ofertadas END AS viajeros_por_plaza,
+         CASE WHEN b.operador_id <> 'TOTAL' THEN b.viajeros * 1.0 / LAG(b.viajeros, 4) OVER (PARTITION BY b.operador_id ORDER BY b.fecha_inicio) - 1 END AS variacion_interanual,
+         t.viajeros_corredor, t.variacion_interanual_corredor,
+         b.fecha_inicio = MAX(b.fecha_inicio) OVER () AS es_ultimo_trimestre,
+         DENSE_RANK() OVER (ORDER BY b.fecha_inicio DESC) <= 4 AS ultimos_4_trimestres
+  FROM base b
+  LEFT JOIN total_yoy t USING (fecha_inicio)
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: a6f87572-5c8e-5db1-90ea-ec45e618a779
+metrics:
+- metric_name: total_viajeros
+  verbose_name: Viajeros
+  metric_type: null
+  expression: SUM(viajeros)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: total_plazas
+  verbose_name: Plazas ofertadas
+  metric_type: null
+  expression: SUM(plazas_ofertadas)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: viajeros_por_plaza_ofertada
+  verbose_name: Viajeros por plaza ofertada
+  metric_type: null
+  expression: SUM(viajeros) * 1.0 / NULLIF(SUM(plazas_ofertadas), 0)
+  description: null
+  d3format: .2f
+  extra: null
+  warning_text: null
+- metric_name: total_tren_km
+  verbose_name: Tren·km
+  metric_type: null
+  expression: SUM(tren_km)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: total_ingresos
+  verbose_name: Ingresos (€)
+  metric_type: null
+  expression: SUM(ingresos_eur)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: cuota_total
+  verbose_name: Cuota de viajeros
+  metric_type: null
+  expression: SUM(cuota_viajeros)
+  description: null
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: variacion_interanual_corredor_max
+  verbose_name: Variación interanual del corredor
+  metric_type: null
+  expression: MAX(variacion_interanual_corredor)
+  description: null
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: variacion_interanual_media
+  verbose_name: Variación interanual
+  metric_type: null
+  expression: AVG(variacion_interanual)
+  description: null
+  d3format: .1%
+  extra: null
+  warning_text: null
+columns:
+- column_name: fecha_inicio
+  verbose_name: Trimestre (inicio)
+  is_dttm: true
+  is_active: true
+  type: DATE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: trimestre_etiqueta
+  verbose_name: Trimestre
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: anio
+  verbose_name: Año
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: trimestre
+  verbose_name: Nº de trimestre
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: operador_id
+  verbose_name: Operador (id)
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: operador
+  verbose_name: Operador
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: es_total
+  verbose_name: Fila total del corredor
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: viajeros
+  verbose_name: Viajeros
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: plazas_ofertadas
+  verbose_name: Plazas ofertadas
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: plazas_km
+  verbose_name: Plazas·km
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: tren_km
+  verbose_name: Tren·km
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: viajeros_km
+  verbose_name: Viajeros·km
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ingresos_eur
+  verbose_name: Ingresos (€)
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: cuota_viajeros
+  verbose_name: Cuota de viajeros
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: viajeros_por_plaza
+  verbose_name: Viajeros por plaza ofertada
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: variacion_interanual
+  verbose_name: Variación interanual del operador
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: viajeros_corredor
+  verbose_name: Viajeros del corredor
+  is_dttm: false
+  is_active: true
+  type: HUGEINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: variacion_interanual_corredor
+  verbose_name: Variación interanual del corredor
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: es_ultimo_trimestre
+  verbose_name: Último trimestre publicado
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ultimos_4_trimestres
+  verbose_name: Últimos 4 trimestres
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

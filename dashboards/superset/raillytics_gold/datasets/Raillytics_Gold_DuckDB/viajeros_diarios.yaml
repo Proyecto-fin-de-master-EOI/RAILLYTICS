@@ -1,7 +1,6 @@
 table_name: viajeros_diarios
 main_dttm_col: fecha
-description: Viajeros diarios por estación y línea (Fact_Viajeros ⋈ Dim_Fecha, Dim_Estacion, Dim_Linea), leídos con DuckDB
-  del Parquet de s3://raillytics-gold.
+description: 'Viajeros diarios del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN) por estación y operador: Fact_Viajeros ⋈ Dim_Fecha, Dim_Estacion, Dim_Linea y Dim_Operador, leídos con DuckDB del Parquet de Gold en MinIO. Solo se muestra el corredor.'
 default_endpoint: null
 offset: 0
 cache_timeout: null
@@ -9,6 +8,7 @@ schema: null
 catalog: null
 sql: |-
   -- Fact_Viajeros con sus dimensiones (modelo en estrella de la capa Gold).
+  -- Solo el corredor AVE Madrid–Barcelona (AVE-MAD-BCN): los dashboards de negocio aplican a él.
   SELECT
       f.fecha,
       d.anio,
@@ -36,6 +36,9 @@ sql: |-
       l.tipo_tren,
       l.origen,
       l.destino,
+      o.nombre AS operador,
+      o.empresa AS operador_empresa,
+      o.segmento AS operador_segmento,
       f.viajeros,
       f.temperatura_media,
       f.precipitacion_mm,
@@ -44,6 +47,8 @@ sql: |-
   JOIN read_parquet('s3://raillytics-gold/dim_fecha/*.parquet') AS d USING (fecha_id)
   JOIN read_parquet('s3://raillytics-gold/dim_estacion/*.parquet') AS e USING (estacion_id)
   JOIN read_parquet('s3://raillytics-gold/dim_linea/*.parquet') AS l USING (linea_id)
+  JOIN read_parquet('s3://raillytics-gold/dim_operador/*.parquet') AS o USING (operador_id)
+  WHERE l.linea_id = 'AVE-MAD-BCN'
 params: null
 template_params: null
 filter_select_enabled: true
@@ -77,12 +82,12 @@ metrics:
   d3format: ',d'
   extra: null
   warning_text: null
-- metric_name: n_lineas
-  verbose_name: Líneas
+- metric_name: pct_viajeros_fin_de_semana
+  verbose_name: Viajeros en fin de semana (%)
   metric_type: null
-  expression: COUNT(DISTINCT linea)
+  expression: 100.0 * SUM(CASE WHEN es_fin_de_semana THEN viajeros ELSE 0 END) / NULLIF(SUM(viajeros), 0)
   description: null
-  d3format: ',d'
+  d3format: .1f
   extra: null
   warning_text: null
 - metric_name: temp_media
@@ -356,6 +361,42 @@ columns:
   extra: null
 - column_name: destino
   verbose_name: Destino
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: operador
+  verbose_name: Operador
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: operador_empresa
+  verbose_name: Empresa operadora
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: operador_segmento
+  verbose_name: Segmento
   is_dttm: false
   is_active: true
   type: VARCHAR

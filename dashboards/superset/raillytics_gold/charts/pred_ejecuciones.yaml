@@ -1,0 +1,50 @@
+slice_name: Ejecuciones publicadas
+description: 'Historial de predicciones: versión del prompt, modelo, si usaron datos sintéticos y el total previsto.'
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  query_mode: aggregate
+  groupby:
+  - ejecucion
+  - trimestre
+  - datos
+  - modelo
+  - version_prompt
+  metrics:
+  - viajeros_previstos
+  - indice_medio
+  - n_dias
+  all_columns: []
+  percent_metrics: []
+  order_by_cols: []
+  row_limit: 100
+  server_page_length: 10
+  include_search: true
+  show_totals: false
+  table_timestamp_format: '%Y-%m-%d %H:%M:%S'
+  show_cell_bars: false
+  color_pn: false
+  allow_render_html: false
+  column_config: {}
+  conditional_formatting: []
+  temporal_columns_lookup: {}
+  time_grain_sqla: null
+  extra_form_data: {}
+  dashboards: []
+  timeseries_limit_metric: null
+  order_desc: true
+query_context: null
+cache_timeout: null
+uuid: a9d31db6-2a49-5f53-a14d-f78bcd174352
+version: 1.0.0
+dataset_uuid: ce2482b5-226e-5980-80be-4ed2706e8696
+is_managed_externally: false
+external_url: null

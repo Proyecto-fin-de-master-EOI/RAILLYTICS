@@ -1,7 +1,7 @@
 # Quality Gates de las tablas del lake.
 #
 # Framework: raillytics.common.calidad.QualityGates (Scala/Spark). Lo aplican
-#   - GoldBuilderApp (make 04_gold): gates silver_* a la ENTRADA (si fallan no se
+#   - GoldBuilderApp (make 05_gold): gates silver_* a la ENTRADA (si fallan no se
 #     construye Gold) y gates gold_* a la SALIDA, antes de escribir (si fallan, Gold
 #     se queda como estaba: ninguna tabla se sobrescribe).
 #   - QualityGatesApp (make quality-gates): evalúa todo esto sobre lo que hay en el
@@ -14,6 +14,10 @@
 # cruzar varias (p. ej. conciliar Gold con Silver).
 #
 # severidad: bloqueante -> la carga falla | aviso -> se registra y la carga sigue.
+#
+# opcionales: tablas que pueden no existir todavía en el lake (el Silver real de `make 04_silver` y su Gold «mercado»):
+#   si su vista no se puede registrar, QualityGatesApp y GoldBuilder las omiten con un aviso en vez de fallar. Pedir una
+#   tabla por su nombre (QG_ARGS=<tabla>) la vuelve obligatoria. Cada nombre debe tener sus gates en `tablas`.
 # Tipos y parámetros (cada gate produce un valor numérico y un umbral):
 #   filas_min    minimo                              count(*) >= minimo
 #   no_nulos     columnas                            filas con algún nulo = 0
@@ -22,16 +26,27 @@
 #   rango        columna, minimo y/o maximo          filas fuera de [minimo, maximo] = 0
 #   referencia   columnas, tabla, columnas_destino?  filas sin correspondencia en tabla = 0
 #   sql          sql, maximo (0 por defecto), minimo consulta que devuelve UN número; minimo <= valor <= maximo
+# Tablas del lake que pueden no existir todavía: si su vista no se puede registrar, `make quality-gates` y `make 05_gold`
+# las omiten con un aviso en vez de fallar (quien solo usa el Silver sintético no tiene por qué lanzar `make 04_silver`).
+opcionales:
+  - silver_cnmc_trimestral
+  - silver_cnmc_precio_trimestral
+  - silver_cnmc_precio_mensual
+  - gold_fact_mercado_trimestral
+  - gold_fact_precio_trimestral
+  - gold_fact_precio_mensual
+
 tablas:
 
   # ---- Silver: contrato que Gold da por hecho (python/raillytics/procesamiento/silver_sample.py) ----
   silver_viajeros_enriquecidos:
     - {nombre: filas_minimas,               tipo: filas_min, minimo: 1, severidad: bloqueante}
-    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [fecha, estacion_id, linea_id, viajeros], severidad: bloqueante}
-    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha, estacion_id, linea_id], severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [fecha, estacion_id, linea_id, operador_id, viajeros], severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha, estacion_id, linea_id, operador_id], severidad: bloqueante}
     - {nombre: viajeros_no_negativos,       tipo: rango, columna: viajeros, minimo: 0, severidad: bloqueante}
     - {nombre: atributos_estacion_sin_nulos, tipo: no_nulos, columnas: [estacion_nombre, provincia, comunidad, latitud, longitud], severidad: aviso}
     - {nombre: atributos_linea_sin_nulos,   tipo: no_nulos, columnas: [linea_nombre, tipo_tren, origen, destino], severidad: aviso}
+    - {nombre: atributos_operador_sin_nulos, tipo: no_nulos, columnas: [operador_nombre, operador_empresa, operador_segmento], severidad: aviso}
     - {nombre: condicion_meteo_valida,      tipo: dominio, columna: condicion_meteo, valores: [despejado, nuboso, lluvia, tormenta], severidad: aviso}
     - {nombre: coordenadas_en_espana,       tipo: sql, severidad: aviso,
        sql: "SELECT count(*) FROM silver_viajeros_enriquecidos WHERE latitud NOT BETWEEN 27 AND 44 OR longitud NOT BETWEEN -19 AND 5"}
@@ -40,7 +55,7 @@ tablas:
 
   silver_puntualidad_enriquecida:
     - {nombre: filas_minimas,               tipo: filas_min, minimo: 1, severidad: bloqueante}
-    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [fecha, servicio_id, linea_id, estacion_id, hora_prevista, estado], severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [fecha, servicio_id, linea_id, operador_id, estacion_id, hora_prevista, estado], severidad: bloqueante}
     - {nombre: servicio_unico,              tipo: unico, columnas: [servicio_id], severidad: bloqueante}
     - {nombre: estado_valido,               tipo: dominio, columna: estado, valores: [realizado, cancelado], severidad: bloqueante}
     - {nombre: retraso_no_negativo,         tipo: rango, columna: retraso_min, minimo: 0, severidad: bloqueante}
@@ -56,6 +71,61 @@ tablas:
     # aparezca en puntualidad se perdería en los joins del dashboard.
     - {nombre: lineas_en_viajeros,          tipo: referencia, columnas: [linea_id], tabla: silver_viajeros_enriquecidos, severidad: bloqueante}
     - {nombre: estaciones_en_viajeros,      tipo: referencia, columnas: [estacion_id], tabla: silver_viajeros_enriquecidos, severidad: aviso}
+    - {nombre: operadores_en_viajeros,      tipo: referencia, columnas: [operador_id], tabla: silver_viajeros_enriquecidos, severidad: bloqueante}
+
+  # ---- Silver real (make 04_silver): mercado del corredor según la CNMC. Datos reales: las tablas son OPCIONALES hasta
+  #      que se lance `make 04_silver` por primera vez (ver `opcionales:` al final). Los umbrales de filas mínimas están
+  #      calibrados con los ficheros del 2026-10-01 (554, 344 y 1001 filas LD AV comerciales).
+  silver_cnmc_trimestral:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 300, severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [anio, trimestre, fecha_inicio, corredor, empresa], severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [anio, trimestre, corredor, empresa], severidad: bloqueante}
+    - {nombre: trimestre_valido,            tipo: rango, columna: trimestre, minimo: 1, maximo: 4, severidad: bloqueante}
+    - {nombre: volumenes_no_negativos,      tipo: sql, severidad: bloqueante,
+       sql: "SELECT count(*) FROM silver_cnmc_trimestral WHERE viajeros < 0 OR plazas_ofertadas < 0 OR plazas_km < 0 OR tren_km < 0 OR viajeros_km < 0 OR ingresos_eur < 0"}
+    # El corredor del proyecto tiene que estar: sin él, Gold y la predicción se quedarían sin datos.
+    - {nombre: corredor_madrid_barcelona_presente, tipo: sql, severidad: bloqueante, minimo: 1, maximo: 1000000000,
+       sql: "SELECT count(*) FROM silver_cnmc_trimestral WHERE corredor = 'Madrid-Barcelona' AND operador_id <> 'TOTAL'"}
+    # Una empresa nueva en el mercado pasa a OTRO: se ve, pero no bloquea (hay que ampliar el mapa de empresas del SQL).
+    - {nombre: empresas_conocidas,          tipo: sql, severidad: aviso,
+       sql: "SELECT count(*) FROM silver_cnmc_trimestral WHERE operador_id = 'OTRO'"}
+    # «Resto» (la red que no son los cinco corredores) es un seudocorredor cuyo Total sí trae volúmenes (42 filas en los datos de 2026-10-01): se excluye.
+    - {nombre: volumen_en_operadores_e_ingresos_en_total, tipo: sql, severidad: aviso,
+       sql: "SELECT count(*) FROM silver_cnmc_trimestral WHERE corredor <> 'Resto' AND ((operador_id = 'TOTAL' AND (viajeros IS NOT NULL OR plazas_ofertadas IS NOT NULL OR tren_km IS NOT NULL)) OR (operador_id <> 'TOTAL' AND ingresos_eur IS NOT NULL))"}
+    - {nombre: serie_sin_huecos,            tipo: sql, severidad: aviso,
+       sql: "SELECT (max(anio * 4 + trimestre) - min(anio * 4 + trimestre) + 1) - count(DISTINCT anio * 4 + trimestre) FROM silver_cnmc_trimestral WHERE corredor = 'Madrid-Barcelona'"}
+    # La CNMC publica con ~2 trimestres de retraso: el último dato debe estar a ≤ 3 trimestres del actual.
+    - {nombre: serie_actualizada,           tipo: sql, severidad: aviso, maximo: 3,
+       sql: "SELECT (year(current_date()) * 4 + quarter(current_date())) - max(anio * 4 + trimestre) FROM silver_cnmc_trimestral"}
+    # Un asiento puede servir a varios tramos: viajeros/plazas > 1 es normal, pero fuera de [0, 2] huele a unidades mal.
+    - {nombre: viajeros_por_plaza_razonable, tipo: sql, severidad: aviso,
+       sql: "SELECT count(*) FROM silver_cnmc_trimestral WHERE plazas_ofertadas > 0 AND viajeros IS NOT NULL AND (viajeros * 1.0 / plazas_ofertadas < 0 OR viajeros * 1.0 / plazas_ofertadas > 2)"}
+
+  silver_cnmc_precio_trimestral:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 150, severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [anio, trimestre, fecha_inicio, trayecto, empresa, precio_medio_eur], severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [anio, trimestre, trayecto, empresa], severidad: bloqueante}
+    - {nombre: trimestre_valido,            tipo: rango, columna: trimestre, minimo: 1, maximo: 4, severidad: bloqueante}
+    - {nombre: precio_razonable,            tipo: rango, columna: precio_medio_eur, minimo: 0.01, maximo: 500, severidad: bloqueante}
+    - {nombre: madrid_barcelona_presente,   tipo: sql, severidad: bloqueante, minimo: 1, maximo: 1000000000,
+       sql: "SELECT count(*) FROM silver_cnmc_precio_trimestral WHERE trayecto = 'Madrid-Barcelona' AND operador_id <> 'TOTAL'"}
+    - {nombre: empresas_conocidas,          tipo: sql, severidad: aviso,
+       sql: "SELECT count(*) FROM silver_cnmc_precio_trimestral WHERE operador_id = 'OTRO'"}
+    - {nombre: serie_actualizada,           tipo: sql, severidad: aviso, maximo: 3,
+       sql: "SELECT (year(current_date()) * 4 + quarter(current_date())) - max(anio * 4 + trimestre) FROM silver_cnmc_precio_trimestral"}
+
+  silver_cnmc_precio_mensual:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 500, severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [anio, mes, fecha_inicio, trayecto, empresa, precio_medio_eur], severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [anio, mes, trayecto, empresa], severidad: bloqueante}
+    - {nombre: mes_valido,                  tipo: rango, columna: mes, minimo: 1, maximo: 12, severidad: bloqueante}
+    - {nombre: precio_razonable,            tipo: rango, columna: precio_medio_eur, minimo: 0.01, maximo: 500, severidad: bloqueante}
+    - {nombre: madrid_barcelona_presente,   tipo: sql, severidad: bloqueante, minimo: 1, maximo: 1000000000,
+       sql: "SELECT count(*) FROM silver_cnmc_precio_mensual WHERE trayecto = 'Madrid-Barcelona' AND operador_id <> 'TOTAL'"}
+    - {nombre: empresas_conocidas,          tipo: sql, severidad: aviso,
+       sql: "SELECT count(*) FROM silver_cnmc_precio_mensual WHERE operador_id = 'OTRO'"}
+    - {nombre: serie_actualizada,           tipo: sql, severidad: aviso, maximo: 6,
+       sql: "SELECT (year(current_date()) * 12 + month(current_date())) - max(anio * 12 + mes) FROM silver_cnmc_precio_mensual"}
 
   # ---- Gold: claves, integridad referencial y conciliación con Silver ----
   gold_dim_fecha:
@@ -74,12 +144,18 @@ tablas:
     - {nombre: clave_unica,                 tipo: unico, columnas: [linea_id], severidad: bloqueante}
     - {nombre: sin_nulos,                   tipo: no_nulos, columnas: [linea_id, nombre, tipo_tren], severidad: bloqueante}
 
+  gold_dim_operador:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 1, severidad: bloqueante}
+    - {nombre: clave_unica,                 tipo: unico, columnas: [operador_id], severidad: bloqueante}
+    - {nombre: sin_nulos,                   tipo: no_nulos, columnas: [operador_id, nombre, empresa, segmento], severidad: bloqueante}
+
   gold_fact_viajeros:
     - {nombre: filas_minimas,               tipo: filas_min, minimo: 1, severidad: bloqueante}
-    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha_id, estacion_id, linea_id], severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha_id, estacion_id, linea_id, operador_id], severidad: bloqueante}
     - {nombre: fechas_en_dim_fecha,         tipo: referencia, columnas: [fecha_id], tabla: gold_dim_fecha, severidad: bloqueante}
     - {nombre: estaciones_en_dim_estacion,  tipo: referencia, columnas: [estacion_id], tabla: gold_dim_estacion, severidad: bloqueante}
     - {nombre: lineas_en_dim_linea,         tipo: referencia, columnas: [linea_id], tabla: gold_dim_linea, severidad: bloqueante}
+    - {nombre: operadores_en_dim_operador,  tipo: referencia, columnas: [operador_id], tabla: gold_dim_operador, severidad: bloqueante}
     - {nombre: sin_perdida_desde_silver,    tipo: sql, severidad: bloqueante,
        sql: "SELECT abs((SELECT count(*) FROM gold_fact_viajeros) - (SELECT count(*) FROM silver_viajeros_enriquecidos))"}
     - {nombre: viajeros_conciliados,        tipo: sql, severidad: bloqueante,
@@ -90,8 +166,45 @@ tablas:
     - {nombre: servicio_unico,              tipo: unico, columnas: [servicio_id], severidad: bloqueante}
     - {nombre: fechas_en_dim_fecha,         tipo: referencia, columnas: [fecha_id], tabla: gold_dim_fecha, severidad: bloqueante}
     - {nombre: lineas_en_dim_linea,         tipo: referencia, columnas: [linea_id], tabla: gold_dim_linea, severidad: bloqueante}
+    - {nombre: operadores_en_dim_operador,  tipo: referencia, columnas: [operador_id], tabla: gold_dim_operador, severidad: bloqueante}
     - {nombre: estaciones_en_dim_estacion,  tipo: referencia, columnas: [estacion_id], tabla: gold_dim_estacion, severidad: aviso}
     - {nombre: puntualidad_coherente,       tipo: sql, severidad: bloqueante,
        sql: "SELECT count(*) FROM gold_fact_puntualidad WHERE es_puntual IS NULL OR (cancelado AND es_puntual)"}
     - {nombre: sin_perdida_desde_silver,    tipo: sql, severidad: bloqueante,
        sql: "SELECT abs((SELECT count(*) FROM gold_fact_puntualidad) - (SELECT count(*) FROM silver_puntualidad_enriquecida))"}
+
+  # ---- Gold mercado (grupo opcional: datos reales de la CNMC, ver `opcionales:`) ----
+  gold_fact_mercado_trimestral:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 5, severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [anio, trimestre, fecha_inicio, linea_id, operador_id], severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [anio, trimestre, operador_id], severidad: bloqueante}
+    - {nombre: lineas_en_dim_linea,         tipo: referencia, columnas: [linea_id], tabla: gold_dim_linea, severidad: bloqueante}
+    # TOTAL (fila del corredor) y OTRO (empresa sin mapear) no están en la dimensión a propósito.
+    - {nombre: operadores_en_dim_operador,  tipo: sql, severidad: bloqueante,
+       sql: "SELECT count(*) FROM gold_fact_mercado_trimestral f WHERE f.operador_id NOT IN ('TOTAL', 'OTRO') AND NOT EXISTS (SELECT 1 FROM gold_dim_operador d WHERE d.operador_id = f.operador_id)"}
+    - {nombre: filas_conciliadas,           tipo: sql, severidad: bloqueante,
+       sql: "SELECT abs((SELECT count(*) FROM gold_fact_mercado_trimestral) - (SELECT count(*) FROM (SELECT DISTINCT anio, trimestre, operador_id FROM silver_cnmc_trimestral WHERE corredor = 'Madrid-Barcelona') d))"}
+    - {nombre: viajeros_conciliados,        tipo: sql, severidad: bloqueante,
+       sql: "SELECT abs((SELECT coalesce(sum(viajeros), 0) FROM gold_fact_mercado_trimestral) - (SELECT coalesce(sum(viajeros), 0) FROM silver_cnmc_trimestral WHERE corredor = 'Madrid-Barcelona'))"}
+    - {nombre: sin_operadores_otro,         tipo: sql, severidad: aviso,
+       sql: "SELECT count(*) FROM gold_fact_mercado_trimestral WHERE operador_id = 'OTRO'"}
+
+  gold_fact_precio_trimestral:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 5, severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [anio, trimestre, fecha_inicio, linea_id, operador_id, precio_medio_eur], severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [anio, trimestre, operador_id], severidad: bloqueante}
+    - {nombre: lineas_en_dim_linea,         tipo: referencia, columnas: [linea_id], tabla: gold_dim_linea, severidad: bloqueante}
+    - {nombre: operadores_en_dim_operador,  tipo: sql, severidad: bloqueante,
+       sql: "SELECT count(*) FROM gold_fact_precio_trimestral f WHERE f.operador_id NOT IN ('TOTAL', 'OTRO') AND NOT EXISTS (SELECT 1 FROM gold_dim_operador d WHERE d.operador_id = f.operador_id)"}
+    - {nombre: filas_conciliadas,           tipo: sql, severidad: bloqueante,
+       sql: "SELECT abs((SELECT count(*) FROM gold_fact_precio_trimestral) - (SELECT count(*) FROM (SELECT DISTINCT anio, trimestre, operador_id FROM silver_cnmc_precio_trimestral WHERE trayecto = 'Madrid-Barcelona') d))"}
+
+  gold_fact_precio_mensual:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 5, severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [anio, mes, fecha_inicio, linea_id, operador_id, precio_medio_eur], severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [anio, mes, operador_id], severidad: bloqueante}
+    - {nombre: lineas_en_dim_linea,         tipo: referencia, columnas: [linea_id], tabla: gold_dim_linea, severidad: bloqueante}
+    - {nombre: operadores_en_dim_operador,  tipo: sql, severidad: bloqueante,
+       sql: "SELECT count(*) FROM gold_fact_precio_mensual f WHERE f.operador_id NOT IN ('TOTAL', 'OTRO') AND NOT EXISTS (SELECT 1 FROM gold_dim_operador d WHERE d.operador_id = f.operador_id)"}
+    - {nombre: filas_conciliadas,           tipo: sql, severidad: bloqueante,
+       sql: "SELECT abs((SELECT count(*) FROM gold_fact_precio_mensual) - (SELECT count(*) FROM (SELECT DISTINCT anio, mes, operador_id FROM silver_cnmc_precio_mensual WHERE trayecto = 'Madrid-Barcelona') d))"}

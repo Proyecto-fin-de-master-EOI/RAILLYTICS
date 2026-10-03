@@ -1,0 +1,25 @@
+# Reglas fijas del reparto diario de la predicción en modo eventos (PRED_PROMPT=eventos_vN, raillytics.prediccion.reglas).
+#
+# En ese modo el código calcula el índice de cada día con estas reglas y el LLM solo valora los días con evento (un factor
+# que multiplica el valor del día). Son las mismas hipótesis de partida que describen demanda_v3/v4 en su texto, con un
+# valor fijo en vez de un rango: ajústalas aquí. 1.00 = un martes o miércoles laborable sin festivo ni evento.
+#
+# Valor de cada día = valor base + ajustes:
+#   - valor base: el del día de la semana; o `festivo_entre_semana` si es festivo de lunes a viernes; o `puente`.
+#     Un festivo en sábado o domingo conserva el valor de ese día.
+#   - ajustes (raillytics.prediccion.calendario.tipos_de_dia): víspera de un tramo festivo, regreso (último día del tramo)
+#     y día junto a un evento. Este último solo se suma si el LLM valora el evento vecino con un factor >= 1.05.
+base_dia_semana:
+  lun: 1.10
+  mar: 1.00
+  mié: 1.00
+  jue: 1.10
+  vie: 1.30
+  sáb: 0.85
+  dom: 1.25
+festivo_entre_semana: 0.70
+puente: 0.75
+ajustes:
+  vispera: 0.20
+  regreso: 0.20
+  junto_a_evento: 0.05

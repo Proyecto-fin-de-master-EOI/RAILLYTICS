@@ -1,6 +1,5 @@
-dashboard_title: Demanda ferroviaria
-description: 'Dashboard 1 del diseño: viajeros por estación, evolución temporal, comparativa por tipo de tren e impacto de
-  festivos y meteorología. Fuente: capa Gold (DuckDB sobre MinIO).'
+dashboard_title: Demanda ferroviaria · AVE Madrid–Barcelona
+description: 'Viajeros del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN): por operador y estación, evolución temporal, por día de la semana, impacto de festivos y meteorología. Fuente: capa Gold (DuckDB sobre MinIO).'
 css: ''
 slug: demanda-ferroviaria
 uuid: 3acb9fbe-1091-55f4-9d83-80e6e697cc4d
@@ -16,6 +15,8 @@ position:
     id: GRID_ID
     children:
     - ROW-demanda-1
+    - ROW-demanda-operador-1
+    - ROW-demanda-operador-2
     - ROW-demanda-2
     - ROW-demanda-3
     - ROW-demanda-4
@@ -26,7 +27,7 @@ position:
     id: HEADER_ID
     type: HEADER
     meta:
-      text: Demanda ferroviaria
+      text: Demanda ferroviaria · AVE Madrid–Barcelona
   ROW-demanda-1:
     type: ROW
     id: ROW-demanda-1
@@ -34,7 +35,7 @@ position:
     - CHART-kpi_viajeros_totales
     - CHART-kpi_viajeros_dia
     - CHART-kpi_estaciones
-    - CHART-kpi_lineas
+    - CHART-kpi_pct_fin_de_semana
     parents:
     - ROOT_ID
     - GRID_ID
@@ -82,9 +83,9 @@ position:
       chartId: 3
       uuid: 9331b3fd-022d-550f-888a-4dea42607711
       sliceName: Estaciones
-  CHART-kpi_lineas:
+  CHART-kpi_pct_fin_de_semana:
     type: CHART
-    id: CHART-kpi_lineas
+    id: CHART-kpi_pct_fin_de_semana
     children: []
     parents:
     - ROOT_ID
@@ -94,8 +95,71 @@ position:
       width: 3
       height: 50
       chartId: 4
-      uuid: 9be5d7ce-bb59-582f-8fe7-43b5bc1220a4
-      sliceName: Líneas
+      uuid: 9c3c6b23-2e90-5c94-8664-c9c28b36d4e7
+      sliceName: Viajeros en fin de semana (%)
+  ROW-demanda-operador-1:
+    type: ROW
+    id: ROW-demanda-operador-1
+    children:
+    - CHART-evolucion_viajeros_operador
+    - CHART-reparto_operador
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-evolucion_viajeros_operador:
+    type: CHART
+    id: CHART-evolucion_viajeros_operador
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-demanda-operador-1
+    meta:
+      width: 7
+      height: 60
+      chartId: 101
+      uuid: 2f82a8e3-54ad-5f5e-b286-f54370c20495
+      sliceName: Evolución semanal de viajeros por operador
+  CHART-reparto_operador:
+    type: CHART
+    id: CHART-reparto_operador
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-demanda-operador-1
+    meta:
+      width: 5
+      height: 60
+      chartId: 102
+      uuid: da4676a1-93c7-50b1-899e-8b652ee37119
+      sliceName: Cuota de viajeros por operador
+  ROW-demanda-operador-2:
+    type: ROW
+    id: ROW-demanda-operador-2
+    children:
+    - CHART-resumen_operador
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-resumen_operador:
+    type: CHART
+    id: CHART-resumen_operador
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-demanda-operador-2
+    meta:
+      width: 12
+      height: 40
+      chartId: 103
+      uuid: 9f090e11-403e-5963-873c-11f5b1e28bdf
+      sliceName: Resumen por operador
   ROW-demanda-2:
     type: ROW
     id: ROW-demanda-2
@@ -119,13 +183,13 @@ position:
       height: 60
       chartId: 5
       uuid: e6a2624f-f23b-59f4-a4fe-903edfe90c84
-      sliceName: Evolución diaria de viajeros por tipo de tren
+      sliceName: Evolución diaria de viajeros por estación
   ROW-demanda-3:
     type: ROW
     id: ROW-demanda-3
     children:
     - CHART-top_estaciones
-    - CHART-reparto_tipo_tren
+    - CHART-reparto_temporada
     parents:
     - ROOT_ID
     - GRID_ID
@@ -144,10 +208,10 @@ position:
       height: 70
       chartId: 6
       uuid: 3de2b2d9-5c4a-5800-97eb-4dca352b6e10
-      sliceName: Top 10 estaciones por viajeros
-  CHART-reparto_tipo_tren:
+      sliceName: Viajeros por estación del corredor
+  CHART-reparto_temporada:
     type: CHART
-    id: CHART-reparto_tipo_tren
+    id: CHART-reparto_temporada
     children: []
     parents:
     - ROOT_ID
@@ -157,8 +221,8 @@ position:
       width: 5
       height: 70
       chartId: 7
-      uuid: 29bf08c0-a505-59a9-9227-fe25b263c3c3
-      sliceName: Reparto de viajeros por tipo de tren
+      uuid: 30389f87-5885-501d-a099-d78fb7734f91
+      sliceName: Reparto de viajeros por época del año
   ROW-demanda-4:
     type: ROW
     id: ROW-demanda-4
@@ -197,7 +261,7 @@ position:
       height: 60
       chartId: 9
       uuid: 5b7a4eae-9c60-5caa-92f1-c69c1a62df94
-      sliceName: Impacto de festivos y fines de semana (media diaria por tipo de tren)
+      sliceName: Impacto de festivos y fines de semana (media diaria)
   ROW-demanda-5:
     type: ROW
     id: ROW-demanda-5
@@ -222,7 +286,7 @@ position:
       height: 60
       chartId: 10
       uuid: 378d395a-170d-5973-ac92-e9e5f76d8a4d
-      sliceName: Viajeros y meteorología (media diaria por tipo de tren)
+      sliceName: Viajeros y meteorología (media diaria)
   CHART-viajeros_comunidad:
     type: CHART
     id: CHART-viajeros_comunidad
@@ -263,13 +327,37 @@ metadata:
     controlValues: {}
     type: NATIVE_FILTER
     description: ''
-  - id: NATIVE_FILTER-demanda-tipo-tren
-    name: Tipo de tren
+  - id: NATIVE_FILTER-demanda-estacion
+    name: Estación
     filterType: filter_select
     targets:
     - datasetUuid: 96722fb6-8e32-5c11-a4ed-d77abe207f92
       column:
-        name: tipo_tren
+        name: estacion
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: false
+      inverseSelection: false
+    type: NATIVE_FILTER
+    description: ''
+  - id: NATIVE_FILTER-demanda-operador
+    name: Operador
+    filterType: filter_select
+    targets:
+    - datasetUuid: 96722fb6-8e32-5c11-a4ed-d77abe207f92
+      column:
+        name: operador
     defaultDataMask:
       extraFormData: {}
       filterState: {}

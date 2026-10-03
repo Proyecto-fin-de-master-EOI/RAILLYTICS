@@ -1,4 +1,4 @@
-slice_name: Retraso medio por línea
+slice_name: Ingresos por venta de billetes (corredor)
 description: null
 certified_by: null
 certification_details: null
@@ -10,17 +10,20 @@ params:
     comparator: No filter
     expressionType: SIMPLE
     operator: TEMPORAL_RANGE
-    subject: fecha
-  x_axis: linea
-  time_grain_sqla: null
-  x_axis_sort_asc: false
+    subject: fecha_inicio
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_total
+  x_axis: fecha_inicio
+  time_grain_sqla: P3M
+  x_axis_sort_asc: true
   x_axis_sort_series: name
   x_axis_sort_series_ascending: true
   metrics:
-  - retraso_medio
+  - total_ingresos
   groupby: []
   order_desc: true
-  row_limit: 20
+  row_limit: 10000
   truncate_metric: true
   show_empty_columns: true
   comparison_type: values
@@ -33,27 +36,26 @@ params:
   sort_series_type: sum
   color_scheme: supersetColors
   only_total: true
-  show_legend: false
+  show_legend: true
   legendType: scroll
   legendOrientation: top
   x_axis_time_format: smart_date
   rich_tooltip: true
   tooltipTimeFormat: smart_date
-  y_axis_format: .1f
+  y_axis_format: SMART_NUMBER
   truncateXAxis: true
   y_axis_bounds:
   - null
   - null
-  orientation: horizontal
-  show_value: true
-  stack: null
-  x_axis_sort: retraso_medio
+  orientation: vertical
+  show_value: false
+  stack: Stack
   extra_form_data: {}
   dashboards: []
 query_context: null
 cache_timeout: null
-uuid: 8280fa75-f009-5d62-b91c-5370e771d4df
+uuid: 4e0ac99f-caf7-598c-896e-8071226297e6
 version: 1.0.0
-dataset_uuid: af719c1c-3a54-5f0d-b18c-bb5dcda219dd
+dataset_uuid: a6f87572-5c8e-5db1-90ea-ec45e618a779
 is_managed_externally: false
 external_url: null

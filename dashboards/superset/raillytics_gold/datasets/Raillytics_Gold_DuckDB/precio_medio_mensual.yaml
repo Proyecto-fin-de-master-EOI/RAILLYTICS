@@ -1,0 +1,136 @@
+table_name: precio_medio_mensual
+main_dttm_col: fecha_inicio
+description: 'Precio medio mensual por trayecto del corredor AVE Madrid–Barcelona por operador. Datos REALES de la CNMC (no sintéticos),
+  solo el corredor AVE Madrid–Barcelona. En la demanda Avlo va dentro de Renfe (la CNMC no la separa); en los precios aparece por separado
+  hasta 2025-T4. «Viajeros por plaza ofertada» no es ocupación: un asiento sirve a varios tramos.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: |-
+  -- Fact_Precio_Mensual ⋈ Dim_Operador, leído con DuckDB del Parquet de Gold en MinIO (datos reales de la CNMC).
+  -- Aquí RENFE es Renfe-AVE y AVLO es Renfe-AVLO. precio_medio_eur en euros sin IVA.
+  SELECT p.fecha_inicio, p.anio, p.mes, p.operador_id,
+         CASE p.operador_id WHEN 'RENFE' THEN 'Renfe (AVE)' WHEN 'AVLO' THEN 'Avlo' WHEN 'TOTAL' THEN 'Total corredor' ELSE coalesce(o.nombre, p.operador_id) END AS operador,
+         p.operador_id = 'TOTAL' AS es_total,
+         p.precio_medio_eur,
+         p.fecha_inicio = MAX(p.fecha_inicio) OVER () AS es_ultimo_mes
+  FROM read_parquet('s3://raillytics-gold/fact_precio_mensual/*.parquet') AS p
+  LEFT JOIN read_parquet('s3://raillytics-gold/dim_operador/*.parquet') AS o USING (operador_id)
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: 3c1d1f4f-9c28-5e42-840a-226be1b5ef32
+metrics:
+- metric_name: precio_medio
+  verbose_name: Precio medio (€)
+  metric_type: null
+  expression: AVG(precio_medio_eur)
+  description: null
+  d3format: ',.2f'
+  extra: null
+  warning_text: null
+columns:
+- column_name: fecha_inicio
+  verbose_name: Mes (inicio)
+  is_dttm: true
+  is_active: true
+  type: DATE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: anio
+  verbose_name: Año
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: mes
+  verbose_name: Nº de mes
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: operador_id
+  verbose_name: Operador (id)
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: operador
+  verbose_name: Operador
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: es_total
+  verbose_name: Fila total del corredor
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: precio_medio_eur
+  verbose_name: Precio medio (€)
+  is_dttm: false
+  is_active: true
+  type: DECIMAL(10,2)
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: es_ultimo_mes
+  verbose_name: Último mes publicado
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

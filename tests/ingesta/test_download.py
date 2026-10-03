@@ -161,3 +161,32 @@ def test_download_accepts_the_zip_when_the_source_declares_zip_and_honours_rejec
     assert ok.aceptada and ok.path.parent == tmp_path / "bronze" / "crtm"
     assert not rejected.aceptada and rejected.path.parent == tmp_path / "cuarentena" / "vacio"
     assert rejected.motivo_rechazo == "contenido_no_vacio: el servidor devolvió 0 bytes"
+
+
+CNMC_CSV = "﻿Trimestre;Viajeros (Núm)\n2026T2;100\n2026T1;90\n".encode("utf-8")
+CNMC = DataSource(
+    id="cnmc", name="CNMC prueba", url="https://cnmc.example.invalid/ds.csv", format="csv",
+    options={"delimiter": ";"}, checks={"min_filas": 2, "columnas": ["Trimestre", "Viajeros (Núm)"]},
+)
+
+
+def test_un_csv_con_las_reglas_de_la_fuente_cumplidas_se_acepta(tmp_path, requests_mock):
+    requests_mock.get(CNMC.url, content=CNMC_CSV, headers={"Content-Type": "text/csv"})
+
+    resultado = download(CNMC, tmp_path)
+
+    assert resultado.aceptada
+    assert [g.gate for g in resultado.gates][-2:] == ["cabecera_esperada", "filas_minimas"]
+    assert resultado.path.parent == tmp_path / "cnmc"
+
+
+def test_un_csv_cuya_cabecera_cambio_va_a_cuarentena_con_su_motivo(tmp_path, requests_mock):
+    requests_mock.get(CNMC.url, content=CNMC_CSV.replace(b"Trimestre", b"Periodo"), headers={"Content-Type": "text/csv"})
+
+    resultado = download(CNMC, tmp_path / "bronze", tmp_path / "rechazados")
+
+    assert not resultado.aceptada and "cabecera_esperada" in resultado.motivo_rechazo
+    assert not (tmp_path / "bronze" / "cnmc").exists()
+    rechazado = resultado.path
+    assert rechazado.parent == tmp_path / "rechazados" / "cnmc"
+    assert "Periodo" in (rechazado.parent / f"{rechazado.name}.rechazo.txt").read_text(encoding="utf-8")

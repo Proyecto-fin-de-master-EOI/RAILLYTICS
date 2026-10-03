@@ -1,0 +1,53 @@
+slice_name: Calendario previsto (última ejecución)
+description: Cada día con su festivo, eventos, viajeros previstos, índice y el motivo que dio el LLM.
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_ultima
+    filterOptionName: filter_es_ultima
+  query_mode: raw
+  groupby: []
+  metrics: []
+  all_columns:
+  - fecha
+  - dia_semana
+  - tipo_dia
+  - festivo
+  - eventos
+  - viajeros_previstos
+  - indice
+  - motivo
+  percent_metrics: []
+  order_by_cols:
+  - '["fecha", true]'
+  row_limit: 200
+  server_page_length: 10
+  include_search: true
+  show_totals: false
+  table_timestamp_format: '%Y-%m-%d'
+  show_cell_bars: false
+  color_pn: false
+  allow_render_html: false
+  column_config: {}
+  conditional_formatting: []
+  temporal_columns_lookup: {}
+  time_grain_sqla: null
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 00c026b0-a9ca-5127-a39d-a56d655cee2c
+version: 1.0.0
+dataset_uuid: ce2482b5-226e-5980-80be-4ed2706e8696
+is_managed_externally: false
+external_url: null

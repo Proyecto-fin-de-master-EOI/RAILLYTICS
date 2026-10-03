@@ -28,12 +28,23 @@ x-airflow-common:
     # descargas si AIRFLOW_CA_BUNDLE apunta a un .pem (ver .env.example);
     # vacío = certificados del sistema.
     REQUESTS_CA_BUNDLE: ${AIRFLOW_CA_BUNDLE:-}
+    # Predicción diaria de demanda (tarea `predecir` del DAG ingesta_data_sources, raillytics.prediccion): Ollama vive
+    # en la misma red de compose (perfil llm, `make llm-up`); config/ y data/ se montan en /opt/airflow/raillytics_* y los CSV
+    # de la predicción van a resultados/predicciones/ (un directorio del repo, en git), montado en /opt/airflow/resultados/predicciones.
+    # OLLAMA_MODEL, OLLAMA_NUM_CTX, OLLAMA_TIMEOUT_S y OLLAMA_SEED salen del .env (env_file) si se definen.
+    OLLAMA_URL: http://ollama:11434
+    PREDICCION_CONFIG: /opt/airflow/raillytics_config/prediccion.yml
+    PROMPTS_DIR: /opt/airflow/raillytics_config/prompts
+    REGLAS_DEMANDA: /opt/airflow/raillytics_config/reglas_demanda.yml
+    PREDICCIONES_ROOT: /opt/airflow/resultados/predicciones
+    PREDICCION_CACHE_DIR: /opt/airflow/raillytics_data/cache/prediccion
     _PIP_ADDITIONAL_REQUIREMENTS: "requests~=2.32 PyYAML~=6.0 duckdb~=1.5.5"
   volumes:
     - ../dags:/opt/airflow/dags
     - ../python:/opt/airflow/python
     - ../config:/opt/airflow/raillytics_config
     - ../data:/opt/airflow/raillytics_data
+    - ../resultados/predicciones:/opt/airflow/resultados/predicciones
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
     - ./airflow/config:/opt/airflow/config
@@ -248,6 +259,51 @@ services:
       superset-init:
         condition: service_completed_successfully
 
+  # LLM local para la predicción diaria de demanda (python/raillytics/prediccion). Va bajo el perfil
+  # `llm`: `make up` NO lo arranca (la imagen y el modelo pesan varios GB); `make llm-up` sí.
+  # Dentro de la red de compose es ollama:11434; en el host, localhost:${OLLAMA_PORT:-11435}
+  # (el 11434 suele estar ocupado por un Ollama instalado en el host).
+  ollama:
+    image: ollama/ollama:0.13.3
+    container_name: raillytics-ollama
+    profiles: ["llm"]
+    restart: unless-stopped
+    environment:
+      # Medido (RTX 2080 Ti, mistral-nemo, 92 días): flash attention + KV cache q8_0 = 51 tok/s frente a 21, y el modelo cabe
+      # entero en la GPU (100 % en vez de 94 %). La calidad del reparto no cambia (78/78 días siguen la rúbrica en ambos casos).
+      # Con una GPU sin soporte, OLLAMA_FLASH_ATTENTION=0 en el .env lo desactiva. Cambiarlo recrea el contenedor (make llm-up).
+      OLLAMA_FLASH_ATTENTION: ${OLLAMA_FLASH_ATTENTION:-1}
+      OLLAMA_KV_CACHE_TYPE: ${OLLAMA_KV_CACHE_TYPE:-q8_0}
+    ports:
+      - "${OLLAMA_PORT:-11435}:11434"
+    volumes:
+      # Sin OLLAMA_MODELS_DIR, un volumen Docker; con una ruta absoluta (p. ej. /home/usuario/.ollama) se reutilizan los
+      # modelos ya descargados en el host. Ojo: el Makefile también lee el .env, así que no uses $HOME (Make lo expandiría
+      # mal): escribe la ruta completa. El contenedor corre como root: lo que descargue será de root.
+      - ${OLLAMA_MODELS_DIR:-ollama_data}:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # Descarga OLLAMA_MODEL si no está (mismo patrón que minio-init). Se lanza con `make llm-up`.
+  ollama-init:
+    image: ollama/ollama:0.13.3
+    container_name: raillytics-ollama-init
+    profiles: ["llm"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-mistral-nemo}
+    entrypoint: ["/bin/sh", "-c", 'if ollama show "$${OLLAMA_MODEL}" >/dev/null 2>&1; then echo "Modelo $${OLLAMA_MODEL} ya descargado (volumen persistente): no se descarga de nuevo"; else ollama pull "$${OLLAMA_MODEL}"; fi']
+
 volumes:
   minio_data:
   postgres_data:
+  # Modelos de Ollama (/root/.ollama). Volumen con nombre: persiste entre `make llm-down`, `make down` y reinicios,
+  # así cada modelo se descarga UNA sola vez. Solo se borra a propósito: docker volume rm docker_ollama_data.
+  ollama_data:

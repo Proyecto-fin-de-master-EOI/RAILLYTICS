@@ -1,0 +1,32 @@
+slice_name: Precio medio del corredor (€)
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha_inicio
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_ultimo_trimestre AND es_total
+  metric: precio_medio
+  header_font_size: 0.4
+  subheader: último trimestre, sin IVA
+  subheader_font_size: 0.15
+  y_axis_format: ',.2f'
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 8d4f2733-1f2c-554d-9581-873c2f7dd2c9
+version: 1.0.0
+dataset_uuid: 2f7dfc58-7d80-5ee5-833e-a17d7db56299
+is_managed_externally: false
+external_url: null

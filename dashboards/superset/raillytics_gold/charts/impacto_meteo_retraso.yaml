@@ -18,8 +18,7 @@ params:
   x_axis_sort_series_ascending: true
   metrics:
   - retraso_medio
-  groupby:
-  - tipo_tren
+  groupby: []
   order_desc: true
   row_limit: 10000
   truncate_metric: true

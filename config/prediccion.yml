@@ -1,0 +1,47 @@
+# Consultas de entrada de la predicción diaria de demanda (raillytics.prediccion.entradas).
+#
+# Cada origen es un SELECT de DuckDB que traduce lo que los DAGs de Airflow dejan en el lake al
+# contrato de la predicción. Debe devolver EXACTAMENTE estas columnas, en este orden:
+#
+#   trimestrales  trimestre ('AAAA-Tn'), viajeros (entero)
+#                 UNA fila por trimestre: solo el corredor AVE Madrid–Barcelona, ambos sentidos sumados.
+#   festivos      fecha (DATE), nombre
+#   eventos       fecha (DATE), descripcion, ciudad ('MAD', 'BCN' o NULL)
+#   meteo         fecha (DATE), ciudad ('MAD' | 'BCN'), temperatura_media, precipitacion_mm
+#                 UNA fila por (fecha, ciudad) con valores OBSERVADOS. La climatología (promedio histórico
+#                 del mes) para los días futuros la calcula la propia predicción a partir de estas filas.
+#
+# Marcadores de ruta: {bronze}, {silver}, {gold} (bucket de MinIO o directorio local, según el .env).
+#
+# ORIGEN DE LOS DATOS:
+#   trimestrales  REAL: la demanda del corredor de la CNMC, que construye `make 04_silver` en {silver}/cnmc_trimestral
+#                 (suma de los operadores del corredor, sin la fila TOTAL, que solo trae ingresos).
+#   festivos, eventos y meteo  siguen leyendo la muestra SINTÉTICA (NO son datos reales): `make prediccion-sample` genera
+#                 las fuentes en {bronze}/l2/muestra_<fuente>/ con las columnas que asumen estas consultas, para poder
+#                 probar 07_prediccion y 00_ingest hasta que existan las reales (fase 2). La predicción avisa, con el nombre
+#                 de cada origen afectado, cada vez que corre con alguno sintético.
+#
+# Cuando exista la fuente REAL de un origen sintético: cambia en su consulta la ruta `muestra_<fuente>` por la de la fuente
+# real y ajusta las columnas a las suyas. Para ver las columnas reales de una fuente, en DuckDB:
+#   DESCRIBE SELECT * FROM read_parquet('s3://raillytics-bronze/l2/<fuente>/*/*.parquet');
+# No dejes las dos a la vez: se leerían juntas y los totales saldrían duplicados sin ningún error.
+origenes:
+  trimestrales:
+    sql: |
+      SELECT concat(anio, '-T', trimestre) AS trimestre, sum(viajeros) AS viajeros
+      FROM read_parquet('{silver}/cnmc_trimestral/*.parquet')
+      WHERE corredor = 'Madrid-Barcelona' AND operador_id <> 'TOTAL'
+      GROUP BY 1
+      ORDER BY 1
+  festivos:
+    sql: |
+      SELECT fecha, nombre
+      FROM read_parquet('{bronze}/l2/muestra_festivos/*/*.parquet')
+  eventos:
+    sql: |
+      SELECT fecha, descripcion, ciudad
+      FROM read_parquet('{bronze}/l2/muestra_eventos/*/*.parquet')
+  meteo:
+    sql: |
+      SELECT fecha, ciudad, tmed AS temperatura_media, prec AS precipitacion_mm
+      FROM read_parquet('{bronze}/l2/muestra_aemet/*/*.parquet')
