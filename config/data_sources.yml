@@ -19,3 +19,21 @@ sources:
     name: "Renfe GTFS-RT - Posiciones de vehículos (Larga Distancia)"
     url: "https://gtfsrt.renfe.com/vehicle_positions_LD.json"
     format: json
+  # === CNMC - Comisión Nacional de los Mercados y la Competencia ===
+  # Catálogo CKAN en https://catalogodatos.cnmc.es (ojo: el portal público
+  # data.cnmc.es es un Drupal sin API). Publicación trimestral, periodo
+  # 2016T1-2026T2, licencia CC-BY-SA-4.0.
+  #
+  # Se usa el JSON y no el CSV a propósito: el CSV de CNMC viene con separador
+  # ';', coma decimal y BOM, y el lector csv de este framework solo fija
+  # header=true (SourceFormat.readerOptions), con lo que Spark lo convertiría a
+  # un Parquet de una única columna. El JSON es un array de objetos con las
+  # claves ya en snake_case y los valores numéricos.
+  - id: cnmc_ocupacion_viajeros
+    name: "CNMC - Indicadores trimestrales del transporte ferroviario de viajeros (ds_24406_1)"
+    url: "https://catalogodatos.cnmc.es/dataset/e608b7b2-0b3a-4816-a4f2-54eb3d913790/resource/998d0f03-4cc0-4b3f-9012-0f55c1b14adb/download/ds_24406_1.json"
+    format: json
+  - id: cnmc_precio_medio
+    name: "CNMC - Indicador del precio medio trimestral por trayecto (ds_24409_1)"
+    url: "https://catalogodatos.cnmc.es/dataset/ed44fc19-79d5-4222-b724-81e430c29a36/resource/348996f0-efbd-419d-a82f-ca55b7fe137e/download/ds_24409_1.json"
+    format: json

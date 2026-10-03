@@ -21,10 +21,18 @@ def test_load_sources_parses_valid_yaml():
 
 
 def test_load_sources_accepts_zip_and_the_project_registry_is_consistent():
-    # El registro real del proyecto: CRTM sirve un GTFS (zip); Renfe, JSON.
+    # El registro real del proyecto: CRTM sirve un GTFS (zip); Renfe y CNMC, JSON.
+    # De CNMC se toma el JSON y no el CSV: su CSV usa separador ';' y coma decimal,
+    # y el lector csv del framework asume coma (ver SourceFormat.readerOptions).
     sources = {s.id: s.format for s in load_sources(Path(__file__).parents[2] / "config" / "data_sources.yml")}
 
-    assert sources == {"crtm": "zip", "renfe_trip_updates": "json", "renfe_vehicle_positions": "json"}
+    assert sources == {
+        "crtm": "zip",
+        "renfe_trip_updates": "json",
+        "renfe_vehicle_positions": "json",
+        "cnmc_ocupacion_viajeros": "json",
+        "cnmc_precio_medio": "json",
+    }
 
 
 def test_load_sources_rejects_unsupported_format(tmp_path):
