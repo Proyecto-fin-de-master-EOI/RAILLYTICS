@@ -10,7 +10,9 @@ import yaml
 from raillytics.ingesta.formats import (
     CHECKS_DESCARGA,
     CLAVES_FUENTE,
+    DESCARGADORES,
     MODOS_SILVER,
+    OPCIONES_AUTH,
     OPCIONES_LECTURA,
     SUPPORTED_FORMATS,
 )
@@ -35,6 +37,8 @@ class DataSource:
     options: dict[str, str] = field(default_factory=dict)  # cómo se lee el fichero: delimiter, encoding (solo csv)
     checks: dict[str, Any] = field(default_factory=dict)   # reglas de la descarga: min_bytes, min_filas, columnas (solo csv)
     silver: tuple[SilverTabla, ...] = ()                   # tablas Silver que se construyen desde esta fuente
+    downloader: str = "http"                               # quién trae la fuente (ver downloaders.py); http = GET directo de `url`
+    auth: dict[str, str] = field(default_factory=dict)     # {env: NOMBRE_VARIABLE, header: ...}; nunca el secreto
 
 
 def load_sources(path: Path) -> list[DataSource]:
@@ -70,6 +74,17 @@ def _parsear(entry: dict[str, Any]) -> DataSource:
     if delimitador is not None and len(str(delimitador)) != 1:
         raise ValueError(f"Fuente '{fuente}': options.delimiter debe ser un único carácter, no {delimitador!r}")
     _validar_checks(fuente, checks)
+    downloader = entry.get("downloader", "http")
+    if downloader not in DESCARGADORES:
+        raise ValueError(
+            f"Fuente '{fuente}': downloader no soportado '{downloader}' (soportados: {sorted(DESCARGADORES)})"
+        )
+    auth = _bloque(fuente, "auth", entry, OPCIONES_AUTH)
+    if auth and "env" not in auth:
+        raise ValueError(f"Fuente '{fuente}': 'auth' necesita 'env', el NOMBRE de la variable de entorno con la credencial")
+    for clave, valor in auth.items():
+        if not isinstance(valor, str) or not valor.strip():
+            raise ValueError(f"Fuente '{fuente}': auth.{clave} debe ser un texto no vacío, no {valor!r}")
     return DataSource(
         id=entry["id"],
         name=entry["name"],
@@ -78,6 +93,8 @@ def _parsear(entry: dict[str, Any]) -> DataSource:
         options={k: str(v) for k, v in options.items()},
         checks=checks,
         silver=tuple(_silver(fuente, entry.get("silver"))),
+        downloader=downloader,
+        auth={k: str(v) for k, v in auth.items()},
     )
 
 

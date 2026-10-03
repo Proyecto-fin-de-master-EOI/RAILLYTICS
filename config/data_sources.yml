@@ -63,3 +63,38 @@ sources:
       columnas: ["Mes", "Empresa", "Tipo de servicio", "Tipo de producto", "Trayecto", "Precio (€)"]
     silver:
       - {tabla: cnmc_precio_mensual, modo: snapshot}
+  # --- AEMET OpenData: climatología diaria de las dos cabeceras del corredor ---
+  # Requiere clave gratuita (AEMET_API_KEY en el .env; se pide en opendata.aemet.es).
+  # La `url` es una plantilla: el descargador `aemet` rellena {fecha_ini} y {fecha_fin} con una
+  # ventana de 15 días —el máximo que admite la API— que termina hace 5, porque AEMET publica
+  # con retardo y pedir "hasta hoy" devuelve un tramo vacío.
+  - id: aemet_madrid_barajas
+    name: "AEMET - Valores climatológicos diarios, Madrid-Barajas (estación 3195)"
+    url: "https://opendata.aemet.es/opendata/api/valores/climatologicos/diarios/datos/fechaini/{fecha_ini}T00:00:00UTC/fechafin/{fecha_fin}T23:59:59UTC/estacion/3195"
+    format: json
+    downloader: aemet
+    auth: {env: AEMET_API_KEY, header: api_key}
+  - id: aemet_barcelona_prat
+    name: "AEMET - Valores climatológicos diarios, Barcelona-El Prat (estación 0076)"
+    url: "https://opendata.aemet.es/opendata/api/valores/climatologicos/diarios/datos/fechaini/{fecha_ini}T00:00:00UTC/fechafin/{fecha_fin}T23:59:59UTC/estacion/0076"
+    format: json
+    downloader: aemet
+    auth: {env: AEMET_API_KEY, header: api_key}
+  # --- NAP (Punto de Acceso Nacional, Ministerio de Transportes): GTFS de los operadores ---
+  # Es el canal oficial que obliga la directiva europea de ITS, con histórico: Renfe desde
+  # 2017-02 y OUIGO desde 2023-06. Da la OFERTA diaria (cuántos trenes pone cada operador cada
+  # día), que es la variable diaria que la demanda trimestral de CNMC no tiene.
+  # Requiere clave (NAP_API_KEY en el .env; se pide en nap.transportes.gob.es, Editar Perfil).
+  # Iryo no publica en el NAP, así que la oferta cubre Renfe y OUIGO, no el corredor completo.
+  - id: nap_gtfs_renfe
+    name: "NAP - GTFS de Renfe (Media, Larga Distancia y AVE), último snapshot del histórico"
+    url: "https://nap.transportes.gob.es/api/v2/conjunto-dato/897/historico"
+    format: zip
+    downloader: nap
+    auth: {env: NAP_API_KEY, header: ApiKey}
+  - id: nap_gtfs_ouigo
+    name: "NAP - GTFS de OUIGO, último snapshot del histórico"
+    url: "https://nap.transportes.gob.es/api/v2/conjunto-dato/1515/historico"
+    format: zip
+    downloader: nap
+    auth: {env: NAP_API_KEY, header: ApiKey}

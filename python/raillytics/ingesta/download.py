@@ -3,15 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-import requests
-
 from raillytics.calidad.ficheros import motivo_rechazo, validar_contenido
 from raillytics.calidad.registro import ResultadoGate
+from raillytics.ingesta.downloaders import obtener
 from raillytics.ingesta.filenames import staging_filename
 from raillytics.ingesta.sources import DataSource
 from raillytics.utils.fs import atomic_write_bytes
 
-_TIMEOUT_SECONDS = 30
 # Nombre del directorio de cuarentena por defecto, hermano del staging (como
 # bronze_l1_done y bronze_processed): nunca lo ve el glob de L1.
 REJECTED_DIR_SUFFIX = "_rejected"
@@ -39,8 +37,10 @@ def download(source: DataSource, dest_root: Path, rejected_root: Path | None = N
     <nombre>.rechazo.txt con el motivo, para poder inspeccionarlo, y NO entra en
     el pipeline. Quien llama decide si la tarea falla (el DAG lo hace).
     """
-    response = requests.get(source.url, timeout=_TIMEOUT_SECONDS)
-    response.raise_for_status()
+    # Cómo se trae la fuente lo decide su `downloader` (ver downloaders.py): `http`
+    # es un GET de `url`, y AEMET y el NAP aportan el suyo porque su descarga es un
+    # procedimiento de varios pasos. Lo de aquí abajo no cambia según la fuente.
+    response = obtener(source)
     content = response.content
 
     gates = validar_contenido(
