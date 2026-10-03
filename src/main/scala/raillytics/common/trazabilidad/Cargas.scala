@@ -3,6 +3,7 @@ package raillytics.common.trazabilidad
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.types._
+import raillytics.common.fs.HadoopFs
 import raillytics.common.logging.Logging
 
 import java.net.InetAddress
@@ -17,8 +18,8 @@ import scala.util.control.NonFatal
 // Trazabilidad de cargas: el equivalente Scala de python/raillytics/utils/cargas.py.
 // Cada ejecución de un proceso de carga deja una fila por tabla cargada en
 // <gold>/_trazabilidad/cargas/ (Parquet con las mismas columnas y tipos que el
-// lado Python). Spark añade sus part-*.parquet al directorio (mode append) y
-// DuckDB/Superset los leen junto a los ficheros que escribe Python.
+// lado Python): un único fichero <run_id>.parquet por ejecución, el mismo
+// convenio que usa Python, y DuckDB/Superset los leen todos juntos por glob.
 //
 //   Cargas.registrar("gold_build", "gold", cargasDir, Map("umbral" -> 5)) { ejecucion =>
 //     ejecucion.tabla("dim_fecha", origen = Some(silverRoot), destino = Some(dest)) { carga =>
@@ -169,13 +170,13 @@ object Cargas extends Logging {
     } finally escribirBestEffort(ejecucion, cargasDir)
   }
 
-  // Un único fichero Parquet por ejecución, añadido al directorio compartido
-  // (mode append: Spark le da un nombre único, así dos ejecuciones concurrentes
-  // no se pisan y en S3 no hace falta reescribir nada).
+  // Un único fichero <run_id>.parquet por ejecución. registrar() escribe una sola
+  // vez (en su finally) y cada ejecución tiene su propio run_id, así que el nombre
+  // no puede colisionar. El porqué de no usar write.mode("append") sobre el
+  // directorio compartido está en HadoopFs.escribirFicheroUnico.
   private def escribir(ejecucion: Ejecucion, cargasDir: String)(implicit spark: SparkSession): Unit =
-    spark.createDataFrame(ejecucion.filasRegistro().asJava, Schema)
-      .coalesce(1)
-      .write.mode("append").parquet(cargasDir)
+    HadoopFs.escribirFicheroUnico(
+      spark.createDataFrame(ejecucion.filasRegistro().asJava, Schema), cargasDir, ejecucion.runId)
 
   // La trazabilidad nunca hace fallar la carga: si no se puede escribir (MinIO
   // caído, ruta inválida...), queda en el log con la excepción y se sigue.

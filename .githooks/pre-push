@@ -9,12 +9,19 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   [ "$local_sha" = "$zero" ] && continue # borrado de rama remota
 
   if [ "$remote_sha" = "$zero" ]; then
-    range="$local_sha"
+    # Rama que todavia no existe en remoto: no hay sha con el que comparar, asi
+    # que se miran los commits que no estan en ninguna rama remota.
+    #
+    # Aqui NO vale `git diff --name-only $local_sha`: eso compara el working tree
+    # contra ese commit, no el contenido del commit. Con el arbol limpio devuelve
+    # vacio, de modo que el primer push de una rama -justo cuando se abre la PR-
+    # se saltaba los tests en silencio.
+    cambiados=$(git log --name-only --pretty=format: "$local_sha" --not --remotes 2>/dev/null || true)
   else
-    range="$remote_sha..$local_sha"
+    cambiados=$(git log --name-only --pretty=format: "$remote_sha..$local_sha" 2>/dev/null || true)
   fi
 
-  if git diff --name-only "$range" 2>/dev/null | grep -qE '(^|/)([^/]+\.(scala|sbt)|project/.*)$'; then
+  if printf '%s\n' "$cambiados" | grep -qE '(^|/)([^/]+\.(scala|sbt)|project/.*)$'; then
     has_scala_changes=true
   fi
 done
