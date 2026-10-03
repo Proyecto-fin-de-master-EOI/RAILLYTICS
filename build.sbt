@@ -48,6 +48,22 @@ lazy val root = (project in file("."))
         s"-Djava.library.path=${file(home) / "bin"}${java.io.File.pathSeparator}${sys.props.getOrElse("java.library.path", "")}"
       )
     },
+    // Java fijado en el 21 para las JVM de los tests y de `runMain`. Spark 4.2 no
+    // arranca en JDK recientes como el 27 (el que instala Homebrew por defecto):
+    // org.apache.spark.unsafe.Platform busca por reflexión jdk.internal.ref.Cleaner,
+    // que ya no existe, y todo SparkSession falla con ClassNotFoundException. Como
+    // ambas JVM van en fork, usan el JDK 21 aunque sbt corra con otro; sbt lo
+    // localiza solo (fullJavaHomes: /Library/Java/JavaVirtualMachines, /usr/lib/jvm,
+    // sdkman...). Si no lo encuentra se usa el JDK de sbt, que vale si ya es el 21.
+    Test / javaHome := {
+      val jdk21   = fullJavaHomes.value.get("21")
+      val sbtJava = sys.props("java.specification.version")
+      if (jdk21.isEmpty && sbtJava != "21")
+        sLog.value.warn(s"No se encuentra un JDK 21 y sbt corre con Java $sbtJava: Spark 4.2 necesita " +
+          "Java 21 (instálalo o apunta JAVA_HOME a él); con otro JDK los tests y runMain pueden fallar " +
+          "(p. ej. ClassNotFoundException: jdk.internal.ref.Cleaner).")
+      jdk21
+    },
     // Lo mismo para `runMain` (make 01_raw-uploader ... 05_gold). Sin fork, Spark
     // corre dentro de la JVM de sbt con classloader en capas: sbt copia los jars a
     // target/bg-jobs/sbt_<id>/ y borra ese directorio al salir, justo antes de que
@@ -56,5 +72,6 @@ lazy val root = (project in file("."))
     // En una JVM aparte no hay nada que sbt borre mientras Hadoop sigue vivo.
     run / fork := true,
     run / javaOptions := (Test / javaOptions).value,
+    run / javaHome := (Test / javaHome).value,
     run / connectInput := true
   )
