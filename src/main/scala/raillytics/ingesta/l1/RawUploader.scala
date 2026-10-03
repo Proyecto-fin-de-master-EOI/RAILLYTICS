@@ -10,8 +10,6 @@ import raillytics.common.lake.BronzePaths
 import raillytics.common.logging.Logging
 import raillytics.common.trazabilidad.Cargas
 
-import java.net.URI
-import java.nio.file.Paths
 import java.time.LocalDate
 
 // L1: copia cada fichero del staging local tal cual a MinIO (l1-raw) y lo
@@ -22,12 +20,18 @@ object RawUploader extends Logging {
 
   // binaryFile entrega cada ruta como URI (file:///.../data/bronze/<fuente>/<fichero>):
   // la fuente es el nombre de la carpeta padre, que es como la organiza la descarga Python.
+  //
+  // Se usa org.apache.hadoop.fs.Path y no java.net.URI: Spark entrega la ruta sin
+  // codificar, así que si el proyecto vive en un directorio con espacios (p. ej.
+  // "C:/Mis Proyectos/...") `new URI(...)` falla con URISyntaxException ("Illegal
+  // character in path"). Path sí acepta rutas sin codificar, y es además lo que usa
+  // el resto de este fichero.
   private def sourceIdFromLocalPath(uriString: String): String =
-    Paths.get(new URI(uriString)).getParent.getFileName.toString
+    new Path(uriString).getParent.getName
 
   // Nombre del fichero tal cual lo dejó Python (con su timestamp de descarga por delante).
   private def fileNameFromLocalPath(uriString: String): String =
-    Paths.get(new URI(uriString)).getFileName.toString
+    new Path(uriString).getName
 
   // Procesa un micro-batch de la fuente binaryFile. Solo se usan las columnas
   // path y length: el contenido no pasa por Spark, la copia la hace Hadoop

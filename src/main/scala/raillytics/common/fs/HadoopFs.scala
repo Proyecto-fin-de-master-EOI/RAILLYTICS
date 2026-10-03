@@ -2,6 +2,7 @@ package raillytics.common.fs
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.spark.sql.DataFrame
 
 import java.io.IOException
 import java.net.URI
@@ -39,4 +40,28 @@ object HadoopFs {
   // Igual que la anterior conservando el nombre original del fichero.
   def moveInto(fs: FileSystem, srcPath: Path, destDir: Path): Path =
     moveInto(fs, srcPath, destDir, srcPath.getName)
+
+  // Escribe df como UN unico fichero <nombre>.parquet dentro de dir.
+  //
+  // No se usa `write.mode("append").parquet(dir)`: el committer de Hadoop monta
+  // TODAS las escrituras de un mismo directorio en <dir>/_temporary y lo borra al
+  // terminar, asi que dos escrituras concurrentes se pisan ahi y se pierden
+  // ficheros. Y la concurrencia es la norma, no la excepcion: L2 lanza una query
+  // por fuente sobre la misma SparkSession, y ademas L1 y L2 corren en procesos
+  // distintos (el README pide una terminal para cada uno) escribiendo al mismo
+  // prefijo de trazabilidad.
+  //
+  // Dandole a cada escritura un staging propio, el committer ya no comparte nada.
+  // El resultado es el mismo convenio de un fichero por ejecucion que sigue el lado
+  // Python con DuckDB (LakeLayout.cargas_file en python/raillytics/utils/lake.py).
+  def escribirFicheroUnico(df: DataFrame, dir: String, nombre: String): Unit = {
+    val staging = new Path(s"$dir/_staging-$nombre")
+    val fs = staging.getFileSystem(df.sparkSession.sparkContext.hadoopConfiguration)
+    try {
+      df.coalesce(1).write.mode("overwrite").parquet(staging.toString)
+      val part = fs.listStatus(staging).map(_.getPath).find(_.getName.endsWith(".parquet"))
+        .getOrElse(throw new IOException(s"no se genero ningun Parquet en el staging '$staging'"))
+      moveInto(fs, part, new Path(dir), s"$nombre.parquet")
+    } finally fs.delete(staging, true)
+  }
 }
