@@ -620,18 +620,24 @@ Para un trimestre objetivo, predice la demanda **por día** del corredor **AVE M
 
 - El **código fija el nivel**: total del trimestre = el mismo trimestre del año anterior × el crecimiento
   interanual del último trimestre publicado (`raillytics.prediccion.nivel`).
-- El **LLM da la forma**: recibe el calendario día a día (festivos, eventos, meteo) y devuelve un índice
-  relativo por día (1.0 = laborable típico) con un motivo. El código normaliza los índices para que la suma
-  sea **exactamente** el total, valida el resultado con quality gates y escribe el CSV.
+- La **forma** (cómo se reparte ese total entre los días) sale de **reglas fijas en código**
+  (`config/reglas_demanda.yml`): día de la semana, festivos, puentes, vísperas y regresos.
+- El **LLM valora los eventos**: recibe solo los días con evento (un partido, un concierto, una feria) y devuelve
+  un factor por día con un motivo. El código normaliza los índices para que la suma sea **exactamente** el
+  total, valida el resultado con quality gates y escribe el CSV.
 
-Se hace así porque los LLM razonan bien sobre el contexto (un puente, un partido) pero son malos haciendo
-aritmética: dejarles inventar el nivel absoluto es la fuente de error más probable.
+Se hace así porque los LLM razonan bien sobre el contexto (qué evento atrae viajeros) pero son malos haciendo
+aritmética: dejarles inventar el nivel absoluto es la fuente de error más probable, y, medido, tampoco aplican de
+forma fiable reglas que dependen de los días de alrededor (ver [El prompt](#el-prompt-un-fichero-de-texto-versionado)).
+Es el [modo eventos](#modo-eventos-reglas-en-código-y-el-llm-solo-para-los-eventos), el de por defecto
+(`eventos_v1`). Las plantillas `demanda_vN`, en las que el LLM da el índice de cada día, siguen disponibles con
+`PRED_PROMPT`.
 
 ```
-Airflow ──► lake (Bronze/Silver) ──► entradas ──► nivel ─┐
-(trimestrales, festivos,                  calendario ────┼─► prompt ──► Ollama ──► índices ──► normalizar
- eventos, meteo)                                          ┘                                        │
-                                                    CSV  ◄── gates (bloqueantes y avisos) ◄───────┘
+Airflow ──► lake (Bronze/Silver) ──► entradas ──► nivel ─────────────────────────────────────┐
+(trimestrales, festivos,                  calendario ──► reglas ──┬──► índices ──► normalizar ┘
+ eventos, meteo)                          días con evento ──► Ollama (factor) ┘          │
+                                                    CSV  ◄── gates (bloqueantes y avisos) ◄┘
 ```
 
 ### Cómo se usa
@@ -656,7 +662,7 @@ desvió el total esperado del real.
 
 ```bash
 make 00_ingest                                  # ingesta + predicción del trimestre en curso
-make 00_ingest TRIMESTRE=2026-T4 PRED_PROMPT=demanda_v3
+make 00_ingest TRIMESTRE=2026-T4 PRED_PROMPT=demanda_v2
 ```
 
 - **Solo a petición.** Las ejecuciones programadas del DAG (`@daily`) solo ingestan: la tarea se salta si la conf no
@@ -722,22 +728,25 @@ muestra sintética siguen siendo sintéticos aunque estén en git (la columna `d
 | `corredor` | `AVE-MAD-BCN` |
 | `viajeros_previstos` | entero; la suma del CSV es exactamente el total esperado |
 | `indice` | índice normalizado (media del trimestre = 1.0) |
-| `motivo` | justificación del LLM |
+| `motivo` | justificación del LLM (en [modo eventos](#modo-eventos-reglas-en-código-y-el-llm-solo-para-los-eventos), la de las reglas, salvo en los días con evento) |
 | `trimestre` | `AAAA-Tn` |
-| `modelo`, `version_prompt` | p. ej. `mistral-nemo`, `demanda_v2` |
+| `modelo`, `version_prompt` | p. ej. `mistral-nemo`, `eventos_v1` |
 | `run_id`, `generado_en` | enlaza con `_trazabilidad/cargas/`; hora UTC |
 
 Cada ejecución queda en la trazabilidad (`proceso = prediccion_demanda`, `capa = ml`, con trimestre, modelo,
 versión del prompt y semilla en `parametros`) y sus quality gates en `_trazabilidad/calidad/`. Bloqueantes: un
-registro por día, sin nulos, viajeros ≥ 0, índices del LLM en [0.2, 3.0] y suma = total. Avisos: índices casi planos y
-trimestre sin datos de eventos.
+registro por día, sin nulos, viajeros ≥ 0, índices del LLM en [0.2, 3.0], suma = total y `dia_semana_del_motivo`: como
+mucho un 5 % de motivos que nombren otro día de la semana (si no, la respuesta del LLM va desplazada: las fechas son
+buenas, pero cada índice es el de otro día). Avisos: índices casi planos y trimestre sin datos de eventos.
 
 ### El prompt: un fichero de texto versionado
 
 El prompt **no está en el código**: es un fichero de texto plano, `config/prompts/demanda_vN.md`, con marcadores
 `{{...}}` que el código rellena (`corredor`, `trimestre`, `num_dias`, `total_esperado`, `historico`, `nota_eventos`,
-`calendario`). Se elige con `PRED_PROMPT` (por defecto `demanda_v2`; no se llama `PROMPT` porque `cmd.exe` ya define
-esa variable). `demanda_v1.md` se conserva como línea base.
+`calendario`; `calendario_sin_climatologia`, el mismo calendario con la meteo solo observada, y
+`calendario_con_contexto`, que además marca en cada línea si el día es víspera, puente, regreso o está junto a un
+evento). Se elige con `PRED_PROMPT` (por defecto `eventos_v1`, el modo eventos; no se llama `PROMPT` porque `cmd.exe`
+ya define esa variable). Las `demanda_vN` se conservan para comparar.
 
 `demanda_v2.md` aplica estas prácticas, elegidas midiendo variantes con el modelo real y no por opinión:
 
@@ -763,7 +772,91 @@ Medido el 2026-10-01 con `mistral-nemo` sobre el calendario de 2026-T4 (festivos
 
 Probado y **no incorporado** por no mejorar: separar en mensaje de sistema y de usuario (66 de 78) y calcular en
 código marcas de víspera/puente (76 de 78). **Limitación conocida:** ninguna variante aplica el ajuste de víspera
-(el índice medio de las vísperas sale ≈ 1.0); si te importa, habría que calcular ese ajuste en código.
+(el índice medio de las vísperas sale ≈ 1.0); si te importa, habría que calcular ese ajuste en código. Las marcas
+calculadas en código se descartaron mirando solo la rúbrica semanal, que no mide las vísperas: con las métricas del
+[resumen de coherencia](#iterar-el-prompt) se pueden volver a medir.
+
+**`demanda_v3.md`**. Intenta atacar esa limitación sin tocar la llamada a Ollama:
+
+- Define *día libre*, *puente* y *tramo festivo* (v2 hablaba de puentes sin definirlos) y plantea cada día como
+  «valor base + ajustes», con la víspera y el regreso referidos al tramo festivo.
+- El ejemplo son diez días **seguidos** (el puente de la Constitución de 2029 y un concierto): víspera, festivo entre
+  semana, puente, festivo en sábado, regreso y los días de antes y después de un evento. El de v2 se saltaba el lunes
+  anterior al partido, así que la regla del día anterior a un evento nunca aparecía. Un test comprueba que el ejemplo
+  marca esos días igual que la métrica.
+- Quita la meteo de climatología (`{{calendario_sin_climatologia}}`): es la misma para todo el mes y no distingue un
+  día de otro. La observada se mantiene.
+- Quita el total y el histórico trimestral, que no sirven para dar índices relativos.
+
+Con la muestra sintética de 2026-T4 el prompt pasa de 13.300 a 9.200 caracteres (−31 %). Son varios cambios a la vez:
+si v3 empeora algo, mide cada uno por separado.
+
+Medido el 2026-10-03 con `mistral-nemo` sobre la muestra sintética de 2025-T3, 2025-T4, 2026-T1 y 2026-T4, sin
+comparar todavía con v2 sobre los mismos datos:
+
+| | 2025-T3 | 2025-T4 | 2026-T1 | 2026-T4 |
+| --- | --- | --- | --- | --- |
+| Días corrientes que siguen la rúbrica semanal (±0.10) | 13 de 86 | 78 de 78 | 80 de 80 | 72 de 72 |
+| Exceso de vísperas / regresos / junto a un evento | +0.00 / +0.00 / +0.00 | +0.00 / +0.00 / +0.00 | n/d / n/d / +0.00 | +0.00 / −0.21 / +0.00 |
+
+- **La limitación sigue.** Los motivos de vísperas, regresos y días junto a un evento nunca los mencionan («viernes
+  laborable sin festivo ni evento»): el modelo no mira las líneas vecinas, así que explicar mejor la regla no basta.
+  Lo siguiente es marcar esos días en la propia línea del calendario (con `tipos_de_dia`) o aplicar el ajuste en código.
+- **2025-T3 sale desplazado un día**: las fechas son correctas, pero cada motivo e índice corresponde al día anterior
+  (el sábado 2 de agosto, «viernes laborable»; el viernes 15, festivo, «jueves festivo»). La validación no lo detecta;
+  ahora lo para el gate `dia_semana_del_motivo` (en ese CSV fallan los 92 días).
+- **Festivos irregulares**: en 2025-T4 los ignora todos («jueves laborable» en Navidad) y en 2026-T4 baja los que caen en
+  domingo, aunque la regla dice que conservan el valor de ese día.
+
+**`demanda_v4.md`**. Es v3 con el calendario `{{calendario_con_contexto}}`: cada línea lleva un campo
+`contexto` con las marcas de `tipos_de_dia` («víspera de tramo festivo», «puente», «regreso de tramo festivo», «junto a un
+evento» o «ninguno»), y las reglas se refieren a ese campo en vez de pedir que el modelo mire otros días. También deja
+explícito el valor de un festivo en fin de semana (0.85 el sábado, 1.25 el domingo). El ejemplo lleva el mismo campo y un
+test comprueba que coincide con lo que escribe el código.
+
+Medido el 2026-10-03 con `mistral-nemo` sobre los mismos cuatro trimestres y la misma muestra sintética que v3 (exceso
+sobre un día corriente del mismo día de la semana, v3 → v4; n/d = el trimestre no tiene días de ese tipo):
+
+| | Rúbrica semanal | Vísperas | Puentes | Regresos | Junto a un evento |
+| --- | --- | --- | --- | --- | --- |
+| 2025-T3 | 13/86 → **86/86** | +0.00 → **+0.09** | n/d | +0.00 → **+0.18** | +0.00 → **+0.05** |
+| 2025-T4 | 78/78 → 78/78 | +0.00 → +0.00 | +0.00 → +0.00 | +0.00 → −0.25 | +0.00 → +0.00 |
+| 2026-T1 | 80/80 → 80/80 | n/d | −0.09 → **−0.42** | n/d | +0.00 → **+0.05** |
+| 2026-T4 | 72/72 → 72/72 | +0.00 → **+0.10** | +0.00 → **−0.32** | −0.21 → **+0.09** | +0.00 → **+0.08** |
+
+- **Mejora clara en tres de los cuatro trimestres**: con el contexto escrito en la línea, el modelo sube vísperas,
+  regresos y días junto a un evento y baja los puentes; 2025-T3 ya no sale desplazado y en 2026-T4 los festivos en
+  domingo conservan su valor (en 2025-T4 aún baja uno). Ninguna respuesta falla el gate del día de la semana.
+- **Sigue sin ser fiable**: en 2025-T4 los motivos dicen «víspera de tramo festivo» pero el índice se queda en el valor
+  base, y vuelve a ignorar la Navidad; en 2026-T4 se salta la víspera del 24 de diciembre y deja el 25 (festivo) en 1.25; y
+  un festivo que además es regreso (6 de enero) sale como día laborable. Es decir, el modelo ve el contexto pero no
+  siempre hace la suma: lo robusto sería que el código calcule el valor base y los ajustes fijos y el LLM solo valore
+  los eventos.
+
+### Modo eventos: reglas en código y el LLM solo para los eventos
+
+Es el modo por defecto (`PRED_PROMPT=eventos_v1`; vale cualquier plantilla `eventos_vN`). En él la predicción cambia de reparto: el código calcula el
+índice de cada día con las reglas de `config/reglas_demanda.yml` (valor base por día de la semana, festivo entre semana y
+puente, más los ajustes de víspera, regreso y día junto a un evento, con las marcas de `tipos_de_dia`) y el LLM **solo
+valora los días con evento**: devuelve un factor por día (1.00 = el evento no mueve viajeros) que multiplica el valor de
+las reglas. El ajuste de «junto a un evento» solo se suma si algún evento vecino tiene un factor ≥ 1.05. Si el trimestre
+no tiene ningún día con evento, no se llama al LLM (la trazabilidad lo anota como `cache = sin llamada`; Gold sigue
+guardando el modelo configurado).
+
+- **Las reglas viven en el YAML**, no en el texto de la plantilla como en `demanda_vN`: se ajustan ahí y cada ejecución
+  las guarda en los `parametros` de su carga. En Airflow se leen de `REGLAS_DEMANDA` (el compose lo apunta al `config/`
+  montado).
+- **El motivo de cada día lo escriben las reglas**; en los días con evento va primero el del LLM («domingo con partido…
+  · domingo de fin de semana»), y el gate `dia_semana_del_motivo` solo revisa esos días, sin tolerancia.
+- **El resumen de coherencia y el gráfico de excesos no miden al LLM en este modo**: el exceso de vísperas, puentes y
+  regresos sale de las reglas (con los valores actuales y tras normalizar, vísperas ≈ +0.18, puentes entre −0.32 y
+  −0.46, regresos entre +0.18 y +0.31 según cómo se solapen las marcas). Lo único que aporta el LLM son los factores de
+  los eventos.
+
+Medido el 2026-10-03 con `mistral-nemo` sobre la misma muestra sintética: cada trimestre tarda 4–14 s (1–4 días con
+evento) en vez de 6–9 min con `demanda_v4`, y los factores siguen los criterios de la plantilla: 1.25 a los dos Real Madrid–FC Barcelona,
+1.15–1.20 a los conciertos grandes y 1.08 a cada día del congreso profesional de Barcelona, con el día de la semana
+correcto en todos los motivos.
 
 ### Caché de resultados del LLM
 
@@ -783,21 +876,32 @@ semilla, el contexto, la temperatura y el schema. Si algo cambia, la clave cambi
 
 ### Iterar el prompt
 
-Copia `demanda_v2.md` a `demanda_v3.md`, edítalo y lánzalo con `PRED_PROMPT=demanda_v3`. Los marcadores `{{...}}`
+Copia la plantilla a la versión siguiente (`eventos_v1.md` a `eventos_v2.md`, o `demanda_v4.md` a `demanda_v5.md`),
+edítala y lánzala con `PRED_PROMPT=eventos_v2` (o la que sea). Los marcadores `{{...}}`
 disponibles están en `raillytics.prediccion.prompt`. **No hay
 verdad externa con la que medir la forma diaria** (solo existen totales trimestrales), así que cada ejecución
 imprime un resumen de coherencia: índice medio de laborables, fines de semana, festivos y días con evento, y la
-dispersión. Úsalo para comparar versiones: un festivo con índice 1.0 o un fin de semana igual que un laborable
-indican que el prompt no está haciendo su trabajo. La suma diaria frente al total publicado mide solo el
-**nivel** (`--solo-nivel` lo da sin LLM), no el prompt.
+dispersión. Para los días que dependen de los de alrededor (vísperas, puentes, regresos y días junto a un evento,
+definidos en `raillytics.prediccion.calendario.tipos_de_dia`) da su **exceso** sobre un día corriente del mismo día de
+la semana. La media cruda no serviría: casi todas las vísperas caen en viernes y casi todos los regresos en domingo,
+así que saldría alta aunque el modelo ignorara la regla. Úsalo para comparar versiones: un festivo con índice 1.0, un
+fin de semana igual que un laborable o un exceso de vísperas o regresos cercano a +0.00 indican que el prompt no está
+haciendo su trabajo. La suma diaria frente al total publicado mide solo el **nivel** (`--solo-nivel` lo da sin LLM),
+no el prompt.
+
+Compara las versiones en **varios trimestres**, no en uno. Cada trimestre tiene pocos días de cada tipo (2026-T4, con
+los festivos nacionales: 4 vísperas, 4 regresos y un puente). Y la llamada usa temperatura 0: el modelo elige siempre
+el token más probable, así que cambiar `OLLAMA_SEED` no da otra muestra.
 
 ### Dashboard en Superset: «Predicción de demanda»
 
 Cada ejecución publica además su resultado como Parquet en Gold, en `raillytics-gold/fact_prediccion_demanda/<run_id>.parquet`
 (un fichero por ejecución: el histórico crece sin reescribir nada y se pueden comparar versiones del prompt o del modelo).
 Grano: día × ejecución. Columnas: `run_id`, `generado_en` (UTC), `trimestre`, `corredor`, `modelo`, `version_prompt`,
-`datos_sinteticos`, `total_esperado`, `fecha`, `dia_semana`, `festivo`, `eventos`, `viajeros_previstos`, `indice` y
-`motivo`. Se publica **antes** que el CSV: si falla Gold, no se escribe el CSV (la carga queda en error).
+`datos_sinteticos`, `total_esperado`, `fecha`, `dia_semana`, `festivo`, `eventos`, `viajeros_previstos`, `indice`,
+`motivo`, `vispera`, `puente`, `regreso`, `junto_a_evento` y `exceso` (sobre un día corriente del mismo día de la semana,
+el mismo que da el resumen de coherencia; las cinco últimas, solo en las ejecuciones publicadas desde que existen). Se
+publica **antes** que el CSV: si falla Gold, no se escribe el CSV (la carga queda en error).
 
 El dashboard está como código en `dashboards/superset/raillytics_gold/` y se importa con `make up` o
 `make 06_superset-import`: <http://localhost:8088/superset/dashboard/prediccion-demanda/>. Tiene:
@@ -806,7 +910,10 @@ El dashboard está como código en `dashboards/superset/raillytics_gold/` y se i
   evento e índice máximo.
 - **Curva diaria** con una línea por ejecución, para comparar versiones del prompt o del modelo.
 - **Coherencia del reparto:** índice medio por día de la semana y por tipo de día (laborable, fin de semana, festivo,
-  evento): es el mismo resumen que imprime cada ejecución, pero comparable entre ejecuciones.
+  evento), y el **exceso sobre un día corriente** de vísperas, puentes, regresos y días junto a un evento, por
+  ejecución: el mismo resumen que imprime cada ejecución, pero comparable entre ejecuciones (en las `eventos_vN` esos
+  excesos los fijan las reglas, no el LLM). Las publicadas antes de
+  que existiera el exceso salen vacías en ese gráfico.
 - **Calendario** de la última ejecución con el motivo de cada día, y la **tabla de ejecuciones**.
 - **Filtros:** trimestre, ejecución y datos (sintéticos o reales; las predicciones hechas con la muestra quedan marcadas).
 
@@ -844,6 +951,7 @@ lo detecta y falla pidiendo subirlo). Cambiar de modelo es `OLLAMA_MODEL` en el 
 | `se cortó por falta de contexto` | Sube `OLLAMA_NUM_CTX` |
 | `Ollama no respondió en N s` | Sube `OLLAMA_TIMEOUT_S` o usa un modelo más rápido |
 | `quality gate(s) bloqueante(s)` | No se escribió nada; el detalle de cada gate está en `make calidad` |
+| `dia_semana_del_motivo` | La respuesta del LLM va desplazada. Relanzar con el mismo prompt y modelo da lo mismo (temperatura 0 y caché): cambia de versión del prompt o de modelo |
 
 La prueba extremo a extremo con un Ollama real lleva el marcador `llm` y no entra en `make test`:
 `.venv/bin/python -m pytest -m llm -v -s`.

@@ -1,6 +1,6 @@
 """CLI de la predicción diaria de demanda del corredor AVE Madrid–Barcelona.
 
-Uso:  python -m raillytics.prediccion --trimestre 2026-T4 [--prompt demanda_v2]
+Uso:  python -m raillytics.prediccion --trimestre 2026-T4 [--prompt eventos_v1]
                                        [--total-esperado N] [--solo-nivel] [--mostrar-prompt]
       (o:  make 07_prediccion TRIMESTRE=2026-T4)
 """

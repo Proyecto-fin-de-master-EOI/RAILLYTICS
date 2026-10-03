@@ -11,7 +11,7 @@ import yaml
 from raillytics.prediccion.calendario import construir_calendario
 from raillytics.prediccion.normalizar import IndiceDia, normalizar_indices, repartir
 from raillytics.prediccion.publicacion import COLUMNAS_GOLD, GOLD_TABLA, construir_gold, publicar_gold
-from raillytics.prediccion.salida import construir_dataframe
+from raillytics.prediccion.salida import construir_dataframe, resumen_coherencia
 from raillytics.prediccion.trimestre import Trimestre
 from raillytics.utils.lake import LakeLayout, connect
 
@@ -70,26 +70,35 @@ def test_los_filtros_nativos_apuntan_a_columnas_del_dataset():
                 assert destino["datasetUuid"] == DATASET["uuid"] and destino["column"]["name"] in columnas
 
 
+def _calendario():
+    return construir_calendario(
+        T4,
+        # Inmaculada en martes: el lunes 7 es puente y hay víspera, puente y regreso que medir.
+        pd.DataFrame([(date(2026, 12, 8), "Inmaculada Concepción"), (date(2026, 12, 25), "Navidad")], columns=["fecha", "nombre"]),
+        pd.DataFrame([(date(2026, 11, 29), "Partido de liga", "MAD")], columns=["fecha", "descripcion", "ciudad"]),
+        pd.DataFrame([], columns=["fecha", "ciudad", "temperatura_media", "precipitacion_mm"]),
+    )
+
+
+def _publicar(layout, run_id, version, sinteticos, n):
+    valores = [1.0 + 0.1 * ((i + n) % 3) for i in range(92)]
+    indices = [IndiceDia(d, v, f"motivo {d.day}") for d, v in zip(T4.dias(), valores)]
+    df = construir_dataframe(
+        T4.dias(), indices, repartir(valores, 1_320_000), normalizar_indices(valores),
+        trimestre=T4, modelo="mistral-nemo", version_prompt=version, run_id=run_id, generado_en=datetime(2026, 10, 1, 16, 51 + n),
+    )
+    gold = construir_gold(df, _calendario(), total_esperado=1_320_000, datos_sinteticos=sinteticos)
+    publicar_gold(connect(), layout, gold)
+    return gold
+
+
 @pytest.fixture(scope="module")
 def vista(tmp_path_factory):
     """El dataset de Superset evaluado en DuckDB sobre el Parquet que escribe publicar_gold (dos ejecuciones)."""
     tmp = tmp_path_factory.mktemp("lake")
     layout = LakeLayout(silver_root=(tmp / "silver").as_posix(), gold_root=(tmp / "gold").as_posix())
-    con = connect()
-    calendario = construir_calendario(
-        T4,
-        pd.DataFrame([(date(2026, 12, 25), "Navidad")], columns=["fecha", "nombre"]),
-        pd.DataFrame([(date(2026, 11, 29), "Partido de liga", "MAD")], columns=["fecha", "descripcion", "ciudad"]),
-        pd.DataFrame([], columns=["fecha", "ciudad", "temperatura_media", "precipitacion_mm"]),
-    )
     for n, (run_id, version, sinteticos) in enumerate([("run-1", "demanda_v1", True), ("run-2", "demanda_v2", False)]):
-        valores = [1.0 + 0.1 * ((i + n) % 3) for i in range(92)]
-        indices = [IndiceDia(d, v, f"motivo {d.day}") for d, v in zip(T4.dias(), valores)]
-        df = construir_dataframe(
-            T4.dias(), indices, repartir(valores, 1_320_000), normalizar_indices(valores),
-            trimestre=T4, modelo="mistral-nemo", version_prompt=version, run_id=run_id, generado_en=datetime(2026, 10, 1, 16, 51 + n),
-        )
-        publicar_gold(con, layout, construir_gold(df, calendario, total_esperado=1_320_000, datos_sinteticos=sinteticos))
+        _publicar(layout, run_id, version, sinteticos, n)
     sql = DATASET["sql"].replace("s3://raillytics-gold", layout.gold_root)
     return duckdb.connect(), sql
 
@@ -124,11 +133,42 @@ def test_las_metricas_y_columnas_clave_dan_los_valores_esperados(vista):
 
     assert consulta(metricas["n_ejecuciones"]) == 2
     assert consulta(metricas["viajeros_previstos"]) == 2 * 1_320_000
-    assert consulta(metricas["dias_festivo_o_evento"]) == 4  # 2 ejecuciones × (Navidad + el partido)
+    assert consulta(metricas["dias_festivo_o_evento"]) == 6  # 2 ejecuciones × (Inmaculada + Navidad + el partido)
     tipos = dict(con.execute(f"SELECT tipo_dia, count(*) FROM ({sql}) t WHERE run_id = 'run-1' GROUP BY 1").fetchall())
-    assert tipos["Festivo"] == 1 and tipos["Evento"] == 1 and tipos["Fin de semana"] > 20 and tipos["Laborable"] > 40
+    assert tipos["Festivo"] == 2 and tipos["Evento"] == 1 and tipos["Fin de semana"] > 20 and tipos["Laborable"] > 40
     assert {r[0] for r in con.execute(f"SELECT DISTINCT datos FROM ({sql}) t").fetchall()} == {"Sintéticos", "Reales"}
     # solo una ejecución por trimestre es «la última», y es la más reciente
     assert con.execute(f"SELECT DISTINCT run_id FROM ({sql}) t WHERE es_ultima").fetchall() == [("run-2",)]
     # el orden de los días de la semana de las etiquetas es lun..dom
     assert [r[0] for r in con.execute(f"SELECT DISTINCT dia_semana_etiqueta FROM ({sql}) t ORDER BY 1").fetchall()][:2] == ["1 · lun", "2 · mar"]
+
+
+@pytest.mark.parametrize("run_id", ["run-1", "run-2"])
+def test_los_excesos_del_dashboard_son_los_del_resumen_que_imprime_cada_ejecucion(vista, run_id):
+    con, sql = vista
+    filas = con.execute(f"SELECT strftime(fecha, '%Y-%m-%d') AS fecha, indice FROM ({sql}) t WHERE run_id = '{run_id}'").df()
+    esperado = resumen_coherencia(filas, _calendario())
+
+    for metrica in DATASET["metrics"]:
+        if metrica["metric_name"].startswith("exceso_"):
+            valor = con.execute(f"SELECT {metrica['expression']} FROM ({sql}) t WHERE run_id = '{run_id}'").fetchone()[0]
+            assert valor == pytest.approx(esperado[metrica["metric_name"]]), metrica["metric_name"]
+
+
+def test_la_sql_del_dataset_admite_ejecuciones_publicadas_antes_de_las_columnas_de_contexto(tmp_path):
+    layout = LakeLayout(silver_root=(tmp_path / "silver").as_posix(), gold_root=(tmp_path / "gold").as_posix())
+    gold = _publicar(layout, "run-nuevo", "demanda_v3", True, 0)
+    nuevas = ["vispera", "puente", "regreso", "junto_a_evento", "exceso"]
+    antigua = (tmp_path / "gold" / GOLD_TABLA / "run-antiguo.parquet").as_posix()
+    (tmp_path / "gold" / GOLD_TABLA / "run-nuevo.parquet").unlink()
+    con = duckdb.connect()
+    sql = DATASET["sql"].replace("s3://raillytics-gold", layout.gold_root)
+    con.register("antigua", gold.drop(columns=nuevas).assign(run_id="run-antiguo"))
+    con.execute(f"COPY (SELECT * REPLACE (CAST(fecha AS DATE) AS fecha) FROM antigua) TO '{antigua}' (FORMAT PARQUET)")
+
+    solo_antiguas = con.execute(f"SELECT count(*), count(exceso), count(vispera) FROM ({sql}) t").fetchone()
+    _publicar(layout, "run-nuevo", "demanda_v3", True, 0)
+    por_ejecucion = dict(con.execute(f"SELECT run_id, count(exceso) FROM ({sql}) t GROUP BY 1").fetchall())
+
+    assert solo_antiguas == (92, 0, 0)  # sin ninguna ejecución nueva la consulta funciona: columnas vacías
+    assert por_ejecucion["run-antiguo"] == 0 and por_ejecucion["run-nuevo"] > 0

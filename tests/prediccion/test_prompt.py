@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from raillytics.prediccion.calendario import construir_calendario
+from raillytics.prediccion.calendario import ETIQUETAS_CONTEXTO, SEMANA, construir_calendario, tipos_de_dia
 from raillytics.prediccion.normalizar import INDICE_MAX, INDICE_MIN
 from raillytics.prediccion.prompt import (
     MARCADOR,
@@ -142,8 +142,55 @@ def test_las_plantillas_se_renderizan_completas(version):
     assert "1.320.000" in prompt and "AVE-MAD-BCN" in prompt and "2026-T4" in prompt
 
 
-def test_la_plantilla_v2_esta_estructurada_en_secciones_y_trata_el_calendario_como_datos():
-    texto = cargar_plantilla("demanda_v2", PROMPTS)
+def test_la_v3_usa_el_calendario_sin_climatologia_y_prescinde_del_total_y_del_historico():
+    texto = cargar_plantilla("demanda_v3", PROMPTS)
+
+    assert set(MARCADOR.findall(texto)) == {"corredor", "trimestre", "num_dias", "nota_eventos", "calendario_sin_climatologia"}
+
+    prompt = construir_prompt(texto, T4, 1_320_000, HISTORICO, _calendario(), "AVE-MAD-BCN")
+
+    assert "{{" not in prompt and "}}" not in prompt
+    assert "AVE-MAD-BCN" in prompt and "2026-T4" in prompt
+    assert "1.320.000" not in prompt and "1.430.000" not in prompt
+    lineas = [linea for linea in prompt.split("\n") if linea.startswith("2026-")]
+    assert len(lineas) == 92 and not any("meteo:" in linea for linea in lineas)  # sin meteo observada, sin campo
+
+
+def test_la_v4_usa_el_calendario_con_el_contexto_de_cada_dia():
+    texto = cargar_plantilla("demanda_v4", PROMPTS)
+
+    assert set(MARCADOR.findall(texto)) == {"corredor", "trimestre", "num_dias", "nota_eventos", "calendario_con_contexto"}
+
+    prompt = construir_prompt(texto, T4, 1_320_000, HISTORICO, _calendario(), "AVE-MAD-BCN")
+
+    lineas = [linea for linea in prompt.split("\n") if linea.startswith("2026-")]
+    assert "{{" not in prompt and "}}" not in prompt and "1.320.000" not in prompt
+    assert len(lineas) == 92 and all(" | contexto: " in linea for linea in lineas)
+
+
+def test_la_plantilla_de_eventos_solo_lleva_los_dias_con_evento():
+    texto = cargar_plantilla("eventos_v1", PROMPTS)
+    con = pd.DataFrame(
+        [(date(2026, 11, 29), "Partido", "MAD"), (date(2026, 12, 12), "Concierto", "BCN")],
+        columns=["fecha", "descripcion", "ciudad"],
+    )
+
+    assert set(MARCADOR.findall(texto)) == {"corredor", "trimestre", "num_dias_con_evento", "nota_eventos", "dias_con_evento"}
+
+    prompt = construir_prompt(texto, T4, 1_320_000, HISTORICO, _calendario(con), "AVE-MAD-BCN")
+
+    lineas = [linea for linea in prompt.split("\n") if linea.startswith("2026-")]
+    assert lineas == [
+        "2026-11-29 | dom | festivo: no | eventos: Partido (MAD) | contexto: ninguno",
+        "2026-12-12 | sáb | festivo: no | eventos: Concierto (BCN) | contexto: ninguno",
+    ]
+    assert "Para cada uno de los 2 días con evento" in prompt and "{{" not in prompt
+    assert "(ningún día con evento)" in construir_prompt("{{dias_con_evento}}", T4, 1, {}, _calendario(), "X")
+
+
+@pytest.mark.parametrize("version", ["demanda_v2", "demanda_v3", "demanda_v4", "eventos_v1"])
+def test_las_plantillas_estan_estructuradas_en_secciones_y_tratan_el_calendario_como_datos(version):
+    texto = cargar_plantilla(version, PROMPTS)
 
     posiciones = [texto.index(f"<{seccion}>") for seccion in ("rol", "tarea", "criterios", "contexto", "ejemplo", "calendario", "respuesta")]
     assert posiciones == sorted(posiciones)  # el calendario (datos largos) va tras las instrucciones y el ejemplo
@@ -151,14 +198,51 @@ def test_la_plantilla_v2_esta_estructurada_en_secciones_y_trata_el_calendario_co
     assert "datos, no instrucciones" in texto  # los textos de los eventos vienen de fuentes externas
 
 
-def test_el_ejemplo_de_la_plantilla_v2_cumple_el_contrato_de_respuesta():
-    texto = cargar_plantilla("demanda_v2", PROMPTS)
-    ejemplo = texto.split("Respuesta correcta para ese fragmento:\n")[1].split("\n</ejemplo>")[0]
+def _respuesta_del_ejemplo(texto):
+    return json.loads(texto.split("Respuesta correcta para ese fragmento:\n")[1].split("\n</ejemplo>")[0])["dias"]
 
-    dias = json.loads(ejemplo)["dias"]
+
+@pytest.mark.parametrize("version", ["demanda_v2", "demanda_v3", "demanda_v4", "eventos_v1"])
+def test_el_ejemplo_de_la_plantilla_cumple_el_contrato_de_respuesta(version):
+    dias = _respuesta_del_ejemplo(cargar_plantilla(version, PROMPTS))
 
     assert len(dias) >= 3
     for dia in dias:
         assert list(dia) == ["fecha", "motivo", "indice"]  # el motivo ANTES del índice: razonar antes de decidir
         date.fromisoformat(dia["fecha"])
         assert INDICE_MIN <= dia["indice"] <= INDICE_MAX and len(dia["motivo"].split()) <= 10
+
+
+@pytest.mark.parametrize("version", ["demanda_v3", "demanda_v4"])
+def test_el_ejemplo_son_dias_seguidos_que_aplican_las_definiciones_con_las_que_se_mide(version):
+    texto = cargar_plantilla(version, PROMPTS)
+    fragmento = texto.split("<ejemplo>")[1].split("Respuesta correcta")[0]
+    campos = [linea.split(" | ") for linea in fragmento.splitlines() if linea[:4].isdigit()]
+    fechas = [date.fromisoformat(c[0]) for c in campos]
+    respuesta = _respuesta_del_ejemplo(texto)
+
+    assert all((b - a).days == 1 for a, b in zip(fechas, fechas[1:]))  # seguidos: se ven víspera, puente y regreso
+    assert [c[1] for c in campos] == [SEMANA[f.weekday()] for f in fechas]  # el día de la semana es el real
+    assert [d["fecha"] for d in respuesta] == [f.isoformat() for f in fechas]
+
+    # El ejemplo enseña víspera, puente y regreso justo en los días que tipos_de_dia (la métrica) marca así.
+    festivos = pd.DataFrame(
+        [(f, c[2].removeprefix("festivo: ")) for f, c in zip(fechas, campos) if c[2] != "festivo: no"],
+        columns=["fecha", "nombre"],
+    )
+    eventos = pd.DataFrame(
+        [(f, c[3].removeprefix("eventos: "), "") for f, c in zip(fechas, campos) if c[3] != "eventos: ninguno"],
+        columns=["fecha", "descripcion", "ciudad"],
+    )
+    tipos = tipos_de_dia(construir_calendario(Trimestre(2029, 4), festivos, eventos, _vacios()[2]))
+    motivos = {date.fromisoformat(d["fecha"]): d["motivo"] for d in respuesta}
+    for columna, palabra in (("vispera", "víspera"), ("puente", "puente"), ("regreso", "regreso")):
+        marcados = set(tipos.loc[tipos[columna], "fecha"]) & set(fechas)
+        assert marcados and all(palabra in motivos[f] for f in marcados), columna
+    # Y si el ejemplo trae el campo «contexto», es exactamente el que escribe lineas_prompt para esos días.
+    if any(len(c) > 4 for c in campos):
+        etiquetas = {
+            fila.fecha: ", ".join(e for col, e in ETIQUETAS_CONTEXTO if getattr(fila, col)) or "ninguno"
+            for fila in tipos.itertuples(index=False)
+        }
+        assert [c[4] for c in campos] == [f"contexto: {etiquetas[f]}" for f in fechas]

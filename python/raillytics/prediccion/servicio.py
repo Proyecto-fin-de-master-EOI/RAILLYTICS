@@ -26,6 +26,8 @@ from raillytics.prediccion.normalizar import IndiceDia, normalizar_indices, repa
 from raillytics.prediccion.ollama import OllamaClient, OllamaSettings
 from raillytics.prediccion.prompt import cargar_plantilla, construir_prompt
 from raillytics.prediccion.publicacion import GOLD_TABLA, construir_gold, publicar_gold
+from raillytics.prediccion.reglas import RUTA_POR_DEFECTO as RUTA_REGLAS
+from raillytics.prediccion.reglas import cargar_reglas, combinar, es_modo_eventos, indices_base
 from raillytics.prediccion.salida import (
     CORREDOR,
     RAIZ_POR_DEFECTO,
@@ -42,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 PROCESO = "prediccion_demanda"
 CAPA = "ml"
-VERSION_PROMPT_POR_DEFECTO = "demanda_v2"
+VERSION_PROMPT_POR_DEFECTO = "eventos_v1"
 
 
 class ClienteLLM(Protocol):
@@ -117,6 +119,32 @@ def _prompt(
     return construir_prompt(plantilla, trimestre, total, publicados, calendario, CORREDOR), calendario
 
 
+def _estado_cache(cliente: ClienteLLM) -> str:
+    return {True: "acierto", False: "fallo", None: "desactivada"}[getattr(cliente, "resultado_en_cache", None)]
+
+
+def _indices_modo_eventos(
+    cliente: ClienteLLM, prompt: str, calendario: Calendario, env: Mapping[str, str], parametros: dict
+) -> tuple[list[IndiceDia], list[str]]:
+    """Modo eventos (plantillas eventos_vN): reglas fijas para todos los días y el LLM solo para los días con evento.
+
+    Si el trimestre no tiene ningún día con evento no se llama al LLM. Devuelve los índices y las fechas cuyo motivo
+    escribió el LLM, que son las que revisa el gate del día de la semana.
+    """
+    reglas = cargar_reglas(Path(env.get("REGLAS_DEMANDA") or RUTA_REGLAS))
+    parametros["reglas"] = reglas.como_dict()
+    con_evento = [d for d, eventos in zip(calendario.dias["fecha"], calendario.dias["eventos"]) if eventos]
+    factores: list[IndiceDia] = []
+    if con_evento:
+        cliente.comprobar()
+        factores = cliente.generar_indices(prompt, con_evento)
+        parametros["cache"] = _estado_cache(cliente)
+    else:
+        parametros["cache"] = "sin llamada"
+    indices = combinar(indices_base(calendario, reglas), factores, calendario, reglas)
+    return indices, [d.isoformat() for d in con_evento]
+
+
 def ejecutar(
     trimestre: Trimestre,
     *,
@@ -157,17 +185,21 @@ def ejecutar(
         with ejecucion.tabla(TABLA, origen=f"{s.modelo} · {version_prompt}") as carga:
             entradas, publicados, nivel, total, sinteticas = _preparar(trimestre, total_manual, env, layout, con, imprimir)
             prompt, calendario = _prompt(trimestre, version_prompt, total, publicados, entradas, env)
-            cliente.comprobar()
             dias = trimestre.dias()
-            indices = cliente.generar_indices(prompt, dias)
-            parametros["cache"] = {True: "acierto", False: "fallo", None: "desactivada"}[getattr(cliente, "resultado_en_cache", None)]
+            fechas_llm = None
+            if es_modo_eventos(version_prompt):
+                indices, fechas_llm = _indices_modo_eventos(cliente, prompt, calendario, env, parametros)
+            else:
+                cliente.comprobar()
+                indices = cliente.generar_indices(prompt, dias)
+                parametros["cache"] = _estado_cache(cliente)
             valores = [i.indice for i in indices]
             df = construir_dataframe(
                 dias, indices, repartir(valores, total), normalizar_indices(valores),
                 trimestre=trimestre, modelo=s.modelo, version_prompt=version_prompt,
                 run_id=ejecucion.run_id, generado_en=ahora,
             )
-            resultados = evaluar_gates(df, dias, total, calendario.eventos_con_datos, valores)
+            resultados = evaluar_gates(df, dias, total, calendario.eventos_con_datos, valores, fechas_llm=fechas_llm)
             registrar_calidad(resultados, PROCESO, CAPA, ejecucion.run_id, layout, con)
             for r in resultados:
                 if not r.pasa and not r.bloquea:

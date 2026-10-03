@@ -18,6 +18,7 @@ position:
     - ROW-pred-1
     - ROW-pred-2
     - ROW-pred-3
+    - ROW-pred-6
     - ROW-pred-4
     - ROW-pred-5
     parents:
@@ -159,6 +160,30 @@ position:
       chartId: 207
       uuid: 58ac4772-8dff-5963-bc35-179b805c08da
       sliceName: Índice medio por tipo de día
+  ROW-pred-6:
+    type: ROW
+    id: ROW-pred-6
+    children:
+    - CHART-pred_exceso_contexto
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-pred_exceso_contexto:
+    type: CHART
+    id: CHART-pred_exceso_contexto
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-pred-6
+    meta:
+      width: 12
+      height: 60
+      chartId: 215
+      uuid: a2c7a208-430e-5e11-8fe6-afa05fdb69be
+      sliceName: Exceso sobre un día corriente por ejecución
   ROW-pred-4:
     type: ROW
     id: ROW-pred-4

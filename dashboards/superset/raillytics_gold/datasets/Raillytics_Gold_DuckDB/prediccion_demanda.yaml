@@ -11,14 +11,23 @@ sql: |-
   -- Predicción diaria de demanda del corredor AVE Madrid–Barcelona (raillytics.prediccion): una fila por día y ejecución.
   -- La publica cada ejecución de `make 07_prediccion` en s3://raillytics-gold/fact_prediccion_demanda/<run_id>.parquet.
   -- generado_en se guarda en UTC; aquí se muestra en hora de Madrid. es_ultima marca la ejecución más reciente de cada trimestre.
+  -- vispera, puente, regreso, junto_a_evento y exceso solo existen en las ejecuciones publicadas desde que se añadieron: la
+  -- SELECT vacía del UNION ALL BY NAME declara esas columnas para que la consulta funcione aunque todos los Parquet sean anteriores.
   WITH base AS (
       SELECT
           run_id,
           timezone('Europe/Madrid', timezone('UTC', generado_en)) AS generado_en,
           trimestre, corredor, modelo, version_prompt,
           datos_sinteticos, total_esperado, fecha, dia_semana, festivo, eventos,
-          viajeros_previstos, indice, motivo
-      FROM read_parquet('s3://raillytics-gold/fact_prediccion_demanda/*.parquet', union_by_name = true)
+          viajeros_previstos, indice, motivo,
+          vispera, puente, regreso, junto_a_evento, exceso
+      FROM (
+          SELECT * FROM read_parquet('s3://raillytics-gold/fact_prediccion_demanda/*.parquet', union_by_name = true)
+          UNION ALL BY NAME
+          SELECT NULL::BOOLEAN AS vispera, NULL::BOOLEAN AS puente, NULL::BOOLEAN AS regreso,
+                 NULL::BOOLEAN AS junto_a_evento, NULL::DOUBLE AS exceso
+          WHERE false
+      )
   )
   SELECT
       run_id,
@@ -42,7 +51,12 @@ sql: |-
            ELSE 'Laborable' END AS tipo_dia,
       viajeros_previstos,
       indice,
-      motivo
+      motivo,
+      vispera,
+      puente,
+      regreso,
+      junto_a_evento,
+      exceso
   FROM base
 params: null
 template_params: null
@@ -99,6 +113,38 @@ metrics:
   expression: SUM(CASE WHEN tipo_dia IN ('Festivo', 'Evento') THEN 1 ELSE 0 END)
   description: null
   d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: exceso_visperas
+  verbose_name: Vísperas
+  metric_type: null
+  expression: AVG(CASE WHEN vispera THEN exceso END)
+  description: Exceso medio de las vísperas sobre un día corriente del mismo día de la semana (0 = la regla no se aplica).
+  d3format: +.2f
+  extra: null
+  warning_text: null
+- metric_name: exceso_puentes
+  verbose_name: Puentes
+  metric_type: null
+  expression: AVG(CASE WHEN puente THEN exceso END)
+  description: Exceso medio de los puentes sobre un día corriente del mismo día de la semana (negativo si cuentan como festivo).
+  d3format: +.2f
+  extra: null
+  warning_text: null
+- metric_name: exceso_regresos
+  verbose_name: Regresos
+  metric_type: null
+  expression: AVG(CASE WHEN regreso THEN exceso END)
+  description: Exceso medio de los regresos sobre un día corriente del mismo día de la semana (sin los festivos entre semana).
+  d3format: +.2f
+  extra: null
+  warning_text: null
+- metric_name: exceso_junto_a_evento
+  verbose_name: Junto a un evento
+  metric_type: null
+  expression: AVG(CASE WHEN junto_a_evento THEN exceso END)
+  description: Exceso medio de los días anterior y siguiente a un evento sobre un día corriente del mismo día de la semana.
+  d3format: +.2f
   extra: null
   warning_text: null
 columns:
@@ -328,6 +374,66 @@ columns:
   filterable: true
   expression: null
   description: null
+  python_date_format: null
+  extra: null
+- column_name: vispera
+  verbose_name: Víspera
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Último día laborable antes de un tramo festivo (vacío en ejecuciones anteriores a esta columna).
+  python_date_format: null
+  extra: null
+- column_name: puente
+  verbose_name: Puente
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Día laborable entre dos días libres.
+  python_date_format: null
+  extra: null
+- column_name: regreso
+  verbose_name: Regreso
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Último día de un tramo festivo de dos o más días.
+  python_date_format: null
+  extra: null
+- column_name: junto_a_evento
+  verbose_name: Junto a un evento
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Día sin evento propio con evento el día anterior o el siguiente.
+  python_date_format: null
+  extra: null
+- column_name: exceso
+  verbose_name: Exceso sobre un día corriente
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: false
+  filterable: true
+  expression: null
+  description: Índice menos el medio de los días corrientes con el mismo día de la semana en esa ejecución (vacío en festivos entre semana).
   python_date_format: null
   extra: null
 version: 1.0.0

@@ -56,6 +56,8 @@ def construir_prompt(
     previos = sorted(t for t in historico if t < trimestre)[-MAX_HISTORICO:]
     lineas_historico = "\n".join(f"- {t}: {miles(historico[t])} viajeros" for t in previos)
     lineas = lineas_prompt(calendario)
+    con_contexto = lineas_prompt(calendario, climatologia=False, contexto=True)
+    con_evento = [linea for linea, eventos in zip(con_contexto, calendario.dias["eventos"]) if eventos]
     return renderizar(
         plantilla,
         {
@@ -66,5 +68,12 @@ def construir_prompt(
             "historico": lineas_historico or "- (sin trimestres publicados)",
             "nota_eventos": NOTA_CON_EVENTOS if calendario.eventos_con_datos else NOTA_SIN_EVENTOS,
             "calendario": "\n".join(lineas),
+            # Sin la meteo de climatología (igual para todo el mes): solo la observada, si la hay.
+            "calendario_sin_climatologia": "\n".join(lineas_prompt(calendario, climatologia=False)),
+            # Además, con el campo «contexto»: víspera, puente, regreso o junto a un evento, escrito en la línea de cada día.
+            "calendario_con_contexto": "\n".join(con_contexto),
+            # Modo eventos (plantillas eventos_vN): solo los días con evento, que son los únicos que valora el LLM.
+            "dias_con_evento": "\n".join(con_evento) or "(ningún día con evento)",
+            "num_dias_con_evento": str(len(con_evento)),
         },
     )

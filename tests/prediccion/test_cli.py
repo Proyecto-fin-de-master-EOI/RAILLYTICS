@@ -14,7 +14,7 @@ def test_los_valores_por_defecto():
     args = cli.parsear(["--trimestre", "2026-T4"])
 
     assert args.trimestre == Trimestre(2026, 4)
-    assert (args.prompt, args.total_esperado, args.solo_nivel, args.mostrar_prompt) == ("demanda_v2", None, False, False)
+    assert (args.prompt, args.total_esperado, args.solo_nivel, args.mostrar_prompt) == ("eventos_v1", None, False, False)
     assert args.sin_cache is False
 
 
@@ -58,7 +58,7 @@ def test_main_devuelve_cero_y_pasa_los_argumentos_al_servicio(monkeypatch, sin_i
     trimestre, kwargs = llamadas[0]
     assert codigo == 0 and trimestre == Trimestre(2026, 4)
     assert kwargs["solo_nivel"] is True and kwargs["total_manual"] == 7 and kwargs["cliente"] is None
-    assert kwargs["version_prompt"] == "demanda_v2"
+    assert kwargs["version_prompt"] == "eventos_v1"
 
 
 def test_main_crea_el_cliente_de_ollama_salvo_en_solo_nivel(monkeypatch, sin_infraestructura):

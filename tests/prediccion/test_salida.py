@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from raillytics.prediccion.calendario import construir_calendario
+from raillytics.prediccion.calendario import construir_calendario, tipos_de_dia
 from raillytics.prediccion.normalizar import IndiceDia, normalizar_indices, repartir
 from raillytics.prediccion.salida import (
     COLUMNAS_CSV,
@@ -129,13 +129,72 @@ def test_resumen_de_coherencia_separa_laborables_fines_de_semana_festivos_y_even
     assert resumen["minimo"] == 0.5 and resumen["maximo"] == 2.0 and resumen["desviacion"] > 0
 
 
+BASE_SEMANAL = {"lun": 1.10, "mar": 1.00, "mié": 1.00, "jue": 1.10, "vie": 1.30, "sáb": 0.85, "dom": 1.25}
+EXCESOS = ("exceso_visperas", "exceso_puentes", "exceso_regresos", "exceso_junto_a_evento")
+
+
+def _calendario_festivos_2026_t4():
+    festivos = [
+        (date(2026, 10, 12), "Fiesta Nacional de España"),  # lunes
+        (date(2026, 11, 1), "Todos los Santos"),  # domingo
+        (date(2026, 12, 6), "Día de la Constitución"),  # domingo
+        (date(2026, 12, 8), "Inmaculada Concepción"),  # martes: el lunes 7 es puente
+        (date(2026, 12, 25), "Navidad"),  # viernes
+    ]
+    return construir_calendario(
+        T4,
+        pd.DataFrame(festivos, columns=["fecha", "nombre"]),
+        pd.DataFrame([(date(2026, 11, 18), "Partido", "MAD")], columns=["fecha", "descripcion", "ciudad"]),  # miércoles
+        pd.DataFrame([], columns=["fecha", "ciudad", "temperatura_media", "precipitacion_mm"]),
+    )
+
+
+def _solo_dia_de_la_semana(cal):
+    """Lo que daría un LLM que ignora todo salvo el día de la semana (y baja los festivos entre semana)."""
+    return [
+        0.70 if f and d not in ("sáb", "dom") else BASE_SEMANAL[d] for d, f in zip(cal.dias["dia_semana"], cal.dias["festivo"])
+    ]
+
+
+def test_si_el_llm_ignora_visperas_puentes_regresos_y_eventos_su_exceso_es_cero():
+    # Tres de las cuatro vísperas son viernes: su media cruda saldría alta aunque nadie aplicara la regla.
+    cal = _calendario_festivos_2026_t4()
+    df = pd.DataFrame({"fecha": [d.isoformat() for d in DIAS], "indice": _solo_dia_de_la_semana(cal)})
+
+    resumen = resumen_coherencia(df, cal)
+
+    for clave in EXCESOS:
+        assert resumen[clave] == pytest.approx(0.0, abs=1e-9), clave
+
+
+def test_el_exceso_mide_los_ajustes_de_visperas_puentes_regresos_y_dias_junto_a_un_evento():
+    cal = _calendario_festivos_2026_t4()
+    tipos = tipos_de_dia(cal)
+    indices = []
+    for base, fila in zip(_solo_dia_de_la_semana(cal), tipos.itertuples(index=False)):
+        if fila.puente:
+            base = 0.70
+        indices.append(base + 0.20 * fila.vispera + 0.15 * fila.regreso + 0.05 * fila.junto_a_evento)
+    df = pd.DataFrame({"fecha": [d.isoformat() for d in DIAS], "indice": indices})
+
+    resumen = resumen_coherencia(df, cal)
+
+    assert resumen["exceso_visperas"] == pytest.approx(0.20)
+    assert resumen["exceso_puentes"] == pytest.approx(0.70 - 1.10)  # el lunes 7, frente a un lunes corriente
+    assert resumen["exceso_regresos"] == pytest.approx(0.15)  # solo los domingos: los festivos entre semana, aparte
+    assert resumen["exceso_junto_a_evento"] == pytest.approx(0.05)
+
+
 def test_formatear_resumen_muestra_nd_cuando_no_hay_dias_de_un_tipo():
     texto = formatear_resumen(
         {"laborables_sin_evento": 1.0, "fines_de_semana": 1.234, "festivos": None, "dias_con_evento": None,
+         "exceso_visperas": 0.156, "exceso_puentes": -0.4, "exceso_regresos": None, "exceso_junto_a_evento": 0.0,
          "desviacion": 0.2, "minimo": 0.5, "maximo": 1.9}
     )
 
     assert "festivos" in texto and "n/d" in texto and "1.23" in texto and "0.20" in texto
+    assert "vísperas               +0.16" in texto and "puentes                -0.40" in texto
+    assert "regresos               n/d" in texto and "junto a un evento      +0.00" in texto
 
 
 def test_sin_permiso_para_crear_el_directorio_el_mensaje_explica_airflow_uid(tmp_path, monkeypatch):

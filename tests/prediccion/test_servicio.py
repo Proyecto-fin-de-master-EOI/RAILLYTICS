@@ -105,7 +105,7 @@ def test_deja_constancia_de_la_carga_y_de_los_gates(entorno):
         "trimestre": "2026-T4", "modelo": "falso", "version_prompt": "demanda_v1", "seed": 1, "num_ctx": 1024,
         "total_manual": None, "cache": "desactivada",
     }
-    assert len(_calidad(entorno)) == 7 and all(r == "ok" for _, _, r in _calidad(entorno))
+    assert len(_calidad(entorno)) == 8 and all(r == "ok" for _, _, r in _calidad(entorno))
 
 
 def test_solo_nivel_no_llama_al_llm_ni_escribe_ni_registra(entorno):
@@ -268,11 +268,11 @@ def test_predecir_desde_entorno_rechaza_un_trimestre_mal_escrito(desde_entorno):
     assert cliente.comprobaciones == 0
 
 
-def test_la_plantilla_por_defecto_es_la_v2_y_se_puede_cambiar_con_el_entorno(desde_entorno):
+def test_la_plantilla_por_defecto_es_la_de_eventos_y_se_puede_cambiar_con_el_entorno(desde_entorno):
     _, _, env = desde_entorno
 
-    assert servicio.VERSION_PROMPT_POR_DEFECTO == "demanda_v2"
-    with pytest.raises(PlantillaError, match="demanda_v2"):  # el lake de prueba solo tiene demanda_v1
+    assert servicio.VERSION_PROMPT_POR_DEFECTO == "eventos_v1"
+    with pytest.raises(PlantillaError, match="eventos_v1"):  # el lake de prueba solo tiene demanda_v1
         servicio.predecir_desde_entorno(None, date(2026, 10, 1), env, imprimir=lambda _: None)
     resultado = servicio.predecir_desde_entorno(
         None, date(2026, 10, 1), dict(env, PRED_PROMPT="demanda_v1"), imprimir=lambda _: None
@@ -358,3 +358,63 @@ def test_sin_PREDICCIONES_ROOT_el_csv_va_a_resultados_predicciones_que_esta_en_g
     resultado, _ = _lanzar(entorno, ClienteFalso())
 
     assert resultado.ruta.parts[:3] == ("resultados", "predicciones", "AVE-MAD-BCN") and (tmp_path / resultado.ruta).is_file()
+
+
+REGLAS_REPO = Path(__file__).resolve().parents[2] / "config" / "reglas_demanda.yml"
+
+
+class ClienteEventos(ClienteFalso):
+    """Valora con el mismo factor y motivo cada día con evento que se le pide (modo eventos)."""
+
+    def __init__(self, motivo="domingo con partido en Madrid", factor=1.2):
+        super().__init__()
+        self.dias_pedidos = []
+        self._motivo, self._factor = motivo, factor
+
+    def generar_indices(self, prompt, dias, reintentos=2):
+        self.prompts.append(prompt)
+        self.dias_pedidos.append(list(dias))
+        return [IndiceDia(d, self._factor, self._motivo) for d in dias]
+
+
+def _env_eventos(entorno):
+    plantilla = Path(entorno.env["PROMPTS_DIR"]) / "eventos_v1.md"
+    plantilla.write_text("{{num_dias_con_evento}} días\n{{dias_con_evento}}", encoding="utf-8")
+    return {**entorno.env, "REGLAS_DEMANDA": str(REGLAS_REPO)}
+
+
+def test_en_modo_eventos_el_llm_solo_valora_los_dias_con_evento(entorno):
+    cliente = ClienteEventos()
+
+    resultado, _ = _lanzar(entorno, cliente, version_prompt="eventos_v1", env=_env_eventos(entorno))
+
+    assert cliente.comprobaciones == 1 and cliente.dias_pedidos == [[date(2026, 11, 29)]]  # el partido del domingo
+    assert cliente.prompts[0].startswith("1 días\n2026-11-29 | dom | festivo: no | eventos: Partido de liga (MAD)")
+    df = resultado.dataframe.set_index("fecha")
+    assert df.loc["2026-11-29", "motivo"] == "domingo con partido en Madrid · domingo de fin de semana"
+    # El domingo del partido vale 1.25 × 1.2 y un domingo corriente 1.25: la relación se conserva al normalizar.
+    assert df.loc["2026-11-29", "indice"] / df.loc["2026-11-22", "indice"] == pytest.approx(1.2)
+    parametros = json.loads(_cargas(entorno)[0][-1])
+    assert parametros["version_prompt"] == "eventos_v1" and parametros["reglas"]["puente"] == 0.75
+
+
+def test_en_modo_eventos_sin_ningun_evento_en_el_trimestre_no_se_llama_al_llm(entorno):
+    destino = (entorno.silver / "eventos" / "eventos.parquet").as_posix()
+    duckdb.connect().execute(
+        f"COPY (SELECT DATE '2027-02-01' AS fecha, 'De otro trimestre' AS descripcion, 'MAD' AS ciudad) TO '{destino}' (FORMAT PARQUET)"
+    )
+    cliente = ClienteEventos()
+
+    resultado, _ = _lanzar(entorno, cliente, version_prompt="eventos_v1", env=_env_eventos(entorno))
+
+    assert cliente.comprobaciones == 0 and cliente.prompts == [] and resultado.ruta.is_file()
+    assert json.loads(_cargas(entorno)[0][-1])["cache"] == "sin llamada"
+
+
+def test_en_modo_eventos_un_motivo_del_llm_con_otro_dia_de_la_semana_bloquea(entorno):
+    cliente = ClienteEventos(motivo="sábado con partido en Madrid")  # el 29 de noviembre de 2026 es domingo
+
+    with pytest.raises(QualityGateError, match="dia_semana_del_motivo"):
+        _lanzar(entorno, cliente, version_prompt="eventos_v1", env=_env_eventos(entorno))
+
+    assert _csvs(entorno) == []

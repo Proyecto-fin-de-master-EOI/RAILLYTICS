@@ -32,11 +32,11 @@ def test_prediccion_sample_lanza_el_generador_de_fuentes_sinteticas():
 
 
 def test_la_plantilla_por_defecto_resiste_la_variable_PROMPT_de_cmd_exe():
-    assert "--prompt demanda_v2" in _receta(PROMPT="$P$G")
+    assert "--prompt eventos_v1" in _receta(PROMPT="$P$G")
 
 
 def test_la_plantilla_se_elige_con_PRED_PROMPT():
-    assert "--prompt demanda_v3" in _receta(PRED_PROMPT="demanda_v3")
+    assert "--prompt demanda_v2" in _receta(PRED_PROMPT="demanda_v2")
 
 
 def _conf_del_dag(*argumentos):
@@ -52,15 +52,15 @@ def test_00_ingest_levanta_ollama_antes_de_disparar_el_dag():
 
 
 def test_00_ingest_pide_la_prediccion_al_dag_con_el_trimestre_y_la_plantilla():
-    _, conf = _conf_del_dag("TRIMESTRE=2026-T4", "PRED_PROMPT=demanda_v3")
+    _, conf = _conf_del_dag("TRIMESTRE=2026-T4", "PRED_PROMPT=demanda_v2")
 
-    assert conf == {"predecir": True, "trimestre": "2026-T4", "prompt": "demanda_v3"}
+    assert conf == {"predecir": True, "trimestre": "2026-T4", "prompt": "demanda_v2"}
 
 
 def test_00_ingest_sin_trimestre_deja_que_el_dag_use_el_trimestre_en_curso():
     _, conf = _conf_del_dag()
 
-    assert conf == {"predecir": True, "trimestre": "", "prompt": "demanda_v2"}
+    assert conf == {"predecir": True, "trimestre": "", "prompt": "eventos_v1"}
 
 
 def test_el_dag_lee_las_mismas_claves_de_conf_que_envia_el_makefile():

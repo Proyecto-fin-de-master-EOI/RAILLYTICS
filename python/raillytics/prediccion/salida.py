@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from raillytics.prediccion.calendario import Calendario
+from raillytics.prediccion.calendario import Calendario, tipos_de_dia
 from raillytics.prediccion.normalizar import IndiceDia
 from raillytics.prediccion.trimestre import Trimestre
 from raillytics.utils.fs import atomic_write_bytes
@@ -75,10 +75,33 @@ def escribir_csv(
     return atomic_write_bytes(destino, contenido)
 
 
+def contexto_por_dia(df: pd.DataFrame, calendario: Calendario) -> pd.DataFrame:
+    """Por cada día de `df` (fecha ISO e índice): su calendario, las marcas de `tipos_de_dia` y su `exceso`.
+
+    El exceso es el índice menos el medio de los días corrientes (sin festivo, evento ni ninguna marca) con el mismo
+    día de la semana. Mide si el LLM aplica las reglas que dependen de los días de alrededor: la media cruda no vale,
+    porque casi todas las vísperas son viernes y casi todos los regresos domingos, así que saldría alta aunque el LLM
+    las ignorara. NaN en los festivos entre semana (tienen su propio valor base) y si no hay día corriente con el que
+    comparar. Lo usan el resumen de cada ejecución y la tabla Gold, para que consola y dashboard den lo mismo.
+    """
+    cal = tipos_de_dia(calendario)
+    cal = cal.assign(fecha=cal["fecha"].map(lambda d: d.isoformat()))
+    columnas = ["fecha", "dia_semana", "festivo", "eventos", "puente", "vispera", "regreso", "junto_a_evento"]
+    m = df[["fecha", "indice"]].merge(cal[columnas], on="fecha")
+    festivo = m["festivo"] != ""
+    corriente = ~festivo & (m["eventos"] == "") & ~(m["vispera"] | m["puente"] | m["regreso"] | m["junto_a_evento"])
+    exceso = m["indice"] - m["dia_semana"].map(m.loc[corriente].groupby("dia_semana")["indice"].mean())
+    festivo_entre_semana = festivo & ~m["dia_semana"].isin(["sáb", "dom"])
+    return m.assign(exceso=exceso.mask(festivo_entre_semana))
+
+
 def resumen_coherencia(df: pd.DataFrame, calendario: Calendario) -> dict[str, float | None]:
-    """Índice medio por tipo de día. No hay verdad externa: sirve para comparar versiones del prompt."""
-    cal = calendario.dias.assign(fecha=calendario.dias["fecha"].map(lambda d: d.isoformat()))
-    m = df[["fecha", "indice"]].merge(cal[["fecha", "dia_semana", "festivo", "eventos"]], on="fecha")
+    """Índice medio por tipo de día. No hay verdad externa: sirve para comparar versiones del prompt.
+
+    Para vísperas, puentes, regresos y días junto a un evento da su exceso medio sobre un día corriente del mismo día
+    de la semana (ver `contexto_por_dia`): 0.00 = la regla no se aplica.
+    """
+    m = contexto_por_dia(df, calendario)
     festivo = m["festivo"] != ""
     evento = m["eventos"] != ""
     fin_de_semana = m["dia_semana"].isin(["sáb", "dom"])
@@ -87,19 +110,27 @@ def resumen_coherencia(df: pd.DataFrame, calendario: Calendario) -> dict[str, fl
     def media(mascara: pd.Series) -> float | None:
         return float(m.loc[mascara, "indice"].mean()) if mascara.any() else None
 
+    def exceso_medio(mascara: pd.Series) -> float | None:
+        valores = m.loc[mascara, "exceso"].dropna()
+        return float(valores.mean()) if len(valores) else None
+
     return {
         "laborables_sin_evento": media(laborable),
         "fines_de_semana": media(fin_de_semana & ~festivo),
         "festivos": media(festivo),
         "dias_con_evento": media(evento),
+        "exceso_visperas": exceso_medio(m["vispera"]),
+        "exceso_puentes": exceso_medio(m["puente"]),
+        "exceso_regresos": exceso_medio(m["regreso"]),
+        "exceso_junto_a_evento": exceso_medio(m["junto_a_evento"]),
         "desviacion": float(m["indice"].std(ddof=0)),
         "minimo": float(m["indice"].min()),
         "maximo": float(m["indice"].max()),
     }
 
 
-def _fmt(valor: float | None) -> str:
-    return "n/d" if valor is None else f"{valor:.2f}"
+def _fmt(valor: float | None, signo: bool = False) -> str:
+    return "n/d" if valor is None else f"{valor:+.2f}" if signo else f"{valor:.2f}"
 
 
 def formatear_resumen(resumen: dict[str, float | None]) -> str:
@@ -110,6 +141,11 @@ def formatear_resumen(resumen: dict[str, float | None]) -> str:
             f"  fines de semana        {_fmt(resumen['fines_de_semana'])}",
             f"  festivos               {_fmt(resumen['festivos'])}",
             f"  días con evento        {_fmt(resumen['dias_con_evento'])}",
+            "  exceso sobre un día corriente del mismo día de la semana (+0.00 = la regla no se aplica):",
+            f"  vísperas               {_fmt(resumen['exceso_visperas'], signo=True)}",
+            f"  puentes                {_fmt(resumen['exceso_puentes'], signo=True)}",
+            f"  regresos               {_fmt(resumen['exceso_regresos'], signo=True)}",
+            f"  junto a un evento      {_fmt(resumen['exceso_junto_a_evento'], signo=True)}",
             f"  desviación típica {_fmt(resumen['desviacion'])} | mín {_fmt(resumen['minimo'])} | máx {_fmt(resumen['maximo'])}",
         ]
     )

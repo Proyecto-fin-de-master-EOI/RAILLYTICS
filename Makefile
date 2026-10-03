@@ -157,7 +157,7 @@ test-scala:
 # trimestre y un LLM de Ollama reparte ese total entre los días. Escribe un CSV en
 # PREDICCIONES_ROOT (resultados/predicciones por defecto, un directorio del repo que está en git). Necesita Ollama arriba: make llm-up.
 TRIMESTRE ?=
-PRED_PROMPT ?= demanda_v2
+PRED_PROMPT ?= eventos_v1
 PRED_ARGS ?=
 # Fuentes SINTETICAS (no reales) de la prediccion en Bronze L2, en las rutas que espera config/prediccion.yml, para
 # probar 07_prediccion y 00_ingest mientras Airflow no ingiera las reales. make prediccion-sample MUESTRA_ARGS="--hasta 2026-T3"

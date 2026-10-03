@@ -9,13 +9,15 @@ from raillytics.calidad.registro import (
     QualityGateError,
     exigir,
 )
-from raillytics.prediccion.gates import TABLA, evaluar_gates
+from raillytics.prediccion.gates import DIAS_SEMANA, TABLA, dia_semana_del_motivo, evaluar_gates
 from raillytics.prediccion.normalizar import normalizar_indices, repartir
 from raillytics.prediccion.trimestre import Trimestre
 
 DIAS = Trimestre(2026, 4).dias()
 TOTAL = 1_320_000
-BLOQUEANTES = ["un_registro_por_dia", "sin_nulos", "viajeros_no_negativos", "indice_en_rango", "suma_igual_total"]
+BLOQUEANTES = [
+    "un_registro_por_dia", "sin_nulos", "viajeros_no_negativos", "indice_en_rango", "suma_igual_total", "dia_semana_del_motivo",
+]
 
 
 def _crudos(indices=None):
@@ -29,6 +31,7 @@ def _df(total=TOTAL, indices=None):
             "fecha": [d.isoformat() for d in DIAS],
             "viajeros_previstos": repartir(indices, total),
             "indice": normalizar_indices(indices),
+            "motivo": [f"{DIAS_SEMANA[d.weekday()]} laborable" for d in DIAS],
         }
     )
 
@@ -43,7 +46,7 @@ def test_una_salida_correcta_pasa_todos_los_gates():
 
     assert [r.gate for r in resultados] == BLOQUEANTES + ["indice_no_plano", "eventos_con_datos"]
     assert all(r.resultado == RESULTADO_OK and r.tabla == TABLA for r in resultados)
-    assert [r.severidad for r in resultados] == [SEVERIDAD_BLOQUEANTE] * 5 + [SEVERIDAD_AVISO] * 2
+    assert [r.severidad for r in resultados] == [SEVERIDAD_BLOQUEANTE] * 6 + [SEVERIDAD_AVISO] * 2
     exigir(resultados)  # no lanza
 
 
@@ -101,6 +104,53 @@ def test_suma_distinta_del_total():
     resultado = _evaluar(df)["suma_igual_total"]
 
     assert resultado.bloquea and resultado.valor == TOTAL + 1 and resultado.umbral == str(TOTAL)
+
+
+@pytest.mark.parametrize(
+    ("motivo", "esperado"),
+    [
+        ("miércoles, víspera del puente", 2),
+        ("MIERCOLES festivo", 2),  # sin tilde y en mayúsculas
+        ("Sabado festivo: conserva el valor del sábado", 5),
+        ("domingo de regreso tras el lunes festivo", 6),  # cuenta el primero que nombra
+        ("festivo nacional", None),
+        ("lunesada", None),  # solo palabras completas
+    ],
+)
+def test_dia_semana_del_motivo(motivo, esperado):
+    assert dia_semana_del_motivo(motivo) == esperado
+
+
+def test_una_respuesta_desplazada_un_dia_bloquea():
+    # Como 2025-T3 con demanda_v3: fechas correctas, pero cada motivo (e índice) es el del día anterior.
+    df = _df()
+    df["motivo"] = [f"{DIAS_SEMANA[(d.weekday() - 1) % 7]} laborable" for d in DIAS]
+
+    resultado = _evaluar(df)["dia_semana_del_motivo"]
+
+    assert resultado.bloquea and resultado.valor == 92 and resultado.umbral == "<= 4"
+    assert "2026-10-01 dice miércoles" in resultado.detalle  # el 1 de octubre de 2026 es jueves
+
+
+def test_unos_pocos_dias_con_otro_dia_de_la_semana_no_bloquean_y_los_motivos_sin_dia_no_cuentan():
+    df = _df()
+    df.loc[:3, "motivo"] = "domingo de regreso"  # 1 a 4 de octubre: el 4 sí es domingo, así que 3 equivocados
+    df.loc[10:30, "motivo"] = "festivo nacional"  # no nombra ningún día: no cuenta
+    assert not _evaluar(df)["dia_semana_del_motivo"].bloquea
+
+    df.loc[4:8, "motivo"] = "domingo de regreso"  # 5 a 9 de octubre: de lunes a viernes, ya pasan del 5 %
+    resultado = _evaluar(df)["dia_semana_del_motivo"]
+    assert resultado.bloquea and resultado.valor == 8
+
+
+def test_con_fechas_llm_el_gate_solo_revisa_esos_motivos_y_con_pocos_dias_no_tolera_ninguno():
+    df = _df()
+    df.loc[57, "motivo"] = "sábado con concierto"  # 2026-11-27 es viernes
+
+    assert not _evaluar(df)["dia_semana_del_motivo"].bloquea  # 1 de 92: dentro del 5 %
+    resultados = evaluar_gates(df, DIAS, TOTAL, True, indices_crudos=_crudos(), fechas_llm=["2026-11-27", "2026-11-29"])
+    resultado = {r.gate: r for r in resultados}["dia_semana_del_motivo"]
+    assert resultado.bloquea and resultado.valor == 1 and resultado.umbral == "<= 0"
 
 
 def test_un_indice_plano_solo_avisa():

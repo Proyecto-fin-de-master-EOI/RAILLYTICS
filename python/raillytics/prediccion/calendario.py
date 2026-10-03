@@ -21,6 +21,13 @@ ORIGEN_OBSERVADO = "observado"
 ORIGEN_CLIMATOLOGIA = "climatologia"
 ORIGEN_SIN_DATOS = "sin_datos"
 SEPARADOR_EVENTOS = " ; "
+# Marcas de `tipos_de_dia` y cómo se escriben en el campo «contexto» del calendario del prompt.
+ETIQUETAS_CONTEXTO = (
+    ("vispera", "víspera de tramo festivo"),
+    ("puente", "puente"),
+    ("regreso", "regreso de tramo festivo"),
+    ("junto_a_evento", "junto a un evento"),
+)
 _ESPACIOS = re.compile(r"\s+")
 
 
@@ -100,6 +107,47 @@ def construir_calendario(
     return Calendario(pd.DataFrame(columnas), eventos_con_datos=bool(por_dia))
 
 
+def tipos_de_dia(calendario: Calendario) -> pd.DataFrame:
+    """Los días del calendario con las marcas que dependen de los días de alrededor (columnas booleanas).
+
+    - `puente`: laborable (lun–vie sin festivo) entre dos días libres (sábado, domingo o festivo).
+    - Tramo festivo: días libres seguidos, puentes incluidos, con algún festivo o puente; un fin de semana
+      normal no lo es.
+    - `vispera`: el laborable justo antes de un tramo festivo.
+    - `regreso`: el último día de un tramo festivo de dos o más días.
+    - `junto_a_evento`: día sin evento propio con evento el día anterior o el siguiente.
+
+    Solo se mira dentro del trimestre: si el vecino que hace falta cae fuera, el día no se marca.
+    """
+    dias = calendario.dias
+    n = len(dias)
+    festivo = [bool(f) for f in dias["festivo"]]
+    evento = [bool(e) for e in dias["eventos"]]
+    libre = [f or d in ("sáb", "dom") for f, d in zip(festivo, dias["dia_semana"])]
+    puente = [not libre[i] and 0 < i < n - 1 and libre[i - 1] and libre[i + 1] for i in range(n)]
+    libre = [l or p for l, p in zip(libre, puente)]
+    vispera = [False] * n
+    regreso = [False] * n
+    inicio = 0
+    while inicio < n:
+        if not libre[inicio]:
+            inicio += 1
+            continue
+        fin = inicio
+        while fin + 1 < n and libre[fin + 1]:
+            fin += 1
+        if any(festivo[inicio : fin + 1]) or any(puente[inicio : fin + 1]):
+            if inicio > 0:
+                vispera[inicio - 1] = True
+            if inicio < fin < n - 1:
+                regreso[fin] = True
+        inicio = fin + 1
+    junto_a_evento = [
+        not evento[i] and ((i > 0 and evento[i - 1]) or (i < n - 1 and evento[i + 1])) for i in range(n)
+    ]
+    return dias.assign(puente=puente, vispera=vispera, regreso=regreso, junto_a_evento=junto_a_evento)
+
+
 def _texto_meteo(ciudad: str, temp: float, prec: float, origen: str) -> str:
     if origen == ORIGEN_SIN_DATOS:
         return f"{ciudad} sin datos"
@@ -111,10 +159,16 @@ def _texto_meteo(ciudad: str, temp: float, prec: float, origen: str) -> str:
     return f"{ciudad} {' '.join(partes)} ({etiqueta})"
 
 
-def lineas_prompt(calendario: Calendario) -> list[str]:
-    """Una línea por día: fecha | día | festivo | eventos | meteo."""
+def lineas_prompt(calendario: Calendario, climatologia: bool = True, contexto: bool = False) -> list[str]:
+    """Una línea por día: fecha | día | festivo | eventos | [contexto |] meteo.
+
+    Con `climatologia=False` la meteo solo aparece con dato observado, y sin ninguno se omite el campo: la
+    climatología es la misma para todos los días del mes y no distingue un día de otro.
+    Con `contexto=True` cada línea dice si el día es víspera, puente, regreso o está junto a un evento (`tipos_de_dia`):
+    el LLM no mira las líneas vecinas, así que lo que depende de ellas se le da escrito en la propia línea.
+    """
     lineas = []
-    for fila in calendario.dias.itertuples(index=False):
+    for fila in (tipos_de_dia(calendario) if contexto else calendario.dias).itertuples(index=False):
         if fila.eventos:
             eventos = fila.eventos
         else:
@@ -122,9 +176,11 @@ def lineas_prompt(calendario: Calendario) -> list[str]:
         meteo = "; ".join(
             _texto_meteo(c, getattr(fila, f"temp_{c}"), getattr(fila, f"prec_{c}"), getattr(fila, f"origen_{c}"))
             for c in CIUDADES
+            if climatologia or getattr(fila, f"origen_{c}") == ORIGEN_OBSERVADO
         )
-        lineas.append(
-            f"{fila.fecha.isoformat()} | {fila.dia_semana} | festivo: {fila.festivo or 'no'} "
-            f"| eventos: {eventos} | meteo: {meteo}"
-        )
+        linea = f"{fila.fecha.isoformat()} | {fila.dia_semana} | festivo: {fila.festivo or 'no'} | eventos: {eventos}"
+        if contexto:
+            marcas = [etiqueta for columna, etiqueta in ETIQUETAS_CONTEXTO if getattr(fila, columna)]
+            linea += f" | contexto: {', '.join(marcas) or 'ninguno'}"
+        lineas.append(f"{linea} | meteo: {meteo}" if meteo else linea)
     return lineas
