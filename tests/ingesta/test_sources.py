@@ -23,12 +23,22 @@ def test_load_sources_parses_valid_yaml():
 
 
 def test_load_sources_accepts_zip_and_the_project_registry_is_consistent():
-    # El registro real del proyecto: CRTM sirve un GTFS (zip); Renfe, JSON; la CNMC, tres CSV con `;`.
-    sources = {s.id: s.format for s in load_sources(Path(__file__).parents[2] / "config" / "data_sources.yml")}
+    # El registro real del proyecto: CRTM sirve un GTFS (zip); Renfe, JSON; la CNMC, tres CSV con `;`;
+    # AEMET, JSON con descarga en dos pasos; el NAP, el GTFS de cada operador en zip.
+    fuentes = load_sources(Path(__file__).parents[2] / "config" / "data_sources.yml")
+    sources = {s.id: s.format for s in fuentes}
 
     assert sources == {
         "crtm": "zip", "renfe_trip_updates": "json", "renfe_vehicle_positions": "json",
         "cnmc_indicadores": "csv", "cnmc_precio_trimestral": "csv", "cnmc_precio_mensual": "csv",
+        "aemet_madrid_barajas": "json", "aemet_barcelona_prat": "json",
+        "nap_gtfs_renfe": "zip", "nap_gtfs_ouigo": "zip",
+    }
+    # Las fuentes con credencial declaran de qué variable de entorno sale, nunca el secreto.
+    con_auth = {s.id: s.auth["env"] for s in fuentes if s.auth}
+    assert con_auth == {
+        "aemet_madrid_barajas": "AEMET_API_KEY", "aemet_barcelona_prat": "AEMET_API_KEY",
+        "nap_gtfs_renfe": "NAP_API_KEY", "nap_gtfs_ouigo": "NAP_API_KEY",
     }
 
 
@@ -162,3 +172,55 @@ def test_las_columnas_que_exige_la_descarga_son_las_que_lee_el_sql_de_silver():
         sql = (RAIZ / "src" / "main" / "resources" / "silver" / f"{fuente.silver[0].tabla}.sql").read_text(encoding="utf-8")
         for columna in fuente.checks["columnas"]:
             assert f"`{columna}`" in sql, f"{fuente.id}: el SQL de {fuente.silver[0].tabla} no usa la columna «{columna}»"
+
+def test_load_sources_rejects_unknown_downloader(tmp_path):
+    yml = tmp_path / "data_sources.yml"
+    yml.write_text(
+        """sources:
+  - id: x
+    name: X
+    url: https://x.invalid/d
+    format: json
+    downloader: inventado
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="downloader no soportado"):
+        load_sources(yml)
+
+
+def test_load_sources_rejects_auth_without_env(tmp_path):
+    yml = tmp_path / "data_sources.yml"
+    yml.write_text(
+        """sources:
+  - id: x
+    name: X
+    url: https://x.invalid/d
+    format: json
+    downloader: nap
+    auth: {header: ApiKey}
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="necesita 'env'"):
+        load_sources(yml)
+
+
+def test_load_sources_defaults_to_http_without_auth(tmp_path):
+    yml = tmp_path / "data_sources.yml"
+    yml.write_text(
+        """sources:
+  - id: x
+    name: X
+    url: https://x.invalid/d
+    format: json
+""",
+        encoding="utf-8",
+    )
+
+    fuente = load_sources(yml)[0]
+
+    assert fuente.downloader == "http"
+    assert fuente.auth == {}
