@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates cargas calidad clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates cargas calidad clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -67,6 +67,8 @@ help:
 	@echo "  02_parquet-converter  Lanza la app Spark L2 parquet-converter (primer plano)"
 	@echo "  nap-historico         Descarga el histórico de GTFS del NAP (carga inicial; los datos NO están en git)"
 	@echo "  nap-oferta            Construye la serie diaria de oferta (trenes/día por corredor) desde el histórico del NAP"
+	@echo "  festivos              Construye la tabla de festivos del corredor desde el calendario laboral del BOE"
+	@echo "  meteo                 Descarga la meteorología observada de AEMET en Madrid y Barcelona (carga inicial)"
 	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
 	@echo "  04_silver             Silver real en streaming: lee Bronze L2 y construye las tablas Silver con quality gates (primer plano; terminal aparte)"
 	@echo "  05_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold), con quality gates"
@@ -150,6 +152,18 @@ nap-historico: $(VENV)/.deps-installed
 # que se comprueba si el reparto diario de la DTC se parece a la oferta real.
 nap-oferta: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.ingesta.nap_oferta --desde $(DESDE)
+
+# Festivos del corredor: descarga las fuentes boe_* del registro y parsea la tabla de fiestas
+# laborales. Son los festivos en Madrid o en Cataluña, porque el corredor une las dos. Hay que
+# lanzarlo al clonar (la tabla no se versiona) y cada vez que se añada el BOE de un año nuevo.
+festivos: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.ingesta.boe_festivos
+
+# Meteorología observada de las dos cabeceras. AEMET solo sirve 15 días por petición, así que la
+# ventana del proyecto son más de treinta peticiones por estación: es carga inicial, no DAG. Cada
+# tramo se guarda en data/historico/aemet/ y no se vuelve a pedir, así que se puede relanzar.
+meteo: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.ingesta.aemet_historico --desde $(DESDE)
 
 # Silver sintético: corre en el host con el python del venv (como test-python)
 # y habla con MinIO con las variables MINIO_* del .env.

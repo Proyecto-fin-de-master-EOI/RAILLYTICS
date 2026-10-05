@@ -20,7 +20,13 @@
 #                 eventos con fecha (Madrid publica solo los próximos 100 días y Barcelona solo series anuales
 #                 agregadas). Son los eventos que mueven viajeros ENTRE las dos ciudades: ferias grandes, Clásicos,
 #                 festivales y F1. Al añadir un año hay que ampliar ese CSV a mano.
-#   festivos y meteo  siguen leyendo la muestra SINTÉTICA (NO son datos reales): `make prediccion-sample` genera
+#   festivos      REAL: el calendario laboral del BOE, parseado a (fecha, nombre) por
+#                 `make festivos`. OJO: no están las fiestas LOCALES de cada municipio (dos al
+#                 año), que no las publica el BOE sino cada comunidad autónoma.
+#   meteo         REAL: valores observados de AEMET en Madrid-Barajas y Barcelona-El Prat, que trae
+#                 `make meteo`. AEMET publica con retardo, así que la serie acaba unos días antes de
+#                 hoy; la climatología de los días futuros la calcula la propia predicción.
+#   (ya no hay orígenes sintéticos: `make prediccion-sample` genera
 #                 las fuentes en {bronze}/l2/muestra_<fuente>/ con las columnas que asumen estas consultas, para poder
 #                 probar 07_prediccion y 00_ingest hasta que existan las reales (fase 2). La predicción avisa, con el nombre
 #                 de cada origen afectado, cada vez que corre con alguno sintético.
@@ -38,9 +44,12 @@ origenes:
       GROUP BY 1
       ORDER BY 1
   festivos:
+    # Tabla derivada del calendario laboral del BOE (ver raillytics.ingesta.boe_festivos). Son los
+    # festivos en Madrid o en Cataluña: el nombre lleva «(Madrid)» o «(Cataluña)» cuando solo lo es
+    # en un extremo del corredor. Se genera con `make festivos`; los datos no se versionan.
     sql: |
       SELECT fecha, nombre
-      FROM read_parquet('{bronze}/l2/muestra_festivos/*/*.parquet')
+      FROM read_parquet('{silver}/festivos/*.parquet')
   eventos:
     # Fichero curado a mano y versionado, no una fuente descargable: la ruta es relativa a la raíz
     # del repositorio, desde donde lo lanza `make`.
@@ -48,6 +57,9 @@ origenes:
       SELECT fecha, descripcion, ciudad
       FROM read_csv('config/eventos_corredor.csv', header = true, types = {'fecha': 'DATE'})
   meteo:
+    # Serie observada de AEMET para las dos cabeceras del corredor (ver
+    # raillytics.ingesta.aemet_historico). Se genera con `make meteo`; los datos no se versionan.
+    # Los nombres ya vienen convertidos: AEMET sirve tmed y prec como texto con coma decimal.
     sql: |
-      SELECT fecha, ciudad, tmed AS temperatura_media, prec AS precipitacion_mm
-      FROM read_parquet('{bronze}/l2/muestra_aemet/*/*.parquet')
+      SELECT fecha, ciudad, temperatura_media, precipitacion_mm
+      FROM read_parquet('{silver}/meteo/*.parquet')

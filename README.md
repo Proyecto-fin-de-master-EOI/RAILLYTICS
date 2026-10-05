@@ -283,6 +283,9 @@ make 00_ingest              # levanta Ollama y dispara el DAG de descarga una ve
                             # (descarga también las fuentes de la CNMC; L2 se reinicia una vez para que lea las fuentes nuevas)
 make nap-historico          # carga inicial: baja el histórico de GTFS del NAP desde 2025-06
                             # (los datos NO están en git; hace falta la primera vez)
+make nap-oferta             # serie diaria de oferta (trenes/día por operador y corredor)
+make festivos               # tabla de festivos del corredor desde el calendario laboral del BOE
+make meteo                  # meteorología observada de AEMET en Madrid y Barcelona (carga inicial)
 make 01_raw-uploader        # en una terminal aparte — app L1 (queda en primer plano)
 make 02_parquet-converter   # en otra terminal aparte — app L2 (queda en primer plano)
 make 03_silver-sample       # Silver sintético en MinIO: el detalle diario (estación, operador, puntualidad), que no existe como dato abierto
@@ -309,6 +312,17 @@ Python 3.13+); se puede cambiar con `make install-dev-env VENV_BASE_PYTHON=pytho
 Los targets que necesitan dependencias Python (`test-python`, `03_silver-sample`,
 `cargas`) usan directamente el intérprete de `.venv`, así que no hace falta
 activarlo antes de llamar a `make`.
+
+`make festivos` y `make meteo` construyen en Silver las dos tablas de referencia que consume la
+predicción (`{silver}/festivos/` y `{silver}/meteo/`), y cada construcción queda registrada en la
+trazabilidad de cargas. Los festivos salen de las fuentes `boe_*` del registro; la meteorología,
+de las `aemet_*`. Con esto la predicción ya **no lee ninguna fuente sintética**: `make
+prediccion-sample` sigue existiendo para poder probar el flujo sin haber hecho las cargas.
+
+AEMET solo sirve 15 días por petición, así que la ventana del proyecto son más de treinta
+peticiones por estación y la API limita el ritmo. Cada tramo descargado se guarda en
+`data/historico/aemet/` y no se vuelve a pedir, de modo que `make meteo` se puede relanzar tras
+un corte sin castigar a la API.
 
 `make nap-historico` es una **carga inicial, no parte del pipeline diario**. La fuente
 `nap_gtfs_*` del registro trae el último snapshot, que es lo que necesita el DAG; el histórico
