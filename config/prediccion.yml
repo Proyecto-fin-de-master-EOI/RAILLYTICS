@@ -16,7 +16,11 @@
 # ORIGEN DE LOS DATOS:
 #   trimestrales  REAL: la demanda del corredor de la CNMC, que construye `make 04_silver` en {silver}/cnmc_trimestral
 #                 (suma de los operadores del corredor, sin la fila TOTAL, que solo trae ingresos).
-#   festivos, eventos y meteo  siguen leyendo la muestra SINTÉTICA (NO son datos reales): `make prediccion-sample` genera
+#   eventos       REAL, pero curado a mano en config/eventos_corredor.csv: no existe fuente abierta con histórico de
+#                 eventos con fecha (Madrid publica solo los próximos 100 días y Barcelona solo series anuales
+#                 agregadas). Son los eventos que mueven viajeros ENTRE las dos ciudades: ferias grandes, Clásicos,
+#                 festivales y F1. Al añadir un año hay que ampliar ese CSV a mano.
+#   festivos y meteo  siguen leyendo la muestra SINTÉTICA (NO son datos reales): `make prediccion-sample` genera
 #                 las fuentes en {bronze}/l2/muestra_<fuente>/ con las columnas que asumen estas consultas, para poder
 #                 probar 07_prediccion y 00_ingest hasta que existan las reales (fase 2). La predicción avisa, con el nombre
 #                 de cada origen afectado, cada vez que corre con alguno sintético.
@@ -38,9 +42,11 @@ origenes:
       SELECT fecha, nombre
       FROM read_parquet('{bronze}/l2/muestra_festivos/*/*.parquet')
   eventos:
+    # Fichero curado a mano y versionado, no una fuente descargable: la ruta es relativa a la raíz
+    # del repositorio, desde donde lo lanza `make`.
     sql: |
       SELECT fecha, descripcion, ciudad
-      FROM read_parquet('{bronze}/l2/muestra_eventos/*/*.parquet')
+      FROM read_csv('config/eventos_corredor.csv', header = true, types = {'fecha': 'DATE'})
   meteo:
     sql: |
       SELECT fecha, ciudad, tmed AS temperatura_media, prec AS precipitacion_mm
