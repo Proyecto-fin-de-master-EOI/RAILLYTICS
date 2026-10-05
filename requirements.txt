@@ -4,6 +4,7 @@ python-dotenv~=1.0      # Carga de variables de entorno desde .env
 pandas~=2.2             # Manipulación de datos en la ingesta
 pyarrow~=16.1           # Lectura/escritura Parquet
 PyYAML~=6.0              # Parseo de config/data_sources.yml
+defusedxml~=0.7         # Parseo seguro del XML descargado (BOE): el de la librería estándar es vulnerable a expansión de entidades
 
 # === Data Lake (DuckDB) ===
 duckdb~=1.5.5           # Acceso al lake desde Python (Silver sintético, trazabilidad, notebooks) y motor de consulta de Superset

@@ -26,7 +26,8 @@ object DataSourceConfig extends Logging {
 
   // Mismas listas que python/raillytics/ingesta/formats.py: una clave desconocida es un error en los dos parsers.
   private val ClavesFuente = Set("id", "name", "url", "format", "options", "checks", "silver", "downloader", "auth")
-  private val OpcionesLectura = Set("delimiter", "encoding")
+  private val OpcionesPorFormato: Map[String, Set[String]] = SourceFormat.OptionsByFormat
+  private val OpcionesLectura: Set[String] = OpcionesPorFormato.values.flatten.toSet
   private val ChecksDescarga = Set("min_bytes", "min_filas", "columnas")
   private val Descargadores = Set("http", "aemet", "nap")
   private val OpcionesAuth = Set("env", "header")
@@ -59,12 +60,21 @@ object DataSourceConfig extends Logging {
       s"Formato no soportado: '$format' (soportados: ${SupportedFormats.mkString(", ")})"
     )
     val options = bloque(id, "options", m, OpcionesLectura).map { case (k, v) => k -> v.toString }
+    // Cada formato admite sus propias opciones y solo las suyas; los que no admiten ninguna (json,
+    // zip) se leen igual siempre, así que declarar `options` en ellos es un error de configuración.
+    val permitidas = OpcionesPorFormato.getOrElse(format, Set.empty[String])
+    val impropias = (options.keySet -- permitidas).toSeq.sorted
+    require(impropias.isEmpty,
+      s"Fuente '$id': el formato '$format' no admite ${impropias.mkString(", ")} en 'options'" +
+        (if (permitidas.isEmpty) "" else s" (admite: ${permitidas.toSeq.sorted.mkString(", ")})"))
     val checks = bloque(id, "checks", m, ChecksDescarga)
-    require(options.isEmpty && checks.isEmpty || format == "csv",
-      s"Fuente '$id': 'options' y 'checks' solo se admiten en fuentes csv (formato '$format')")
+    require(checks.isEmpty || format == "csv",
+      s"Fuente '$id': 'checks' solo se admite en fuentes csv (formato '$format')")
     options.get("delimiter").foreach { d =>
       require(d.length == 1, s"Fuente '$id': options.delimiter debe ser un único carácter, no '$d'")
     }
+    require(format != "xml" || options.get("rowTag").exists(_.trim.nonEmpty),
+      s"Fuente '$id': una fuente xml necesita options.rowTag, el elemento que L2 trata como fila")
     // `downloader` y `auth` solo los usa la descarga de Python (ver downloaders.py); aquí se
     // validan para que un typo no pase en silencio, igual que con `checks`.
     val downloader = Option(m.get("downloader")).map(_.toString).getOrElse("http")
