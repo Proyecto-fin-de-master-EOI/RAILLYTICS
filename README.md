@@ -281,6 +281,8 @@ make install-dev-env        # crea .venv (Python 3.9–3.12), instala requiremen
 make up                     # levanta MinIO + Postgres + Airflow + Superset
 make 00_ingest              # levanta Ollama y dispara el DAG de descarga una vez (+ predicción de demanda al final)
                             # (descarga también las fuentes de la CNMC; L2 se reinicia una vez para que lea las fuentes nuevas)
+make nap-historico          # carga inicial: baja el histórico de GTFS del NAP desde 2025-06
+                            # (los datos NO están en git; hace falta la primera vez)
 make 01_raw-uploader        # en una terminal aparte — app L1 (queda en primer plano)
 make 02_parquet-converter   # en otra terminal aparte — app L2 (queda en primer plano)
 make 03_silver-sample       # Silver sintético en MinIO: el detalle diario (estación, operador, puntualidad), que no existe como dato abierto
@@ -307,6 +309,14 @@ Python 3.13+); se puede cambiar con `make install-dev-env VENV_BASE_PYTHON=pytho
 Los targets que necesitan dependencias Python (`test-python`, `03_silver-sample`,
 `cargas`) usan directamente el intérprete de `.venv`, así que no hace falta
 activarlo antes de llamar a `make`.
+
+`make nap-historico` es una **carga inicial, no parte del pipeline diario**. La fuente
+`nap_gtfs_*` del registro trae el último snapshot, que es lo que necesita el DAG; el histórico
+hace falta para reconstruir la serie de oferta diaria hacia atrás. Los ZIP se guardan en
+`data/historico/`, que **no se versiona**: al clonar el proyecto hay que lanzarlo una vez. Es
+idempotente —no vuelve a bajar lo que ya está en disco—, así que se puede relanzar tras un corte,
+y admite otra ventana con `make nap-historico DESDE=2024-01-01`. Para la ventana del proyecto
+(desde junio de 2025) son unos 570 snapshots y ~465 MB.
 
 ### Configuración: `.env` y `application.conf`
 
