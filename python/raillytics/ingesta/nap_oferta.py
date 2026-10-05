@@ -26,6 +26,7 @@ import argparse
 import csv
 import io
 import logging
+import os
 import zipfile
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
@@ -33,6 +34,9 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
+from dotenv import find_dotenv, load_dotenv
+
+from raillytics.ingesta import referencia
 
 logger = logging.getLogger(__name__)
 
@@ -320,11 +324,12 @@ def construir(raiz: Path, desde: date, hasta: date) -> pd.DataFrame:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Las rutas del lago salen del .env, igual que en el resto del pipeline.
+    load_dotenv(find_dotenv(usecwd=True))
     p = argparse.ArgumentParser(description="Construye la serie diaria de oferta del histórico del NAP.")
     p.add_argument("--desde", type=date.fromisoformat, default=date(2025, 6, 1))
     p.add_argument("--hasta", type=date.fromisoformat, default=date.today())
     p.add_argument("--origen", type=Path, default=Path("data/historico/nap"))
-    p.add_argument("--destino", type=Path, default=Path("data/historico/nap/oferta_diaria.parquet"))
     args = p.parse_args(argv)
 
     if not args.origen.exists():
@@ -335,10 +340,11 @@ def main(argv: list[str] | None = None) -> int:
     if df.empty:
         logger.error("no se ha podido construir ningún registro")
         return 1
-    args.destino.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(args.destino, index=False)
+    destino = referencia.escribir(
+        "oferta_diaria", df, {"desde": str(args.desde), "hasta": str(args.hasta)}, os.environ, __name__
+    )
 
-    logger.info("serie de oferta: %d registros en %s", len(df), args.destino)
+    logger.info("serie de oferta: %d registros en %s", len(df), destino)
     corredor = df[df["corredor"] == "Madrid-Barcelona"]
     for operador, grupo in corredor.groupby("operador"):
         logger.info(
