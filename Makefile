@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates cargas calidad clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo calibrar 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates cargas calidad clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -69,6 +69,7 @@ help:
 	@echo "  nap-oferta            Construye la serie diaria de oferta (trenes/día por corredor) desde el histórico del NAP"
 	@echo "  festivos              Construye la tabla de festivos del corredor desde el calendario laboral del BOE"
 	@echo "  meteo                 Descarga la meteorología observada de AEMET en Madrid y Barcelona (carga inicial)"
+	@echo "  calibrar              Contrasta las reglas de reparto diario contra la oferta real del NAP"
 	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
 	@echo "  04_silver             Silver real en streaming: lee Bronze L2 y construye las tablas Silver con quality gates (primer plano; terminal aparte)"
 	@echo "  05_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold), con quality gates"
@@ -164,6 +165,12 @@ festivos: $(VENV)/.deps-installed
 # tramo se guarda en data/historico/aemet/ y no se vuelve a pedir, así que se puede relanzar.
 meteo: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.ingesta.aemet_historico --desde $(DESDE)
+
+# Contraste de los coeficientes de config/reglas_demanda.yml contra los trenes que circulan de
+# verdad. No modifica nada: imprime qué coeficientes propone la oferta y qué ocupación implican
+# los actuales. Un día por encima del 100 % es imposible y señala el coeficiente a corregir.
+calibrar: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.prediccion.calibracion
 
 # Silver sintético: corre en el host con el python del venv (como test-python)
 # y habla con MinIO con las variables MINIO_* del .env.
