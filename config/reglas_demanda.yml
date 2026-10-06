@@ -9,14 +9,32 @@
 #     Un festivo en sábado o domingo conserva el valor de ese día.
 #   - ajustes (raillytics.prediccion.calendario.tipos_de_dia): víspera de un tramo festivo, regreso (último día del tramo)
 #     y día junto a un evento. Este último solo se suma si el LLM valora el evento vecino con un factor >= 1.05.
+#
+# CALIBRACIÓN (2026-10-06). Los valores de `base_dia_semana` ya no son solo hipótesis: se han
+# contrastado contra la oferta real del NAP con `make calibrar`, que calcula qué ocupación implica
+# cada coeficiente (viajeros·km / plazas·km, no viajeros por plaza: un asiento se vende por tramos,
+# así que el ratio de cabezas pasa del 100 % legítimamente y no sirve para detectar lo imposible).
+#
+# Lo que se encontró: el operador pone MENOS trenes el fin de semana (sábado 0.68 y domingo 0.76
+# respecto a un martes) y el viernes está por debajo del martes (0.96), de forma consistente en los
+# cuatro trimestres medidos. Con los valores anteriores (vie 1.30, dom 1.25) el domingo implicaba un
+# 99 % de ocupación media: todos los domingos del año prácticamente llenos, que no se sostiene.
+#
+# Los valores de ahora conservan la DIRECCIÓN de la hipótesis —el viernes y el domingo van más
+# llenos, porque el operador no puede añadir trenes sin límite— pero moderada hasta que cabe en la
+# capacidad medida. El domingo queda en un 86 % de ocupación implicada, dentro del rango observado
+# en los trimestres reales (74-87 %).
+#
+# Lo medido es el TECHO, no el valor: que el viernes sea 1.15 y no 1.10 sigue siendo un juicio.
+# Para recalcularlo tras ampliar el histórico: `make nap-oferta && make calibrar`.
 base_dia_semana:
-  lun: 1.10
+  lun: 1.05
   mar: 1.00
   mié: 1.00
-  jue: 1.10
-  vie: 1.30
-  sáb: 0.85
-  dom: 1.25
+  jue: 1.05
+  vie: 1.15
+  sáb: 0.80
+  dom: 1.00
 festivo_entre_semana: 0.70
 puente: 0.75
 ajustes:
