@@ -129,6 +129,25 @@ def coherente(zip_path: Path) -> bool:
         return False
 
 
+def _del_corredor(paradas: set[str], extremos: tuple[str, str] | None, destinos: set[str]) -> bool:
+    """¿Es este tren del corredor Madrid-<destino>?
+
+    No basta con que pare en las dos puntas: el AVE Sevilla-Barcelona y el Málaga-Barcelona paran
+    en Madrid de paso, y contarlos infla el corredor con trenes que CNMC clasifica en otro
+    (comprobado: inflaba Renfe entre un 11 % y un 22 % contra el Tren.km de CNMC).
+
+    La regla es que el tren **salga de Madrid o termine en Madrid**, y que pare en el destino. Así
+    entra el Madrid-Figueres, que sirve el corredor aunque siga más allá de Barcelona, y queda
+    fuera el que solo pasa por Madrid camino de otro sitio.
+    """
+    if not extremos:
+        return False
+    madrid = {_norm_stop(s) for s in MADRID}
+    destinos_norm = {_norm_stop(s) for s in destinos}
+    empieza_o_acaba_en_madrid = bool({extremos[0], extremos[1]} & madrid)
+    return empieza_o_acaba_en_madrid and bool(paradas & destinos_norm)
+
+
 def trenes_por_dias(zip_path: Path, dias: Sequence[date]) -> dict[date, dict[str, dict[str, int]]] | None:
     """Trenes por corredor de cada día pedido, o None si el snapshot está corrupto.
 
@@ -145,9 +164,19 @@ def trenes_por_dias(zip_path: Path, dias: Sequence[date]) -> dict[date, dict[str
         calendario = _leer_csv(zf, "calendar.txt")
         excepciones = _leer_csv(zf, "calendar_dates.txt") if "calendar_dates.txt" in nombres else []
 
-    paradas_por_trip: dict[str, set[str]] = defaultdict(set)
+    # Se guarda la parada con su orden: hace falta saber dónde empieza y acaba cada tren, no solo
+    # por dónde pasa (ver `_del_corredor`).
+    secuencia_por_trip: dict[str, list[tuple[int, str]]] = defaultdict(list)
     for fila in stop_times:
-        paradas_por_trip[fila["trip_id"]].add(_norm_stop(fila["stop_id"]))
+        try:
+            orden = int(fila.get("stop_sequence") or 0)
+        except ValueError:
+            orden = 0
+        secuencia_por_trip[fila["trip_id"]].append((orden, _norm_stop(fila["stop_id"])))
+    paradas_por_trip = {t: {p for _, p in v} for t, v in secuencia_por_trip.items()}
+    extremos_por_trip = {
+        t: (min(v)[1], max(v)[1]) for t, v in secuencia_por_trip.items() if v
+    }
 
     servicio_por_trip = {t["trip_id"]: t["service_id"] for t in trips}
     # Snapshot corrupto: los dos ficheros usan esquemas de trip_id que no casan en ninguno. Sin
@@ -162,13 +191,12 @@ def trenes_por_dias(zip_path: Path, dias: Sequence[date]) -> dict[date, dict[str
     for e in excepciones:
         exc[e["service_id"]][e["date"]] = e["exception_type"]
 
-    madrid_norm = {_norm_stop(s) for s in MADRID}
     # Qué trips tocan cada corredor no depende del día: se resuelve una vez para todos.
     trips_por_corredor = {
         corredor: [
             trip_id
             for trip_id, paradas in paradas_por_trip.items()
-            if paradas & madrid_norm and paradas & {_norm_stop(s) for s in destinos}
+            if _del_corredor(paradas, extremos_por_trip.get(trip_id), destinos)
         ]
         for corredor, destinos in CORREDORES.items()
     }
@@ -320,6 +348,18 @@ def construir(raiz: Path, desde: date, hasta: date) -> pd.DataFrame:
 
     registros = _limpiar_ceros_espurios(registros)
     df = pd.DataFrame(registros, columns=["operador", "corredor", "fecha", "trenes", "trenes_todos", "snapshot"])
+    if df.empty:
+        return df.assign(cobertura_completa=pd.Series(dtype=bool))
+    # Un día al que le falta un operador NO es un día de menos servicio: es un día sin dato
+    # completo. Sumar los operadores sin mirar esto hace que un hueco de OUIGO parezca un recorte
+    # de Renfe (pasó: el agujero de OUIGO de sept-dic 2025 fingía caídas de oferta).
+    esperados = len(df["operador"].unique())
+    presentes = df.groupby(["corredor", "fecha"])["operador"].transform("nunique")
+    df["cobertura_completa"] = presentes == esperados
+    incompletos = int((~df["cobertura_completa"]).sum())
+    if incompletos:
+        logger.warning("%d filas en días sin los %d operadores: marcadas cobertura_completa=False",
+                       incompletos, esperados)
     return df.sort_values(["operador", "corredor", "fecha"], ignore_index=True)
 
 

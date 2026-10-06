@@ -13,6 +13,7 @@ from pathlib import Path
 from raillytics.ingesta.nap_oferta import (
     _limpiar_ceros_espurios,
     coherente,
+    construir,
     elegir_snapshots,
     trenes_por_dias,
     vigencia,
@@ -268,3 +269,81 @@ def test_un_cero_con_el_total_a_uno_sigue_siendo_espurio(tmp_path):
     limpios = _limpiar_ceros_espurios(registros)
 
     assert date(2026, 3, 14) not in {r["fecha"] for r in limpios}
+
+
+# --- qué tren es del corredor ---
+
+
+SEVILLA = "51003"
+
+
+def test_no_cuenta_un_tren_que_solo_pasa_por_madrid_camino_de_otro_sitio(tmp_path):
+    # El AVE Sevilla-Barcelona para en Madrid de paso. CNMC lo clasifica en otro corredor, y
+    # contarlo aquí inflaba Renfe entre un 11 % y un 22 % contra el Tren.km de CNMC.
+    z = _gtfs(
+        tmp_path / "2026-01-01_1.zip",
+        trips=[{"trip_id": "t", "service_id": "s1", "route_id": "r"}],
+        paradas={"t": [SEVILLA, MADRID, BARCELONA]},   # empieza en Sevilla, no en Madrid
+        rutas=[{"route_id": "r", "route_short_name": "AVE"}],
+        calendario=[{"service_id": "s1", "start_date": "20260101", "end_date": "20261231", **TODOS_LOS_DIAS}],
+    )
+
+    conteo = trenes_por_dias(z, [date(2026, 3, 10)])[date(2026, 3, 10)]
+
+    assert conteo["Madrid-Barcelona"] == {"alta_velocidad": 0, "todos": 0}
+    assert conteo["Madrid-Sevilla"] == {"alta_velocidad": 0, "todos": 0}
+
+
+def test_cuenta_un_tren_que_sale_de_madrid_y_sigue_mas_alla_de_barcelona(tmp_path):
+    # El Madrid-Figueres sirve el corredor aunque no termine en Barcelona.
+    z = _gtfs(
+        tmp_path / "2026-01-01_1.zip",
+        trips=[{"trip_id": "t", "service_id": "s1", "route_id": "r"}],
+        paradas={"t": [MADRID, BARCELONA, "71802"]},
+        rutas=[{"route_id": "r", "route_short_name": "AVE"}],
+        calendario=[{"service_id": "s1", "start_date": "20260101", "end_date": "20261231", **TODOS_LOS_DIAS}],
+    )
+
+    conteo = trenes_por_dias(z, [date(2026, 3, 10)])[date(2026, 3, 10)]["Madrid-Barcelona"]
+
+    assert conteo["alta_velocidad"] == 1
+
+
+def test_cuenta_el_tren_en_los_dos_sentidos(tmp_path):
+    # Madrid-Barcelona y Barcelona-Madrid son dos trenes distintos y los dos son del corredor.
+    z = _gtfs(
+        tmp_path / "2026-01-01_1.zip",
+        trips=[{"trip_id": "ida", "service_id": "s1", "route_id": "r"},
+               {"trip_id": "vuelta", "service_id": "s1", "route_id": "r"}],
+        paradas={"ida": [MADRID, BARCELONA], "vuelta": [BARCELONA, MADRID]},
+        rutas=[{"route_id": "r", "route_short_name": "AVE"}],
+        calendario=[{"service_id": "s1", "start_date": "20260101", "end_date": "20261231", **TODOS_LOS_DIAS}],
+    )
+
+    conteo = trenes_por_dias(z, [date(2026, 3, 10)])[date(2026, 3, 10)]["Madrid-Barcelona"]
+
+    assert conteo["alta_velocidad"] == 2
+
+
+# --- cobertura: días a los que les falta un operador ---
+
+
+def test_marca_los_dias_a_los_que_les_falta_un_operador(tmp_path):
+    # Si un operador no publicó ese día, el total NO es menos servicio: es dato incompleto.
+    for operador, dias in (("renfe", ("20260310", "20260311")), ("ouigo", ("20260310", "20260310"))):
+        carpeta = tmp_path / operador
+        carpeta.mkdir()
+        _gtfs(
+            carpeta / "2026-03-10_1.zip",
+            trips=[{"trip_id": f"t_{operador}", "service_id": "s1", "route_id": "r"}],
+            paradas={f"t_{operador}": [MADRID, BARCELONA]},
+            rutas=[{"route_id": "r", "route_short_name": "AVE"}],
+            calendario=[{"service_id": "s1", "start_date": dias[0], "end_date": dias[1], **TODOS_LOS_DIAS}],
+        )
+
+    df = construir(tmp_path, date(2026, 3, 10), date(2026, 3, 11))
+    mb = df[df["corredor"] == "Madrid-Barcelona"]
+
+    # El 10 lo publican los dos; el 11 solo renfe, porque el calendario de ouigo no llega.
+    assert set(mb[mb["fecha"] == date(2026, 3, 10)]["cobertura_completa"]) == {True}
+    assert set(mb[mb["fecha"] == date(2026, 3, 11)]["cobertura_completa"]) == {False}
