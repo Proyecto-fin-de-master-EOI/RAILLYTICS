@@ -143,6 +143,49 @@ pocos casos no hay nada estable que aprender.
 La única señal disponible es la que se introdujo al escribir las reglas, y el modelo la encuentra
 enseguida porque no hay más.
 
+## ¿Se pueden inferir los coeficientes en vez de ponerlos a mano?
+
+Los pesos de `config/reglas_demanda.yml` son hipótesis. Dos de ellos se pudieron calibrar y el resto
+no, y la diferencia tiene una causa clara: **hace falta una señal diaria**.
+
+**El día de la semana sí.** Se calibró contra la oferta real del NAP, que da trenes por día. Es el
+único dato diario medido que existe en el proyecto.
+
+**Los festivos y los puentes no.** Se intentó estimarlos de los **42 trimestres de CNMC**
+(2016T1–2026T2), aprovechando que el número de festivos que caen en día laborable cambia de un
+trimestre a otro.
+
+Para eso hacía falta el calendario de festivos desde 2016, y solo tenemos el BOE de 2025 y 2026. Se
+generó por regla —fechas fijas más las que cuelgan de la Pascua, que se calcula— y **se validó contra
+el BOE real**: reproduce 2026 exactamente y 2025 con un día de diferencia (Santiago Apóstol, que es
+una elección discrecional de cada comunidad y no se deduce por regla). 31 aciertos de 32.
+
+Modelando `log(viajeros) ~ tendencia + trimestre + nº de festivos laborables` sobre los 34
+trimestres utilizables (fuera 2020 y 2021 por la pandemia):
+
+```
+efecto de un festivo laborable de más:  +1,36 %
+error estándar:                          1,92 pp
+t = 0,71   ->  no significativo
+```
+
+**El efecto no es distinguible de cero.** Sale además con el signo contrario al esperado, y traducido
+al peso de las reglas daría 2,18 frente al 0,70 actual, que es un disparate.
+
+**Por qué no sale.** El número de festivos laborables está confundido con la estacionalidad: los
+terceros trimestres tienen siempre 1 o 2, los segundos casi siempre 5 o 6. El modelo no puede separar
+si el verano vende más porque es verano o porque tiene pocos festivos, y el efecto estacional es
+mucho mayor. El experimento que lo rompería es el movimiento de la Semana Santa entre trimestres,
+pero **solo cambia dos veces en once años** (2016 y 2024).
+
+**Los factores de los eventos tampoco.** Los que devuelve el LLM (1,15 para una feria, 1,25 para un
+Clásico) no son estimables: son 63 días con evento en un solo corredor y no existe el escenario
+contrafactual, es decir cuánta gente habría viajado ese día sin el evento.
+
+**Conclusión:** `festivo_entre_semana`, `puente` y los ajustes de víspera y regreso **se mantienen
+como hipótesis documentadas**, no porque no se haya intentado estimarlos, sino porque las fuentes
+disponibles no contienen la información necesaria.
+
 ## Limitaciones
 
 **La principal, y la que lo explica todo:** no existe ocupación diaria observada. Mientras el
