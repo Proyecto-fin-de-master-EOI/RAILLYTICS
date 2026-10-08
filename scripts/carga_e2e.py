@@ -135,6 +135,19 @@ class Contexto:
     checkpoints: Path = field(default_factory=lambda: Path(os.environ.get("CHECKPOINT_ROOT", "data/checkpoints")))
 
 
+def salida_utf8() -> None:
+    """Deja la salida en UTF-8: en Windows es cp1252 y los símbolos del log la rompen.
+
+    El log usa ▶, ✓ y ✗, que no existen en cp1252, así que sin esto el script muere con
+    UnicodeEncodeError en la primera línea que imprime, antes de hacer nada. `errors="replace"` es
+    la red por si queda alguna consola que tampoco admita UTF-8: mejor un carácter raro que un
+    traceback a mitad de una carga de media hora.
+    """
+    for flujo in (sys.stdout, sys.stderr):
+        if hasattr(flujo, "reconfigure"):
+            flujo.reconfigure(encoding="utf-8", errors="replace")
+
+
 def log(mensaje: str) -> None:
     print(f"[{datetime.now():%H:%M:%S}] {mensaje}", flush=True)
 
@@ -368,6 +381,7 @@ def parsear(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    salida_utf8()
     args = parsear(argv)
     os.chdir(RAIZ)
     try:
