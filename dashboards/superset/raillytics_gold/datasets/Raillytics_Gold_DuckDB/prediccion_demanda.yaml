@@ -1,0 +1,440 @@
+table_name: prediccion_demanda
+main_dttm_col: fecha
+description: 'Predicción diaria de demanda del corredor AVE Madrid–Barcelona (raillytics.prediccion): una fila por día y ejecución,
+  leída de s3://raillytics-gold/fact_prediccion_demanda/.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: |-
+  -- Predicción diaria de demanda del corredor AVE Madrid–Barcelona (raillytics.prediccion): una fila por día y ejecución.
+  -- La publica cada ejecución de `make 07_prediccion` en s3://raillytics-gold/fact_prediccion_demanda/<run_id>.parquet.
+  -- generado_en se guarda en UTC; aquí se muestra en hora de Madrid. es_ultima marca la ejecución más reciente de cada trimestre.
+  -- vispera, puente, regreso, junto_a_evento y exceso solo existen en las ejecuciones publicadas desde que se añadieron: la
+  -- SELECT vacía del UNION ALL BY NAME declara esas columnas para que la consulta funcione aunque todos los Parquet sean anteriores.
+  WITH base AS (
+      SELECT
+          run_id,
+          timezone('Europe/Madrid', timezone('UTC', generado_en)) AS generado_en,
+          trimestre, corredor, modelo, version_prompt,
+          datos_sinteticos, total_esperado, fecha, dia_semana, festivo, eventos,
+          viajeros_previstos, indice, motivo,
+          vispera, puente, regreso, junto_a_evento, exceso
+      FROM (
+          SELECT * FROM read_parquet('s3://raillytics-gold/fact_prediccion_demanda/*.parquet', union_by_name = true)
+          UNION ALL BY NAME
+          SELECT NULL::BOOLEAN AS vispera, NULL::BOOLEAN AS puente, NULL::BOOLEAN AS regreso,
+                 NULL::BOOLEAN AS junto_a_evento, NULL::DOUBLE AS exceso
+          WHERE false
+      )
+  )
+  SELECT
+      run_id,
+      version_prompt || ' · ' || modelo || ' · ' || strftime(generado_en, '%d/%m %H:%M') AS ejecucion,
+      generado_en,
+      trimestre,
+      corredor,
+      modelo,
+      version_prompt,
+      CASE WHEN datos_sinteticos THEN 'Sintéticos' ELSE 'Reales' END AS datos,
+      generado_en = MAX(generado_en) OVER (PARTITION BY trimestre) AS es_ultima,
+      total_esperado,
+      fecha,
+      dia_semana,
+      CAST(isodow(fecha) AS VARCHAR) || ' · ' || dia_semana AS dia_semana_etiqueta,
+      festivo,
+      eventos,
+      CASE WHEN festivo IS NOT NULL THEN 'Festivo'
+           WHEN eventos IS NOT NULL THEN 'Evento'
+           WHEN isodow(fecha) >= 6 THEN 'Fin de semana'
+           ELSE 'Laborable' END AS tipo_dia,
+      viajeros_previstos,
+      indice,
+      motivo,
+      vispera,
+      puente,
+      regreso,
+      junto_a_evento,
+      exceso
+  FROM base
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: ce2482b5-226e-5980-80be-4ed2706e8696
+metrics:
+- metric_name: n_ejecuciones
+  verbose_name: Ejecuciones
+  metric_type: null
+  expression: COUNT(DISTINCT run_id)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: n_dias
+  verbose_name: Días
+  metric_type: null
+  expression: COUNT(*)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: viajeros_previstos
+  verbose_name: Viajeros previstos
+  metric_type: null
+  expression: SUM(viajeros_previstos)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: indice_medio
+  verbose_name: Índice medio
+  metric_type: null
+  expression: AVG(indice)
+  description: null
+  d3format: .2f
+  extra: null
+  warning_text: null
+- metric_name: indice_maximo
+  verbose_name: Índice máximo
+  metric_type: null
+  expression: MAX(indice)
+  description: null
+  d3format: .2f
+  extra: null
+  warning_text: null
+- metric_name: dias_festivo_o_evento
+  verbose_name: Días festivos o con evento
+  metric_type: null
+  expression: SUM(CASE WHEN tipo_dia IN ('Festivo', 'Evento') THEN 1 ELSE 0 END)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: exceso_visperas
+  verbose_name: Vísperas
+  metric_type: null
+  expression: AVG(CASE WHEN vispera THEN exceso END)
+  description: Exceso medio de las vísperas sobre un día corriente del mismo día de la semana (0 = la regla no se aplica).
+  d3format: +.2f
+  extra: null
+  warning_text: null
+- metric_name: exceso_puentes
+  verbose_name: Puentes
+  metric_type: null
+  expression: AVG(CASE WHEN puente THEN exceso END)
+  description: Exceso medio de los puentes sobre un día corriente del mismo día de la semana (negativo si cuentan como festivo).
+  d3format: +.2f
+  extra: null
+  warning_text: null
+- metric_name: exceso_regresos
+  verbose_name: Regresos
+  metric_type: null
+  expression: AVG(CASE WHEN regreso THEN exceso END)
+  description: Exceso medio de los regresos sobre un día corriente del mismo día de la semana (sin los festivos entre semana).
+  d3format: +.2f
+  extra: null
+  warning_text: null
+- metric_name: exceso_junto_a_evento
+  verbose_name: Junto a un evento
+  metric_type: null
+  expression: AVG(CASE WHEN junto_a_evento THEN exceso END)
+  description: Exceso medio de los días anterior y siguiente a un evento sobre un día corriente del mismo día de la semana.
+  d3format: +.2f
+  extra: null
+  warning_text: null
+columns:
+- column_name: run_id
+  verbose_name: Ejecución (id)
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ejecucion
+  verbose_name: Ejecución
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: generado_en
+  verbose_name: Generado en
+  is_dttm: true
+  is_active: true
+  type: TIMESTAMP
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: trimestre
+  verbose_name: Trimestre
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: corredor
+  verbose_name: Corredor
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: modelo
+  verbose_name: Modelo
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: version_prompt
+  verbose_name: Versión del prompt
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: datos
+  verbose_name: Datos
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: es_ultima
+  verbose_name: Última del trimestre
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: total_esperado
+  verbose_name: Total esperado del trimestre
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fecha
+  verbose_name: Fecha
+  is_dttm: true
+  is_active: true
+  type: DATE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: dia_semana
+  verbose_name: Día de la semana
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: dia_semana_etiqueta
+  verbose_name: Día de la semana (ordenado)
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: festivo
+  verbose_name: Festivo
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: eventos
+  verbose_name: Eventos
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: tipo_dia
+  verbose_name: Tipo de día
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: viajeros_previstos
+  verbose_name: Viajeros previstos
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: indice
+  verbose_name: Índice (media del trimestre = 1)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: motivo
+  verbose_name: Motivo (LLM)
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: vispera
+  verbose_name: Víspera
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Último día laborable antes de un tramo festivo (vacío en ejecuciones anteriores a esta columna).
+  python_date_format: null
+  extra: null
+- column_name: puente
+  verbose_name: Puente
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Día laborable entre dos días libres.
+  python_date_format: null
+  extra: null
+- column_name: regreso
+  verbose_name: Regreso
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Último día de un tramo festivo de dos o más días.
+  python_date_format: null
+  extra: null
+- column_name: junto_a_evento
+  verbose_name: Junto a un evento
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Día sin evento propio con evento el día anterior o el siguiente.
+  python_date_format: null
+  extra: null
+- column_name: exceso
+  verbose_name: Exceso sobre un día corriente
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: false
+  filterable: true
+  expression: null
+  description: Índice menos el medio de los días corrientes con el mismo día de la semana en esa ejecución (vacío en festivos entre semana).
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

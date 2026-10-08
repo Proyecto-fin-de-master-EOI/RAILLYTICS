@@ -1,9 +1,14 @@
 # Registro de fuentes de la ingesta Bronze. Lo leen la descarga Python
 # (raillytics.ingesta.sources) y la app Scala L2 (DataSourceConfig).
 #
-# format: csv | json | zip (ver raillytics/ingesta/formats.py y SourceFormat.scala).
+# format: csv | json | xml | zip (ver raillytics/ingesta/formats.py y SourceFormat.scala).
 # La descarga comprueba que el contenido recibido ES ese formato (quality gate
 # formato_declarado): un fichero que no lo cumple va a cuarentena, no al pipeline.
+#
+# Claves opcionales por fuente (una clave desconocida es un error, en Python y en Scala):
+#   options  cómo se lee el fichero: delimiter y encoding en csv, rowTag en xml (la descarga Python y L2)
+#   checks   reglas de la descarga sobre un csv: min_bytes, min_filas, columnas (solo las aplica Python)
+#   silver   tablas que construye `make 04_silver` desde la fuente: {tabla, modo: snapshot | incremental}
 sources:
   - id: crtm
     name: "CRTM - Consorcio Regional de Transportes de Madrid (GTFS estático)"
@@ -19,3 +24,97 @@ sources:
     name: "Renfe GTFS-RT - Posiciones de vehículos (Larga Distancia)"
     url: "https://gtfsrt.renfe.com/vehicle_positions_LD.json"
     format: json
+  # --- CNMC (Comisión Nacional de los Mercados y la Competencia): datos abiertos del mercado ferroviario de viajeros ---
+  # Portal CKAN https://catalogodatos.cnmc.es, licencia CC BY-SA 4.0, actualización trimestral. CSV con `;` y BOM, trimestre `2026T2`.
+  # `checks`: si el servidor devuelve otra cosa (página de mantenimiento, columnas renombradas, fichero truncado) la descarga lo
+  # rechaza y el fichero va a data/bronze_rejected/. `silver`: tablas que construye `make 04_silver` (SQL en resources/silver/).
+  - id: cnmc_indicadores
+    name: "CNMC - Indicadores trimestrales del transporte ferroviario de viajeros (viajeros, plazas, tren·km, ingresos por corredor y empresa)"
+    url: "https://catalogodatos.cnmc.es/dataset/e608b7b2-0b3a-4816-a4f2-54eb3d913790/resource/611667a1-b294-45e3-9283-6e49ea2f9bbc/download/ds_24406_1.csv"
+    format: csv
+    options: {delimiter: ";"}
+    checks:
+      min_bytes: 10000
+      min_filas: 400
+      columnas: ["Trimestre", "Tipo de producto", "Corredor", "Empresa", "Tipo de servicio",
+                 "Ingresos por venta de billetes (€)", "Plazas Ofertadas (Núm)", "Plazas.km Ofertadas (Plazas.km)",
+                 "Tren.km (Tren.km)", "Viajeros (Núm)", "Viajeros.km (Viajeros.km)"]
+    silver:
+      - {tabla: cnmc_trimestral, modo: snapshot}
+  - id: cnmc_precio_trimestral
+    name: "CNMC - Indicador del precio medio trimestral por trayecto"
+    url: "https://catalogodatos.cnmc.es/dataset/ed44fc19-79d5-4222-b724-81e430c29a36/resource/97a05b72-874d-493f-88d8-90b850dcdc66/download/ds_24409_1.csv"
+    format: csv
+    options: {delimiter: ";"}
+    checks:
+      min_bytes: 5000
+      min_filas: 200
+      columnas: ["Trimestre", "Empresa", "Tipo de servicio", "Tipo de producto", "Trayecto", "Precio (€)"]
+    silver:
+      - {tabla: cnmc_precio_trimestral, modo: snapshot}
+  - id: cnmc_precio_mensual
+    name: "CNMC - Indicador del precio medio mensual por trayecto"
+    url: "https://catalogodatos.cnmc.es/dataset/e880b3ca-6b78-4b84-ad93-6e645e6938d0/resource/de217355-6f5d-48f6-8c72-31cd86eefe00/download/ds_24410_1.csv"
+    format: csv
+    options: {delimiter: ";"}
+    checks:
+      min_bytes: 15000
+      min_filas: 600
+      columnas: ["Mes", "Empresa", "Tipo de servicio", "Tipo de producto", "Trayecto", "Precio (€)"]
+    silver:
+      - {tabla: cnmc_precio_mensual, modo: snapshot}
+  # --- AEMET OpenData: climatología diaria de las dos cabeceras del corredor ---
+  # Requiere clave gratuita (AEMET_API_KEY en el .env; se pide en opendata.aemet.es).
+  # La `url` es una plantilla: el descargador `aemet` rellena {fecha_ini} y {fecha_fin} con una
+  # ventana de 15 días —el máximo que admite la API— que termina hace 5, porque AEMET publica
+  # con retardo y pedir "hasta hoy" devuelve un tramo vacío.
+  - id: aemet_madrid_barajas
+    name: "AEMET - Valores climatológicos diarios, Madrid-Barajas (estación 3195)"
+    url: "https://opendata.aemet.es/opendata/api/valores/climatologicos/diarios/datos/fechaini/{fecha_ini}T00:00:00UTC/fechafin/{fecha_fin}T23:59:59UTC/estacion/3195"
+    format: json
+    downloader: aemet
+    auth: {env: AEMET_API_KEY, header: api_key}
+  - id: aemet_barcelona_prat
+    name: "AEMET - Valores climatológicos diarios, Barcelona-El Prat (estación 0076)"
+    url: "https://opendata.aemet.es/opendata/api/valores/climatologicos/diarios/datos/fechaini/{fecha_ini}T00:00:00UTC/fechafin/{fecha_fin}T23:59:59UTC/estacion/0076"
+    format: json
+    downloader: aemet
+    auth: {env: AEMET_API_KEY, header: api_key}
+  # --- NAP (Punto de Acceso Nacional, Ministerio de Transportes): GTFS de los operadores ---
+  # Es el canal oficial que obliga la directiva europea de ITS, con histórico: Renfe desde
+  # 2017-02 y OUIGO desde 2023-06. Da la OFERTA diaria (cuántos trenes pone cada operador cada
+  # día), que es la variable diaria que la demanda trimestral de CNMC no tiene.
+  # Requiere clave (NAP_API_KEY en el .env; se pide en nap.transportes.gob.es, Editar Perfil).
+  # Iryo no publica en el NAP, así que la oferta cubre Renfe y OUIGO, no el corredor completo.
+  - id: nap_gtfs_renfe
+    name: "NAP - GTFS de Renfe (Media, Larga Distancia y AVE), último snapshot del histórico"
+    url: "https://nap.transportes.gob.es/api/v2/conjunto-dato/897/historico"
+    format: zip
+    downloader: nap
+    auth: {env: NAP_API_KEY, header: ApiKey}
+  - id: nap_gtfs_ouigo
+    name: "NAP - GTFS de OUIGO, último snapshot del histórico"
+    url: "https://nap.transportes.gob.es/api/v2/conjunto-dato/1515/historico"
+    format: zip
+    downloader: nap
+    auth: {env: NAP_API_KEY, header: ApiKey}
+  # --- BOE (Boletín Oficial del Estado): calendario laboral, un documento XML por año ---
+  # La resolución anual de la Dirección General de Trabajo publica los festivos nacionales y los de
+  # cada comunidad autónoma en una tabla dentro de <texto>. Son el regulador de demanda diaria que
+  # no está ni en CNMC ni en el NAP: un festivo mueve los viajes como lo hace un fin de semana.
+  # `rowTag: documento` deja un Parquet de una fila con el documento entero (metadatos y texto
+  # anidados) sin perder nada; extraer la tabla de festivos es trabajo de Silver, no de la ingesta.
+  # Un año es una resolución y una URL, así que hay una fuente por año de la ventana del proyecto
+  # (el calendario de 2024 es BOE-A-2023-22014, por si el histórico se amplía hacia atrás).
+  # No declaran `silver`: la tabla de festivos sale de unir los dos años, y una tabla Silver solo
+  # puede declararla una fuente.
+  - id: boe_calendario_laboral_2025
+    name: "BOE - Calendario laboral de 2025 (festivos nacionales y por comunidad autónoma)"
+    url: "https://www.boe.es/diario_boe/xml.php?id=BOE-A-2024-21316"
+    format: xml
+    options: {rowTag: documento}
+  - id: boe_calendario_laboral_2026
+    name: "BOE - Calendario laboral de 2026 (festivos nacionales y por comunidad autónoma)"
+    url: "https://www.boe.es/diario_boe/xml.php?id=BOE-A-2025-21667"
+    format: xml
+    options: {rowTag: documento}

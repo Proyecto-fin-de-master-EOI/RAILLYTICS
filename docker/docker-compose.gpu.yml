@@ -1,0 +1,13 @@
+# Override opcional: reserva la GPU NVIDIA para Ollama (necesita nvidia-container-toolkit en el host).
+# Se añade con LLM_GPU=1 (p. ej. en el .env): `make llm-up` lo incluye solo. A mano:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml --env-file .env --profile llm up -d ollama
+---
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

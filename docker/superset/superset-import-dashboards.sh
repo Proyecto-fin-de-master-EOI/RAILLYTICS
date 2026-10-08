@@ -5,7 +5,7 @@
 # dashboards/). Superset solo acepta ese formato empaquetado en un ZIP con un
 # directorio raíz, así que se empaqueta al vuelo.
 #
-# Lo usa superset-init.sh en cada arranque y `make 05_superset-import`
+# Lo usa superset-init.sh en cada arranque y `make 06_superset-import`
 # (docker compose exec superset bash /app/raillytics/docker/superset-import-dashboards.sh).
 #
 # Semántica de la importación: los dashboards se sobrescriben; la base de

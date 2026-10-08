@@ -105,4 +105,27 @@ class CargasSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
     Cargas.lanzadoPorDefecto(Map("MAKELEVEL" -> "1")) shouldBe "make"
     Cargas.lanzadoPorDefecto(Map("AIRFLOW_CTX_DAG_ID" -> "ingesta", "MAKELEVEL" -> "1")) shouldBe "airflow:ingesta"
   }
+
+  // Regresión: L2 arranca una query por fuente y todas registran su carga en el
+  // mismo directorio. Con write.mode("append") el committer de Hadoop comparte
+  // <dir>/_temporary y lo limpia al terminar, así que las escrituras simultáneas
+  // se pisaban y se perdían registros (ver HadoopFs.escribirFicheroUnico).
+  it should "keep every record when several executions write concurrently" in {
+    val cargasDir = nuevoDir()
+    val procesos = (1 to 6).map(i => s"proceso_$i")
+
+    val hilos = procesos.map { proceso =>
+      val h = new Thread(() => {
+        Cargas.registrar(proceso, "bronze", cargasDir, lanzadoPor = "cli") { ejecucion =>
+          ejecucion.tabla("t", origen = Some("o"), destino = Some("d")) { carga => carga.filas = Some(1L) }
+        }
+      })
+      h.start()
+      h
+    }
+    hilos.foreach(_.join())
+
+    spark.read.parquet(cargasDir).select("proceso").collect().map(_.getString(0)).toSet shouldBe procesos.toSet
+  }
+
 }

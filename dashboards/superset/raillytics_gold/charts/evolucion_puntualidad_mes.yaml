@@ -1,4 +1,4 @@
-slice_name: Evolución mensual de la puntualidad (%) por tipo de tren
+slice_name: Evolución mensual de la puntualidad (%) por estación de llegada
 description: null
 certified_by: null
 certification_details: null
@@ -19,7 +19,7 @@ params:
   metrics:
   - pct_puntuales
   groupby:
-  - tipo_tren
+  - estacion
   order_desc: true
   row_limit: 10000
   truncate_metric: true

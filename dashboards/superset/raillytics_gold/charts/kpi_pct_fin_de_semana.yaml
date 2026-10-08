@@ -1,0 +1,29 @@
+slice_name: Viajeros en fin de semana (%)
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  metric: pct_viajeros_fin_de_semana
+  header_font_size: 0.4
+  subheader: '% del total'
+  subheader_font_size: 0.15
+  y_axis_format: .1f
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 9c3c6b23-2e90-5c94-8664-c9c28b36d4e7
+version: 1.0.0
+dataset_uuid: 96722fb6-8e32-5c11-a4ed-d77abe207f92
+is_managed_externally: false
+external_url: null

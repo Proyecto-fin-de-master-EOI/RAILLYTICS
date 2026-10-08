@@ -5,18 +5,21 @@ festivos) todavía no existen. Este módulo genera, de forma determinista, las
 dos tablas Silver con el contrato de columnas que producirán esos jobs, y las
 deja donde ellos las dejarán (bucket Silver de MinIO, o SILVER_ROOT local):
 
-  viajeros_enriquecidos    grano (fecha, estación, línea): viajeros del día,
-                           meteo de la provincia y festivo nacional.
-  puntualidad_enriquecida  grano servicio (tren): hora prevista/real de
-                           llegada, retraso, estado, meteo y festivo.
+  viajeros_enriquecidos    grano (fecha, estación, línea, operador): viajeros
+                           del día, meteo de la provincia y festivo nacional.
+  puntualidad_enriquecida  grano servicio (tren): operador, hora prevista/real
+                           de llegada, retraso, estado, meteo y festivo.
 
 Cuando existan los jobs reales bastará con que escriban estas columnas en los
 mismos prefijos; Gold (la app Spark GoldBuilderApp) y Superset no cambian.
 
-Los datos NO son reales: estaciones y líneas son un subconjunto ilustrativo
-con códigos inventados, y demanda y retrasos siguen un modelo simple
-(estacionalidad, día de la semana, festivos, lluvia, hora punta) para que los
-dashboards tengan algo que contar.
+Los datos NO son reales y cubren SOLO el corredor AVE Madrid–Barcelona (una
+línea, AVE-MAD-BCN, y sus cuatro estaciones: Madrid Puerta de Atocha, Zaragoza
+Delicias, Camp de Tarragona y Barcelona Sants) y sus cuatro operadores (Renfe,
+Iryo, Ouigo y Avlo), con códigos inventados. Cuotas, servicios y retrasos de cada
+operador son inventados. Demanda
+y retrasos siguen un modelo simple (estacionalidad, día de la semana, festivos,
+lluvia, hora punta) para que los dashboards tengan algo que contar.
 
 Uso:  python -m raillytics.procesamiento.silver_sample [--start AAAA-MM-DD] [--end AAAA-MM-DD] [--seed N]
 """
@@ -43,14 +46,16 @@ SILVER_PUNTUALIDAD = "puntualidad_enriquecida"
 VIAJEROS_COLUMNS = (
     "fecha", "estacion_id", "estacion_nombre", "provincia", "comunidad", "latitud", "longitud",
     "linea_id", "linea_nombre", "tipo_tren", "origen", "destino",
+    "operador_id", "operador_nombre", "operador_empresa", "operador_segmento",
     "viajeros", "temperatura_media", "precipitacion_mm", "condicion_meteo", "es_festivo", "festivo_nombre",
 )
 PUNTUALIDAD_COLUMNS = (
-    "fecha", "servicio_id", "linea_id", "estacion_id", "hora_prevista", "hora_real", "retraso_min", "estado",
+    "fecha", "servicio_id", "linea_id", "operador_id", "estacion_id", "hora_prevista", "hora_real", "retraso_min", "estado",
     "temperatura_media", "precipitacion_mm", "condicion_meteo", "es_festivo",
 )
 
-TIPOS_TREN = ("AVE", "Larga Distancia", "Media Distancia", "Cercanías")
+CORREDOR = "AVE-MAD-BCN"  # la única línea del ejemplo
+TIPOS_TREN = ("AVE",)
 CONDICIONES_METEO = ("despejado", "nuboso", "lluvia", "tormenta")
 ESTADOS = ("realizado", "cancelado")
 
@@ -67,85 +72,60 @@ class Estacion:
 
 
 @dataclass(frozen=True)
+class Operador:
+    id: str
+    nombre: str
+    empresa: str
+    segmento: str
+    cuota: float              # parte de la demanda del corredor
+    servicios_dia: int        # trenes por día (filas de puntualidad)
+    retraso_medio_min: float  # retraso medio en llegada antes de aplicar factores
+    p_cancelacion: float      # probabilidad de cancelar un servicio un día normal
+    factor_finde: float       # demanda en fin de semana y festivo respecto a un laborable (el low cost sube más)
+
+
+@dataclass(frozen=True)
 class Linea:
     id: str
     nombre: str
     tipo_tren: str
     paradas: tuple[str, ...]  # códigos de estación en orden origen -> destino
     demanda_base: int         # viajeros/día por parada antes de aplicar factores
-    servicios_dia: int        # trenes por día (filas de puntualidad)
 
 
 # Códigos inventados (no son los de Adif); coordenadas aproximadas de la ciudad.
 ESTACIONES = (
     Estacion("MADPA", "Madrid Puerta de Atocha", "Madrid", "Comunidad de Madrid", 40.4066, -3.6895, 3.0),
-    Estacion("MADCH", "Madrid Chamartín", "Madrid", "Comunidad de Madrid", 40.4722, -3.6825, 2.4),
-    Estacion("ALCHE", "Alcalá de Henares", "Madrid", "Comunidad de Madrid", 40.4830, -3.3660, 1.2),
-    Estacion("GETAF", "Getafe Centro", "Madrid", "Comunidad de Madrid", 40.3060, -3.7300, 1.0),
-    Estacion("BCNSA", "Barcelona Sants", "Barcelona", "Cataluña", 41.3792, 2.1400, 2.6),
-    Estacion("MATAR", "Mataró", "Barcelona", "Cataluña", 41.5350, 2.4430, 0.9),
-    Estacion("SABAD", "Sabadell Centre", "Barcelona", "Cataluña", 41.5480, 2.1070, 0.9),
-    Estacion("GIRON", "Girona", "Girona", "Cataluña", 41.9790, 2.8170, 0.5),
-    Estacion("TARRA", "Camp de Tarragona", "Tarragona", "Cataluña", 41.1690, 1.2020, 0.4),
-    Estacion("VLCJS", "Valencia Joaquín Sorolla", "Valencia", "Comunidad Valenciana", 39.4600, -0.3830, 1.4),
-    Estacion("ALICA", "Alicante", "Alicante", "Comunidad Valenciana", 38.3440, -0.4930, 0.8),
-    Estacion("SEVSJ", "Sevilla Santa Justa", "Sevilla", "Andalucía", 37.3920, -5.9750, 1.3),
-    Estacion("MALMZ", "Málaga María Zambrano", "Málaga", "Andalucía", 36.7115, -4.4320, 1.0),
-    Estacion("CORDO", "Córdoba", "Córdoba", "Andalucía", 37.8880, -4.7900, 0.7),
     Estacion("ZARDE", "Zaragoza Delicias", "Zaragoza", "Aragón", 41.6590, -0.9120, 1.0),
-    Estacion("VALLA", "Valladolid", "Valladolid", "Castilla y León", 41.6420, -4.7290, 0.7),
-    Estacion("TOLED", "Toledo", "Toledo", "Castilla-La Mancha", 39.8610, -4.0110, 0.4),
-    Estacion("ALBAC", "Albacete", "Albacete", "Castilla-La Mancha", 38.9880, -1.8570, 0.4),
-    Estacion("BILAB", "Bilbao Abando", "Bizkaia", "País Vasco", 43.2610, -2.9270, 0.8),
-    Estacion("SANTA", "Santander", "Cantabria", "Cantabria", 43.4600, -3.8130, 0.5),
-    Estacion("OVIED", "Oviedo", "Asturias", "Principado de Asturias", 43.3670, -5.8560, 0.5),
-    Estacion("ACORU", "A Coruña", "A Coruña", "Galicia", 43.3530, -8.4090, 0.5),
+    Estacion("TARRA", "Camp de Tarragona", "Tarragona", "Cataluña", 41.1690, 1.2020, 0.4),
+    Estacion("BCNSA", "Barcelona Sants", "Barcelona", "Cataluña", 41.3792, 2.1400, 2.6),
 )
 
 LINEAS = (
-    Linea("AVE-MAD-BCN", "AVE Madrid – Barcelona", "AVE", ("MADPA", "ZARDE", "TARRA", "BCNSA"), 3200, 28),
-    Linea("AVE-MAD-SEV", "AVE Madrid – Sevilla", "AVE", ("MADPA", "CORDO", "SEVSJ"), 2600, 22),
-    Linea("AVE-MAD-VLC", "AVE Madrid – Valencia", "AVE", ("MADPA", "VLCJS"), 2400, 18),
-    Linea("AVE-MAD-MAL", "AVE Madrid – Málaga", "AVE", ("MADPA", "CORDO", "MALMZ"), 1800, 14),
-    Linea("AVE-MAD-ALC", "AVE Madrid – Alicante", "AVE", ("MADPA", "ALBAC", "ALICA"), 1300, 12),
-    Linea("LD-MAD-SAN", "Alvia Madrid – Santander", "Larga Distancia", ("MADCH", "VALLA", "SANTA"), 700, 6),
-    Linea("LD-MAD-BIL", "Alvia Madrid – Bilbao", "Larga Distancia", ("MADCH", "VALLA", "BILAB"), 750, 6),
-    Linea("LD-MAD-OVI", "Alvia Madrid – Oviedo", "Larga Distancia", ("MADCH", "VALLA", "OVIED"), 650, 5),
-    Linea("LD-MAD-COR", "Alvia Madrid – A Coruña", "Larga Distancia", ("MADCH", "ACORU"), 600, 4),
-    Linea("MD-MAD-TOL", "Avant Madrid – Toledo", "Media Distancia", ("MADPA", "TOLED"), 900, 16),
-    Linea("MD-BCN-GIR", "Regional Barcelona – Girona", "Media Distancia", ("BCNSA", "GIRON"), 800, 20),
-    Linea("MD-SEV-COR", "Media Distancia Sevilla – Córdoba", "Media Distancia", ("SEVSJ", "CORDO"), 500, 12),
-    Linea("C-MAD-C2", "Cercanías Madrid C-2", "Cercanías", ("ALCHE", "MADPA", "MADCH"), 9000, 70),
-    Linea("C-MAD-C4", "Cercanías Madrid C-4", "Cercanías", ("GETAF", "MADPA", "MADCH"), 8000, 70),
-    Linea("C-BCN-R1", "Rodalies Barcelona R1", "Cercanías", ("MATAR", "BCNSA"), 7000, 60),
-    Linea("C-BCN-R4", "Rodalies Barcelona R4", "Cercanías", ("SABAD", "BCNSA"), 6500, 60),
+    Linea("AVE-MAD-BCN", "AVE Madrid – Barcelona", "AVE", ("MADPA", "ZARDE", "TARRA", "BCNSA"), 3200),
 )
 
-# Factores de demanda por tipo de tren. Índice 0 = lunes ... 6 = domingo.
+# Operadores del corredor: cuotas que suman 1 y 28 servicios al día en total. Avlo es la marca low cost de Renfe.
+OPERADORES = (
+    Operador("RENFE", "Renfe", "Renfe Viajeros", "Alta velocidad", 0.40, 12, 2.5, 0.004, 1.00),
+    Operador("IRYO", "Iryo", "ILSA (Trenitalia, Air Nostrum)", "Alta velocidad", 0.25, 7, 2.2, 0.003, 1.00),
+    Operador("OUIGO", "Ouigo", "SNCF Voyageurs España", "Low cost", 0.20, 5, 3.4, 0.008, 1.08),
+    Operador("AVLO", "Avlo", "Renfe Viajeros", "Low cost", 0.15, 4, 2.8, 0.006, 1.06),
+)
+
+# Factores de demanda del AVE. Índice 0 = lunes ... 6 = domingo.
 _FACTOR_DIA_SEMANA = {
-    "AVE":             (1.05, 0.85, 0.85, 0.95, 1.25, 0.80, 1.20),
-    "Larga Distancia": (1.00, 0.85, 0.85, 0.95, 1.25, 0.85, 1.25),
-    "Media Distancia": (1.00, 1.00, 1.00, 1.00, 1.10, 0.70, 0.80),
-    "Cercanías":       (1.00, 1.02, 1.02, 1.02, 0.95, 0.45, 0.35),
+    "AVE": (1.05, 0.85, 0.85, 0.95, 1.25, 0.80, 1.20),
 }
 # Índice 0 = enero ... 11 = diciembre.
 _FACTOR_MES = {
-    "AVE":             (0.85, 0.85, 0.95, 1.05, 1.00, 1.05, 1.20, 1.20, 1.05, 1.00, 0.95, 1.10),
-    "Larga Distancia": (0.85, 0.85, 0.95, 1.05, 1.00, 1.05, 1.20, 1.20, 1.05, 1.00, 0.95, 1.10),
-    "Media Distancia": (0.95, 0.95, 1.00, 1.00, 1.00, 1.00, 0.95, 0.80, 1.00, 1.00, 1.00, 0.95),
-    "Cercanías":       (1.00, 1.00, 1.00, 0.98, 1.00, 0.95, 0.85, 0.60, 1.00, 1.02, 1.02, 0.90),
+    "AVE": (0.85, 0.85, 0.95, 1.05, 1.00, 1.05, 1.20, 1.20, 1.05, 1.00, 0.95, 1.10),
 }
-_FACTOR_FESTIVO = {"AVE": 1.15, "Larga Distancia": 1.15, "Media Distancia": 0.80, "Cercanías": 0.40}
+_FACTOR_FESTIVO = {"AVE": 1.15}
 # (tipo de tren, condición meteorológica) -> factor sobre la demanda; el resto, 1.0.
-_FACTOR_METEO_VIAJEROS = {
-    ("Cercanías", "lluvia"): 0.93,
-    ("Cercanías", "tormenta"): 0.85,
-    ("Media Distancia", "lluvia"): 0.97,
-    ("Media Distancia", "tormenta"): 0.92,
-}
+_FACTOR_METEO_VIAJEROS: dict[tuple[str, str], float] = {}  # el AVE no varía con el tiempo en este modelo
 
-# Retraso medio en llegada (minutos) por tipo de tren y factores sobre él.
-_RETRASO_MEDIO_MIN = {"AVE": 2.5, "Larga Distancia": 6.0, "Media Distancia": 4.0, "Cercanías": 3.0}
+# Factores sobre el retraso medio de cada operador.
 _FACTOR_METEO_RETRASO = {"despejado": 1.0, "nuboso": 1.05, "lluvia": 1.5, "tormenta": 2.5}
 _HORAS_PUNTA = (7, 8, 9, 17, 18, 19, 20)
 
@@ -310,10 +290,16 @@ def _viajeros(
                 "comunidad": est.comunidad,
                 "latitud": est.latitud,
                 "longitud": est.longitud,
-                "demanda_base": linea.demanda_base * est.peso,
+                "operador_id": op.id,
+                "operador_nombre": op.nombre,
+                "operador_empresa": op.empresa,
+                "operador_segmento": op.segmento,
+                "factor_finde": op.factor_finde,
+                "demanda_base": linea.demanda_base * est.peso * op.cuota,
             }
             for linea in LINEAS
             for est in (estaciones[parada] for parada in linea.paradas)
+            for op in OPERADORES
         ]
     )
     df = pd.merge(pd.DataFrame({"fecha": fechas}), pares, how="cross")
@@ -329,36 +315,26 @@ def _viajeros(
         _lookup(_FACTOR_DIA_SEMANA, tipo_tren, df.fecha.dt.dayofweek.to_numpy())
         * _lookup(_FACTOR_MES, tipo_tren, df.fecha.dt.month.to_numpy() - 1)
         * np.where(df.es_festivo, df.tipo_tren.map(_FACTOR_FESTIVO), 1.0)
+        * np.where(df.es_festivo | (df.fecha.dt.dayofweek >= 5), df.factor_finde, 1.0)
         * factor_meteo
         * rng.lognormal(0.0, 0.08, len(df))
     )
     df["viajeros"] = np.rint(df.demanda_base.to_numpy() * factor).astype("int64")
-    return df[list(VIAJEROS_COLUMNS)].sort_values(["fecha", "linea_id", "estacion_id"], ignore_index=True)
+    return df[list(VIAJEROS_COLUMNS)].sort_values(["fecha", "linea_id", "estacion_id", "operador_id"], ignore_index=True)
 
 
 def _puntualidad(
     rng: np.random.Generator, fechas: pd.DatetimeIndex, meteo: pd.DataFrame, festivos: dict[date, str]
 ) -> pd.DataFrame:
     estaciones = {e.id: e for e in ESTACIONES}
-    dia_semana = fechas.dayofweek.to_numpy()
     partes = []
-    for linea in LINEAS:
-        servicios_dia = np.full(len(fechas), linea.servicios_dia)
-        if linea.tipo_tren == "Cercanías":  # menos oferta en fin de semana
-            servicios_dia = np.where(dia_semana >= 5, np.rint(servicios_dia * 0.6), servicios_dia).astype(int)
+    for linea, op in ((linea, op) for linea in LINEAS for op in OPERADORES):
+        servicios_dia = np.full(len(fechas), op.servicios_dia)
         fecha = np.repeat(fechas.to_numpy(), servicios_dia)
         n = len(fecha)
         orden = np.concatenate([np.arange(k) for k in servicios_dia])
 
-        if linea.tipo_tren == "Cercanías":  # dos picos: mañana y tarde
-            en_pico = rng.random(n) < 0.55
-            minutos = np.where(
-                en_pico,
-                rng.choice([8 * 60 + 15, 18 * 60 + 30], n) + rng.normal(0.0, 55.0, n),
-                rng.uniform(5.5 * 60, 23.5 * 60, n),
-            )
-        else:
-            minutos = rng.uniform(7 * 60, 22.5 * 60, n)
+        minutos = rng.uniform(7 * 60, 22.5 * 60, n)
         minutos = np.clip(np.rint(minutos), 5 * 60, 23 * 60 + 59).astype("int64")
 
         # Estación de llegada: cualquier parada menos el origen, ponderada por tamaño.
@@ -369,10 +345,12 @@ def _puntualidad(
                 {
                     "fecha": fecha,
                     "servicio_id": (
-                        linea.id + "-" + pd.Series(fecha).dt.strftime("%Y%m%d") + "-" + pd.Series(orden).map("{:03d}".format)
+                        linea.id + "-" + op.id + "-" + pd.Series(fecha).dt.strftime("%Y%m%d") + "-" + pd.Series(orden).map("{:03d}".format)
                     ),
                     "linea_id": linea.id,
-                    "tipo_tren": linea.tipo_tren,
+                    "operador_id": op.id,
+                    "retraso_medio_op": op.retraso_medio_min,
+                    "p_cancelacion_op": op.p_cancelacion,
                     "estacion_id": rng.choice(llegadas, size=n, p=pesos / pesos.sum()),
                     "hora_prevista": fecha + minutos.astype("timedelta64[m]"),
                 }
@@ -387,14 +365,14 @@ def _puntualidad(
     n = len(df)
     hora_punta = np.isin(df.hora_prevista.dt.hour.to_numpy(), _HORAS_PUNTA)
     retraso_medio = (
-        df.tipo_tren.map(_RETRASO_MEDIO_MIN).to_numpy()
-        * np.where(hora_punta, np.where(df.tipo_tren == "Cercanías", 1.6, 1.2), 1.0)
+        df.retraso_medio_op.to_numpy()
+        * np.where(hora_punta, 1.2, 1.0)
         * df.condicion_meteo.map(_FACTOR_METEO_RETRASO).to_numpy()
         * np.where(df.es_festivo, 0.85, 1.0)
         * (1.0 + 0.12 * df.peso_estacion.to_numpy())
     )
     retraso = np.clip(np.rint(rng.gamma(1.2, retraso_medio / 1.2)), 0, 180).astype("int64")
-    p_cancelacion = np.where(df.condicion_meteo == "tormenta", 0.025, 0.004)
+    p_cancelacion = df.p_cancelacion_op.to_numpy() * np.where(df.condicion_meteo == "tormenta", 6.0, 1.0)
     cancelado = rng.random(n) < p_cancelacion
 
     df["retraso_min"] = pd.array(retraso, dtype="Int64")
@@ -402,7 +380,7 @@ def _puntualidad(
     df["hora_real"] = df.hora_prevista + pd.to_timedelta(retraso, unit="m")
     df.loc[cancelado, "hora_real"] = pd.NaT
     df["estado"] = np.where(cancelado, "cancelado", "realizado")
-    return df[list(PUNTUALIDAD_COLUMNS)].sort_values(["fecha", "hora_prevista", "linea_id"], ignore_index=True)
+    return df[list(PUNTUALIDAD_COLUMNS)].sort_values(["fecha", "hora_prevista", "linea_id", "operador_id"], ignore_index=True)
 
 
 def main(argv: list[str] | None = None) -> int:

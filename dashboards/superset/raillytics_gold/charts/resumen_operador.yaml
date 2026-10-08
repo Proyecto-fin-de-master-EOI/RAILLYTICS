@@ -1,0 +1,46 @@
+slice_name: Resumen por operador
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  query_mode: aggregate
+  groupby:
+  - operador
+  - operador_empresa
+  - operador_segmento
+  time_grain_sqla: P1D
+  temporal_columns_lookup: {}
+  metrics:
+  - total_viajeros
+  - media_viajeros_dia
+  all_columns: []
+  percent_metrics: []
+  timeseries_limit_metric: total_viajeros
+  order_by_cols: []
+  order_desc: true
+  row_limit: 1000
+  server_page_length: 10
+  show_totals: false
+  table_timestamp_format: smart_date
+  show_cell_bars: true
+  color_pn: true
+  allow_render_html: true
+  column_config: {}
+  conditional_formatting: []
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 9f090e11-403e-5963-873c-11f5b1e28bdf
+version: 1.0.0
+dataset_uuid: 96722fb6-8e32-5c11-a4ed-d77abe207f92
+is_managed_externally: false
+external_url: null

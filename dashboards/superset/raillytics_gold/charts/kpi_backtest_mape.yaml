@@ -1,0 +1,32 @@
+slice_name: Error medio absoluto (últimos 8 trimestres)
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha_inicio
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: ultimos_8
+  metric: mape
+  header_font_size: 0.4
+  subheader: regla del nivel de la predicción
+  subheader_font_size: 0.15
+  y_axis_format: .1%
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: f3e892b8-26e3-596a-8517-48b8880ccf18
+version: 1.0.0
+dataset_uuid: d9f69c6f-4670-5b48-881c-3f6908db655b
+is_managed_externally: false
+external_url: null

@@ -160,4 +160,51 @@ class QualityGatesSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll 
       Seq(QualityGates.resultado("t", "g", QualityGates.Aviso, pasa = true, 1, "= 1")),
       "run", "p", "bronze", "noexiste://bucket/calidad/")
   }
+
+  // Regresión: GoldBuilder evalúa gates dos veces dentro de la misma ejecución, a la
+  // entrada sobre Silver y a la salida sobre Gold, con el mismo run_id. El fichero
+  // lleva la capa además del run_id para que la segunda no pise a la primera.
+  it should "keep both registrations when one run evaluates two layers" in {
+    val calidadDir = TestPaths.fileUri(Files.createTempDirectory("calidad-spec").resolve("calidad"))
+    val runId = "20260925T100000-gold_build-abc123"
+    val res = Seq(QualityGates.resultado("t", "g", QualityGates.Aviso, pasa = true, 1, "= 1"))
+
+    QualityGates.registrar(res, runId, "gold_build", "silver", calidadDir, lanzadoPor = "cli")
+    QualityGates.registrar(res, runId, "gold_build", "gold", calidadDir, lanzadoPor = "cli")
+
+    spark.read.parquet(calidadDir).select("capa").collect().map(_.getString(0)).toSet shouldBe Set("silver", "gold")
+  }
+
+
+  "QualityGates.loadOpcionalesFromStream" should "read the optional tables declared in the YAML" in {
+    val texto =
+      """opcionales: [silver_a]
+        |tablas:
+        |  silver_a:
+        |    - {nombre: filas, tipo: filas_min, minimo: 1}
+        |  gold_b:
+        |    - {nombre: filas, tipo: filas_min, minimo: 1}
+        |""".stripMargin
+
+    QualityGates.loadOpcionalesFromStream(yaml(texto)) shouldBe Set("silver_a")
+  }
+
+  it should "return an empty set when the YAML declares none" in {
+    val texto = "tablas:\n  silver_a:\n    - {nombre: filas, tipo: filas_min, minimo: 1}\n"
+
+    QualityGates.loadOpcionalesFromStream(yaml(texto)) shouldBe empty
+  }
+
+  it should "reject an optional table that has no gates, so a typo does not silently skip a table" in {
+    val texto = "opcionales: [silver_typo]\ntablas:\n  silver_a:\n    - {nombre: filas, tipo: filas_min, minimo: 1}\n"
+
+    val e = the[IllegalArgumentException] thrownBy QualityGates.loadOpcionalesFromStream(yaml(texto))
+    e.getMessage should include("silver_typo")
+  }
+
+  it should "keep loading the gates themselves when the YAML has an opcionales key" in {
+    val texto = "opcionales: [silver_a]\ntablas:\n  silver_a:\n    - {nombre: filas, tipo: filas_min, minimo: 1}\n"
+
+    QualityGates.loadFromStream(yaml(texto)).keySet shouldBe Set("silver_a")
+  }
 }

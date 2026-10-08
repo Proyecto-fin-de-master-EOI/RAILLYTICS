@@ -64,7 +64,7 @@ object ParquetConverter extends Logging {
   // (csv: todas las columnas string con los nombres de la cabecera; json: lo que
   // Spark deduzca) más _corrupt_record, que Spark solo rellena si está en el esquema.
   def inferSchema(source: DataSource, inputGlob: String)(implicit spark: SparkSession): StructType =
-    withCorruptRecordCol(SourceFormat.batchReader(source.format).load(inputGlob).schema)
+    withCorruptRecordCol(SourceFormat.batchReader(source.format, source.options).load(inputGlob).schema)
 
   private def withCorruptRecordCol(schema: StructType): StructType =
     if (schema.fieldNames.contains(CorruptRecordCol)) schema else schema.add(CorruptRecordCol, StringType)
@@ -79,7 +79,7 @@ object ParquetConverter extends Logging {
     val input = s"${settings.l1DoneRoot}/${source.id}/*"   // plano, sin recursión (hermano de data/bronze/)
     val stream = SourceFormat.kind(source.format) match {
       case SourceFormat.Tabular =>
-        SourceFormat.streamReader(source.format)
+        SourceFormat.streamReader(source.format, source.options)
           .schema(inferSchema(source, input))
           .option("columnNameOfCorruptRecord", CorruptRecordCol)
           .load(input)
@@ -172,7 +172,7 @@ object ParquetConverter extends Logging {
           // convertiría con los datos cambiados de columna sin que nada avisara.
           if (source.format == "csv") {
             val distintas = files.flatMap { f =>
-              val cabecera = cabeceraCsv(localFs, f)
+              val cabecera = cabeceraCsv(localFs, f, source.options.getOrElse("delimiter", ","))
               if (cabeceraCoincide(cabecera, columnas)) None else Some(f -> cabecera)
             }
             distintas.foreach { case (f, h) =>
@@ -384,14 +384,14 @@ object ParquetConverter extends Logging {
 
   // ------------------------------------------------------------------ cabeceras csv
 
-  // Primera línea del fichero, sin BOM ni comillas (como la vería Spark al inferir).
-  private def cabeceraCsv(fs: FileSystem, uri: String): Seq[String] = {
+  // Primera línea del fichero, sin BOM ni comillas (como la vería Spark al inferir), partida con el delimitador de la fuente.
+  private def cabeceraCsv(fs: FileSystem, uri: String, delimitador: String): Seq[String] = {
     val in = fs.open(new Path(uri))
     val linea = try {
       val reader = new BufferedReader(new InputStreamReader(in, UTF_8))
       Option(reader.readLine()).getOrElse("")
     } finally in.close()
-    linea.stripPrefix("﻿").split(",", -1).toSeq.map(_.trim.stripPrefix("\"").stripSuffix("\""))
+    linea.stripPrefix("\uFEFF").split(java.util.regex.Pattern.quote(delimitador), -1).toSeq.map(_.trim.stripPrefix("\"").stripSuffix("\""))
   }
 
   // Coincide si tiene las mismas columnas en el mismo orden (sin distinguir

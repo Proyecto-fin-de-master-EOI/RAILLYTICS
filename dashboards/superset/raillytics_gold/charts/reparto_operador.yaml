@@ -1,4 +1,4 @@
-slice_name: Reparto de viajeros por tipo de tren
+slice_name: Cuota de viajeros por operador
 description: null
 certified_by: null
 certification_details: null
@@ -12,7 +12,7 @@ params:
     operator: TEMPORAL_RANGE
     subject: fecha
   groupby:
-  - tipo_tren
+  - operador
   metric: total_viajeros
   row_limit: 100
   sort_by_metric: true
@@ -34,7 +34,7 @@ params:
   dashboards: []
 query_context: null
 cache_timeout: null
-uuid: 29bf08c0-a505-59a9-9227-fe25b263c3c3
+uuid: da4676a1-93c7-50b1-899e-8b652ee37119
 version: 1.0.0
 dataset_uuid: 96722fb6-8e32-5c11-a4ed-d77abe207f92
 is_managed_externally: false

@@ -4,6 +4,7 @@ import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.types._
 import org.yaml.snakeyaml.{LoaderOptions, Yaml}
 import org.yaml.snakeyaml.constructor.SafeConstructor
+import raillytics.common.fs.HadoopFs
 import raillytics.common.logging.Logging
 import raillytics.common.trazabilidad.Cargas
 
@@ -201,6 +202,25 @@ object QualityGates extends Logging {
     resultado.result()
   }
 
+  // Tablas cuyo prefijo puede no existir todavía en el lake (clave de primer nivel `opcionales:` del YAML): si su vista no se
+  // puede registrar, quien evalúa (QualityGatesApp, GoldBuilder) las omite con un aviso en vez de dejar sus gates en 'error'.
+  def loadOpcionales(path: String): Set[String] = {
+    val is = new FileInputStream(path)
+    try loadOpcionalesFromStream(is) finally is.close()
+  }
+
+  def loadOpcionalesFromStream(is: InputStream): Set[String] = {
+    val yaml = new Yaml(new SafeConstructor(new LoaderOptions()))
+    val root = Option(yaml.load(is).asInstanceOf[java.util.Map[String, Object]])
+      .getOrElse(throw new IllegalArgumentException("quality_gates.yml vacío"))
+    val tablas = Option(root.get("tablas")).map(_.asInstanceOf[java.util.Map[String, Object]].keySet.asScala.toSet).getOrElse(Set.empty[String])
+    val opcionales = Option(root.get("opcionales"))
+      .map(_.asInstanceOf[java.util.List[Object]].asScala.map(_.toString).toSet).getOrElse(Set.empty[String])
+    val sinGates = opcionales -- tablas
+    require(sinGates.isEmpty, s"quality_gates.yml: 'opcionales' menciona tablas que no tienen gates en 'tablas': ${sinGates.toSeq.sorted.mkString(", ")}")
+    opcionales
+  }
+
   private def parseGate(tabla: String, m: Map[String, Any]): Gate = {
     def str(k: String): Option[String] = m.get(k).flatMap(Option(_)).map(_.toString)
     def lista(k: String): Seq[Any] = m.get(k).flatMap(Option(_)) match {
@@ -319,16 +339,19 @@ object QualityGates extends Logging {
     }
   }
 
-  // Un fichero Parquet por evaluación, añadido al directorio compartido con el lado
-  // Python. Best effort, como la trazabilidad de cargas: si no se puede escribir
-  // queda en el log, pero el resultado de los gates ya se ha aplicado a la carga.
+  // Un fichero <run_id>-<capa>.parquet por evaluación, en el directorio compartido
+  // con el lado Python. Lleva la capa además del run_id porque un mismo proceso puede
+  // evaluar gates dos veces bajo la misma ejecución: GoldBuilder lo hace a la entrada
+  // (silver) y a la salida (gold), y con solo el run_id la segunda pisaría a la primera.
+  // Best effort, como la trazabilidad de cargas: si no se puede escribir queda en el
+  // log, pero el resultado de los gates ya se ha aplicado a la carga.
   def registrar(resultados: Seq[Resultado], runId: String, proceso: String, capa: String, calidadDir: String,
                 lanzadoPor: String = Cargas.lanzadoPorDefecto())(implicit spark: SparkSession): Unit =
     if (resultados.nonEmpty) {
       try {
-        spark.createDataFrame(filasRegistro(resultados, runId, proceso, capa, lanzadoPor).asJava, Schema)
-          .coalesce(1)
-          .write.mode("append").parquet(calidadDir)
+        HadoopFs.escribirFicheroUnico(
+          spark.createDataFrame(filasRegistro(resultados, runId, proceso, capa, lanzadoPor).asJava, Schema),
+          calidadDir, s"$runId-$capa")
         logger.info(s"${resultados.size} resultado(s) de quality gates de $runId registrados en $calidadDir")
       } catch {
         case NonFatal(e) => logger.error(s"no se pudieron registrar los resultados de quality gates de $runId", e)

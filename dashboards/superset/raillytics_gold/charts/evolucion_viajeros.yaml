@@ -1,4 +1,4 @@
-slice_name: Evolución diaria de viajeros por tipo de tren
+slice_name: Evolución diaria de viajeros por estación
 description: null
 certified_by: null
 certification_details: null
@@ -19,7 +19,7 @@ params:
   metrics:
   - total_viajeros
   groupby:
-  - tipo_tren
+  - estacion
   order_desc: true
   row_limit: 10000
   truncate_metric: true

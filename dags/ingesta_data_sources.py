@@ -1,10 +1,12 @@
 # dags/ingesta_data_sources.py
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from airflow.sdk import dag, task
+from airflow.sdk.exceptions import AirflowSkipException
 
 from raillytics.ingesta.download import download
 from raillytics.ingesta.sources import load_sources
@@ -52,8 +54,27 @@ def ingesta_data_sources():
                     raise QualityGateError(descarga.gates)
         return str(descarga.path)
 
+    # Predicción diaria de demanda del corredor AVE Madrid–Barcelona (raillytics.prediccion): se lanza al final y solo a
+    # petición (`make 00_ingest` pasa predecir=true en la conf del DAG); las ejecuciones programadas solo ingestan.
+    # No espera a L1/L2 (apps Spark que corren fuera de Airflow): usa lo que ya haya procesado en el lake.
+    # all_done: que falle la descarga de una fuente no impide predecir con lo que haya.
+    @task(trigger_rule="all_done", execution_timeout=timedelta(minutes=30))
+    def predecir(**contexto) -> str:
+        conf = contexto["dag_run"].conf or {}
+        if not conf.get("predecir"):
+            raise AirflowSkipException("la predicción solo se lanza a petición (make 00_ingest); esta ejecución solo ingesta")
+        # Import dentro de la tarea: el dag-processor no necesita pandas/duckdb para parsear el DAG.
+        from raillytics.prediccion.servicio import predecir_desde_entorno
+
+        hoy = (contexto.get("logical_date") or datetime.now(timezone.utc)).date()
+        resultado = predecir_desde_entorno(
+            conf.get("trimestre") or None, hoy, os.environ, version_prompt=conf.get("prompt") or None
+        )
+        return str(resultado.ruta)
+
     source_ids = [source.id for source in load_sources(CONFIG_PATH)]
-    download_source.expand(source_id=source_ids)
+    descargas = download_source.expand(source_id=source_ids)
+    descargas >> predecir()
 
 
 ingesta_data_sources()

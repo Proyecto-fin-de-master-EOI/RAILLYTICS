@@ -1,0 +1,159 @@
+table_name: backtest_nivel
+main_dttm_col: fecha_inicio
+description: 'Backtest de la regla de nivel de la predicción con los trimestres reales de la CNMC. Datos REALES de la CNMC (no sintéticos),
+  solo el corredor AVE Madrid–Barcelona. En la demanda Avlo va dentro de Renfe (la CNMC no la separa); en los precios aparece por separado
+  hasta 2025-T4. «Viajeros por plaza ofertada» no es ocupación: un asiento sirve a varios tramos.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: |-
+  -- previsto(T) = real(T-4) × real(T-2) / real(T-6): la regla de raillytics.prediccion.nivel con la CNMC publicando con dos trimestres de retraso.
+  WITH t AS (
+      SELECT fecha_inicio, anio, trimestre, SUM(viajeros) AS real_total
+      FROM read_parquet('s3://raillytics-gold/fact_mercado_trimestral/*.parquet') WHERE operador_id <> 'TOTAL' GROUP BY fecha_inicio, anio, trimestre
+  ),
+  b AS (
+      SELECT *, LAG(real_total, 2) OVER w AS ultimo_publicado, LAG(real_total, 4) OVER w AS mismo_trimestre_anterior,
+             LAG(real_total, 6) OVER w AS ultimo_publicado_anterior
+      FROM t WINDOW w AS (ORDER BY fecha_inicio)
+  ),
+  p AS (
+      SELECT fecha_inicio, anio || '-T' || trimestre AS trimestre_etiqueta, real_total,
+             CAST(round(mismo_trimestre_anterior * 1.0 * ultimo_publicado / ultimo_publicado_anterior) AS BIGINT) AS previsto_total
+      FROM b WHERE mismo_trimestre_anterior IS NOT NULL AND ultimo_publicado IS NOT NULL AND ultimo_publicado_anterior IS NOT NULL
+  )
+  SELECT fecha_inicio, trimestre_etiqueta, real_total, previsto_total,
+         ABS(previsto_total - real_total) * 1.0 / real_total AS error_absoluto,
+         (previsto_total - real_total) * 1.0 / real_total AS error_relativo,
+         ROW_NUMBER() OVER (ORDER BY fecha_inicio DESC) <= 8 AS ultimos_8
+  FROM p
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: d9f69c6f-4670-5b48-881c-3f6908db655b
+metrics:
+- metric_name: real
+  verbose_name: Viajeros reales
+  metric_type: null
+  expression: SUM(real_total)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: previsto
+  verbose_name: Viajeros previstos
+  metric_type: null
+  expression: SUM(previsto_total)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: mape
+  verbose_name: Error medio absoluto
+  metric_type: null
+  expression: AVG(error_absoluto)
+  description: null
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: error_medio
+  verbose_name: Error relativo
+  metric_type: null
+  expression: AVG(error_relativo)
+  description: null
+  d3format: .1%
+  extra: null
+  warning_text: null
+columns:
+- column_name: fecha_inicio
+  verbose_name: Trimestre (inicio)
+  is_dttm: true
+  is_active: true
+  type: DATE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: trimestre_etiqueta
+  verbose_name: Trimestre
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: real_total
+  verbose_name: Viajeros reales
+  is_dttm: false
+  is_active: true
+  type: HUGEINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: previsto_total
+  verbose_name: Viajeros previstos por la regla
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: error_absoluto
+  verbose_name: Error absoluto
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: error_relativo
+  verbose_name: Error relativo
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ultimos_8
+  verbose_name: Últimos 8 trimestres
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

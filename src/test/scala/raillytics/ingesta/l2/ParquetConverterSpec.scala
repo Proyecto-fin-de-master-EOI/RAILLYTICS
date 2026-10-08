@@ -46,7 +46,7 @@ class ParquetConverterSpec extends AnyFlatSpec with Matchers with BeforeAndAfter
 
   private def csvBatch(source: DataSource, settings: ParquetConverterSettings) = {
     val input = s"${settings.l1DoneRoot}/${source.id}/*"
-    spark.read.format("csv").option("header", "true")
+    spark.read.format("csv").option("header", "true").options(source.options)
       .schema(ParquetConverter.inferSchema(source, input))
       .option("columnNameOfCorruptRecord", ParquetConverter.CorruptRecordCol)
       .load(input)
@@ -119,6 +119,40 @@ class ParquetConverterSpec extends AnyFlatSpec with Matchers with BeforeAndAfter
     cargas.count(_(2) == "error") shouldBe 2
     val gates = trazas(settings.calidadDir, "gate", "resultado", "valor").map(_.toList).toSet
     gates should contain allOf (List("cabecera_csv", "fallo", 1.0), List("registros_corruptos", "fallo", 1.0), List("filas_convertidas", "ok", 1.0))
+  }
+
+  it should "read a semicolon-delimited csv with BOM and accented headers using the source options" in {
+    val tmpDir = Files.createTempDirectory("parquet-converter-delimiter-spec")
+    val settings = settingsIn(tmpDir)
+    val l1DoneDir = tmpDir.resolve("l1_done/cnmc")
+    Files.createDirectories(l1DoneDir)
+    Files.writeString(l1DoneDir.resolve("ds.csv"), "\uFEFFTrimestre;Viajeros (Núm)\n2026T2;3424458\n2026T1;2927096\n", UTF_8)
+    val source = DataSource("cnmc", "CNMC test", "https://example.invalid", "csv", options = Map("delimiter" -> ";"))
+
+    ParquetConverter.processBatch(source, csvBatch(source, settings), 0L, spark.sparkContext.hadoopConfiguration, settings)
+
+    val result = spark.read.parquet(BronzePaths.l2(settings.bronzeRoot, "cnmc", today))
+    result.columns should contain theSameElementsAs Seq("Trimestre", "Viajeros (Núm)")   // sin BOM en el nombre de la primera columna
+    result.collect().map(_.toSeq).toSet shouldBe Set(Seq("2026T2", "3424458"), Seq("2026T1", "2927096"))
+    trazas(settings.calidadDir, "gate", "resultado").map(_.toList).toSet should contain(List("cabecera_csv", "ok"))
+  }
+
+  it should "quarantine a semicolon csv whose columns changed, comparing the header with the source delimiter" in {
+    val tmpDir = Files.createTempDirectory("parquet-converter-delimiter-gates-spec")
+    val settings = settingsIn(tmpDir)
+    val l1DoneDir = tmpDir.resolve("l1_done/cnmc")
+    Files.createDirectories(l1DoneDir)
+    Files.writeString(l1DoneDir.resolve("a_bueno.csv"), "Trimestre;Viajeros\n2026T2;100\n", UTF_8)
+    Files.writeString(l1DoneDir.resolve("b_otro_orden.csv"), "Viajeros;Trimestre\n7;2026T1\n", UTF_8)
+    val source = DataSource("cnmc", "CNMC test", "https://example.invalid", "csv", options = Map("delimiter" -> ";"))
+
+    val query = ParquetConverter.startQuery(source, settings, spark.sparkContext.hadoopConfiguration)
+    query.processAllAvailable()
+    query.stop()
+
+    spark.read.parquet(BronzePaths.l2(settings.bronzeRoot, "cnmc", today)).collect().map(_.toSeq) shouldBe Array(Seq("2026T2", "100"))
+    Files.exists(tmpDir.resolve("rejected/cnmc/b_otro_orden.csv")) shouldBe true
+    Files.readString(tmpDir.resolve("rejected/cnmc/b_otro_orden.csv.rechazo.txt")) should include("cabecera")
   }
 
   it should "not write parquet twice when the same batch is replayed after a restart" in {
@@ -267,4 +301,42 @@ class ParquetConverterSpec extends AnyFlatSpec with Matchers with BeforeAndAfter
     }
     Files.exists(tmpDir.resolve("processed/renfe_vehicle_positions/sample.json")) shouldBe true
   }
+
+  it should "parse an xml source as one row using the rowTag declared by the source" in {
+    val tmpDir = Files.createTempDirectory("parquet-converter-xml-spec")
+    val settings = settingsIn(tmpDir)
+    val l1DoneDir = tmpDir.resolve("l1_done/boe_calendario_laboral_2026")
+    Files.createDirectories(l1DoneDir)
+    // La forma del XML del BOE: un <documento> con sus metadatos y la tabla de festivos en <texto>.
+    Files.writeString(
+      l1DoneDir.resolve("calendario.xml"),
+      """<?xml version="1.0" encoding="UTF-8"?>
+        |<documento>
+        |  <metadatos><identificador>BOE-A-2025-21667</identificador></metadatos>
+        |  <texto><table><tbody>
+        |    <tr><td>1 de enero</td></tr>
+        |    <tr><td>6 de enero</td></tr>
+        |  </tbody></table></texto>
+        |</documento>
+        |""".stripMargin,
+      UTF_8
+    )
+    val source = DataSource("boe_calendario_laboral_2026", "BOE test", "https://example.invalid", "xml",
+      options = Map("rowTag" -> "documento"))
+
+    val query = ParquetConverter.startQuery(source, settings, spark.sparkContext.hadoopConfiguration)
+    query.processAllAvailable()
+    query.stop()
+
+    val result = spark.read.parquet(BronzePaths.l2(settings.bronzeRoot, source.id, today))
+    // rowTag = el elemento raiz -> una fila con el documento entero anidado, sin perder la tabla de
+    // festivos: extraerla es trabajo de Silver, no de la ingesta.
+    result.count() shouldBe 1
+    result.columns should contain allOf ("metadatos", "texto")
+    result.toJSON.collect().head should include ("6 de enero")
+    result.columns should not contain ParquetConverter.CorruptRecordCol
+
+    Files.exists(tmpDir.resolve("processed/boe_calendario_laboral_2026/calendario.xml")) shouldBe true
+  }
+
 }

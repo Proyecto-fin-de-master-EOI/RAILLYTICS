@@ -1,6 +1,5 @@
-dashboard_title: Puntualidad
-description: 'Dashboard 2 del diseño: retrasos por línea, impacto de la meteorología y estaciones críticas. Fuente: capa Gold
-  (DuckDB sobre MinIO).'
+dashboard_title: Puntualidad · AVE Madrid–Barcelona
+description: 'Puntualidad del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN): retrasos por operador, estación de llegada, franja horaria y tipo de día, impacto de la meteorología y estaciones críticas. Fuente: capa Gold (DuckDB sobre MinIO).'
 css: ''
 slug: puntualidad
 uuid: 68ac736c-7245-51f8-9308-c394a5125a22
@@ -16,6 +15,8 @@ position:
     id: GRID_ID
     children:
     - ROW-puntualidad-1
+    - ROW-puntualidad-operador-1
+    - ROW-puntualidad-operador-2
     - ROW-puntualidad-2
     - ROW-puntualidad-3
     - ROW-puntualidad-4
@@ -26,7 +27,7 @@ position:
     id: HEADER_ID
     type: HEADER
     meta:
-      text: Puntualidad
+      text: Puntualidad · AVE Madrid–Barcelona
   ROW-puntualidad-1:
     type: ROW
     id: ROW-puntualidad-1
@@ -96,6 +97,54 @@ position:
       chartId: 15
       uuid: b7d3af59-8520-5c99-88c7-e268211ace8e
       sliceName: Servicios cancelados (%)
+  ROW-puntualidad-operador-1:
+    type: ROW
+    id: ROW-puntualidad-operador-1
+    children:
+    - CHART-puntualidad_operador
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-puntualidad_operador:
+    type: CHART
+    id: CHART-puntualidad_operador
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-puntualidad-operador-1
+    meta:
+      width: 12
+      height: 45
+      chartId: 101
+      uuid: cbdb2c40-fd7d-56d5-bd6d-5813109a3c4c
+      sliceName: Puntualidad por operador
+  ROW-puntualidad-operador-2:
+    type: ROW
+    id: ROW-puntualidad-operador-2
+    children:
+    - CHART-evolucion_puntualidad_operador
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-evolucion_puntualidad_operador:
+    type: CHART
+    id: CHART-evolucion_puntualidad_operador
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-puntualidad-operador-2
+    meta:
+      width: 12
+      height: 60
+      chartId: 102
+      uuid: 28d4b0b0-8e37-5a9a-b5d0-11aeaf57ab18
+      sliceName: Evolución mensual de la puntualidad (%) por operador
   ROW-puntualidad-2:
     type: ROW
     id: ROW-puntualidad-2
@@ -120,7 +169,7 @@ position:
       height: 60
       chartId: 16
       uuid: 72e024e6-8b1e-595e-bf19-2d7ece42d172
-      sliceName: Evolución mensual de la puntualidad (%) por tipo de tren
+      sliceName: Evolución mensual de la puntualidad (%) por estación de llegada
   CHART-evolucion_retraso:
     type: CHART
     id: CHART-evolucion_retraso
@@ -134,20 +183,20 @@ position:
       height: 60
       chartId: 17
       uuid: 9510fbe3-eae2-5ab7-be55-e562ab8869c9
-      sliceName: Evolución diaria del retraso medio por tipo de tren
+      sliceName: Evolución diaria del retraso medio por estación de llegada
   ROW-puntualidad-3:
     type: ROW
     id: ROW-puntualidad-3
     children:
-    - CHART-puntualidad_linea
+    - CHART-puntualidad_estacion
     parents:
     - ROOT_ID
     - GRID_ID
     meta:
       background: BACKGROUND_TRANSPARENT
-  CHART-puntualidad_linea:
+  CHART-puntualidad_estacion:
     type: CHART
-    id: CHART-puntualidad_linea
+    id: CHART-puntualidad_estacion
     children: []
     parents:
     - ROOT_ID
@@ -157,8 +206,8 @@ position:
       width: 12
       height: 70
       chartId: 18
-      uuid: 81336db4-f072-59f4-84cd-11d76c6e5ab1
-      sliceName: Puntualidad por línea
+      uuid: 9bd13b24-7fbd-58d8-ac1f-433941bf9fbc
+      sliceName: Puntualidad por estación de llegada
   ROW-puntualidad-4:
     type: ROW
     id: ROW-puntualidad-4
@@ -183,7 +232,7 @@ position:
       height: 65
       chartId: 19
       uuid: 53c0a3b4-2fc8-5908-a6d9-646e2f38bb69
-      sliceName: Retraso medio por franja horaria y tipo de tren
+      sliceName: Retraso medio por franja horaria y día de la semana
   CHART-impacto_meteo_retraso:
     type: CHART
     id: CHART-impacto_meteo_retraso
@@ -202,16 +251,16 @@ position:
     type: ROW
     id: ROW-puntualidad-5
     children:
-    - CHART-retraso_linea
+    - CHART-retraso_tipo_dia
     - CHART-estaciones_criticas
     parents:
     - ROOT_ID
     - GRID_ID
     meta:
       background: BACKGROUND_TRANSPARENT
-  CHART-retraso_linea:
+  CHART-retraso_tipo_dia:
     type: CHART
-    id: CHART-retraso_linea
+    id: CHART-retraso_tipo_dia
     children: []
     parents:
     - ROOT_ID
@@ -221,8 +270,8 @@ position:
       width: 6
       height: 70
       chartId: 21
-      uuid: 8280fa75-f009-5d62-b91c-5370e771d4df
-      sliceName: Retraso medio por línea
+      uuid: 2d9a069d-e74c-5f93-8176-0e8a2890023f
+      sliceName: Retraso medio por tipo de día
   CHART-estaciones_criticas:
     type: CHART
     id: CHART-estaciones_criticas
@@ -263,13 +312,13 @@ metadata:
     controlValues: {}
     type: NATIVE_FILTER
     description: ''
-  - id: NATIVE_FILTER-puntualidad-tipo-tren
-    name: Tipo de tren
+  - id: NATIVE_FILTER-puntualidad-tipo-dia
+    name: Tipo de día
     filterType: filter_select
     targets:
     - datasetUuid: af719c1c-3a54-5f0d-b18c-bb5dcda219dd
       column:
-        name: tipo_tren
+        name: tipo_dia
     defaultDataMask:
       extraFormData: {}
       filterState: {}
@@ -287,13 +336,37 @@ metadata:
       inverseSelection: false
     type: NATIVE_FILTER
     description: ''
-  - id: NATIVE_FILTER-puntualidad-linea
-    name: Línea
+  - id: NATIVE_FILTER-puntualidad-estacion
+    name: Estación de llegada
     filterType: filter_select
     targets:
     - datasetUuid: af719c1c-3a54-5f0d-b18c-bb5dcda219dd
       column:
-        name: linea
+        name: estacion
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: false
+      inverseSelection: false
+    type: NATIVE_FILTER
+    description: ''
+  - id: NATIVE_FILTER-puntualidad-operador
+    name: Operador
+    filterType: filter_select
+    targets:
+    - datasetUuid: af719c1c-3a54-5f0d-b18c-bb5dcda219dd
+      column:
+        name: operador
     defaultDataMask:
       extraFormData: {}
       filterState: {}

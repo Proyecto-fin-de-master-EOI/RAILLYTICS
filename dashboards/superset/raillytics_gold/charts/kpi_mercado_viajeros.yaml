@@ -1,0 +1,32 @@
+slice_name: Viajeros del último trimestre
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha_inicio
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_ultimo_trimestre AND NOT es_total
+  metric: total_viajeros
+  header_font_size: 0.4
+  subheader: último trimestre publicado (CNMC)
+  subheader_font_size: 0.15
+  y_axis_format: SMART_NUMBER
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 4a7948b0-158b-58d4-a9d4-97c48e4ce226
+version: 1.0.0
+dataset_uuid: a6f87572-5c8e-5db1-90ea-ec45e618a779
+is_managed_externally: false
+external_url: null
