@@ -95,6 +95,28 @@ def _silver_cnmc_desde_la_muestra(layout, con, muestra):
     )
 
 
+def _silver_referencia_desde_la_muestra(layout, con, muestra):
+    """`festivos` y `meteo` de la config real leen Silver (`make festivos`, `make meteo`), no la muestra.
+
+    Igual que con el Silver de la CNMC: se materializan desde la muestra con la forma y los nombres
+    de columna reales, para poder correr la predicción sin tocar la red ni el lago de verdad.
+    (`eventos` no hace falta: lo lee del CSV curado, que está en el repositorio.)
+    """
+    for tabla, frame, seleccion in (
+        ("festivos", muestra["festivos"], "CAST(fecha AS DATE) AS fecha, nombre"),
+        ("meteo", muestra["aemet"],
+         "CAST(fecha AS DATE) AS fecha, ciudad, tmed AS temperatura_media, prec AS precipitacion_mm"),
+    ):
+        destino = Path(layout.silver_root) / tabla
+        destino.mkdir(parents=True, exist_ok=True)
+        con.register("referencia_muestra", frame)
+        con.execute(
+            f"COPY (SELECT {seleccion} FROM referencia_muestra) "
+            f"TO '{(destino / f'{tabla}.parquet').as_posix()}' (FORMAT PARQUET)"
+        )
+        con.unregister("referencia_muestra")
+
+
 def test_escribir_muestra_usa_prefijos_propios_que_nunca_se_mezclan_con_las_fuentes_reales(lake):
     layout, env, con, bronze = lake
 
@@ -111,6 +133,7 @@ def test_la_muestra_cumple_el_contrato_de_la_config_real_y_permite_calcular_el_n
     muestra = generar_muestra(HASTA, 11, 42)
     escribir_muestra(con, layout, bronze.as_posix(), muestra, {})
     _silver_cnmc_desde_la_muestra(layout, con, muestra)
+    _silver_referencia_desde_la_muestra(layout, con, muestra)
 
     entradas = cargar_entradas(cargar_config(RAIZ / "config" / "prediccion.yml"), layout, con, env)
 
@@ -135,6 +158,7 @@ def test_con_la_muestra_corre_toda_la_prediccion_con_la_config_y_el_prompt_reale
     muestra = generar_muestra(HASTA, 11, 42)
     escribir_muestra(con, layout, bronze.as_posix(), muestra, {})
     _silver_cnmc_desde_la_muestra(layout, con, muestra)
+    _silver_referencia_desde_la_muestra(layout, con, muestra)
     env = dict(
         env,
         PREDICCION_CONFIG=str(RAIZ / "config" / "prediccion.yml"),

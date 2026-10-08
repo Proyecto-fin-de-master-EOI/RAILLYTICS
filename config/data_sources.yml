@@ -1,12 +1,12 @@
 # Registro de fuentes de la ingesta Bronze. Lo leen la descarga Python
 # (raillytics.ingesta.sources) y la app Scala L2 (DataSourceConfig).
 #
-# format: csv | json | zip (ver raillytics/ingesta/formats.py y SourceFormat.scala).
+# format: csv | json | xml | zip (ver raillytics/ingesta/formats.py y SourceFormat.scala).
 # La descarga comprueba que el contenido recibido ES ese formato (quality gate
 # formato_declarado): un fichero que no lo cumple va a cuarentena, no al pipeline.
 #
 # Claves opcionales por fuente (una clave desconocida es un error, en Python y en Scala):
-#   options  cómo se lee un csv: delimiter, encoding (la descarga Python y L2)
+#   options  cómo se lee el fichero: delimiter y encoding en csv, rowTag en xml (la descarga Python y L2)
 #   checks   reglas de la descarga sobre un csv: min_bytes, min_filas, columnas (solo las aplica Python)
 #   silver   tablas que construye `make 04_silver` desde la fuente: {tabla, modo: snapshot | incremental}
 sources:
@@ -98,3 +98,23 @@ sources:
     format: zip
     downloader: nap
     auth: {env: NAP_API_KEY, header: ApiKey}
+  # --- BOE (Boletín Oficial del Estado): calendario laboral, un documento XML por año ---
+  # La resolución anual de la Dirección General de Trabajo publica los festivos nacionales y los de
+  # cada comunidad autónoma en una tabla dentro de <texto>. Son el regulador de demanda diaria que
+  # no está ni en CNMC ni en el NAP: un festivo mueve los viajes como lo hace un fin de semana.
+  # `rowTag: documento` deja un Parquet de una fila con el documento entero (metadatos y texto
+  # anidados) sin perder nada; extraer la tabla de festivos es trabajo de Silver, no de la ingesta.
+  # Un año es una resolución y una URL, así que hay una fuente por año de la ventana del proyecto
+  # (el calendario de 2024 es BOE-A-2023-22014, por si el histórico se amplía hacia atrás).
+  # No declaran `silver`: la tabla de festivos sale de unir los dos años, y una tabla Silver solo
+  # puede declararla una fuente.
+  - id: boe_calendario_laboral_2025
+    name: "BOE - Calendario laboral de 2025 (festivos nacionales y por comunidad autónoma)"
+    url: "https://www.boe.es/diario_boe/xml.php?id=BOE-A-2024-21316"
+    format: xml
+    options: {rowTag: documento}
+  - id: boe_calendario_laboral_2026
+    name: "BOE - Calendario laboral de 2026 (festivos nacionales y por comunidad autónoma)"
+    url: "https://www.boe.es/diario_boe/xml.php?id=BOE-A-2025-21667"
+    format: xml
+    options: {rowTag: documento}

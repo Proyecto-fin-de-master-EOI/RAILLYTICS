@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo calibrar 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -65,6 +65,11 @@ help:
 	@echo "  00_ingest             Levanta Ollama y dispara el DAG de descarga en Airflow, con la predicción de demanda al final (TRIMESTRE=2026-T4)"
 	@echo "  01_raw-uploader       Lanza la app Spark L1 raw-uploader (primer plano)"
 	@echo "  02_parquet-converter  Lanza la app Spark L2 parquet-converter (primer plano)"
+	@echo "  nap-historico         Descarga el histórico de GTFS del NAP (carga inicial; los datos NO están en git)"
+	@echo "  nap-oferta            Construye la serie diaria de oferta (trenes/día por corredor) desde el histórico del NAP"
+	@echo "  festivos              Construye la tabla de festivos del corredor desde el calendario laboral del BOE"
+	@echo "  meteo                 Descarga la meteorología observada de AEMET en Madrid y Barcelona (carga inicial)"
+	@echo "  calibrar              Contrasta las reglas de reparto diario contra la oferta real del NAP"
 	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
 	@echo "  04_silver             Silver real en streaming: lee Bronze L2 y construye las tablas Silver con quality gates (primer plano; terminal aparte)"
 	@echo "  05_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold), con quality gates"
@@ -134,6 +139,40 @@ test-scala:
 
 02_parquet-converter:
 	$(SBT) -batch "runMain raillytics.ingesta.l2.ParquetConverterApp"
+
+# Histórico del NAP: carga inicial, no ingesta diaria. La fuente nap_gtfs_* del registro trae
+# el último snapshot (lo que necesita el DAG); esto baja los pasados para poder reconstruir la
+# serie de oferta. Los ZIP van a data/historico/, que NO se versiona: al clonar el proyecto hay
+# que lanzarlo una vez. Es idempotente, así que se puede relanzar tras un corte.
+#   make nap-historico                      desde el 2025-06-01 (ventana del proyecto)
+#   make nap-historico DESDE=2024-01-01     otra ventana
+DESDE ?= 2025-06-01
+nap-historico: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.ingesta.nap_historico --desde $(DESDE)
+
+# Serie diaria de oferta a partir del histórico ya descargado: trenes al día por operador y
+# corredor. Es la variable diaria que la demanda trimestral de CNMC no tiene, así que es con lo
+# que se comprueba si el reparto diario de la DTC se parece a la oferta real.
+nap-oferta: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.ingesta.nap_oferta --desde $(DESDE)
+
+# Festivos del corredor: descarga las fuentes boe_* del registro y parsea la tabla de fiestas
+# laborales. Son los festivos en Madrid o en Cataluña, porque el corredor une las dos. Hay que
+# lanzarlo al clonar (la tabla no se versiona) y cada vez que se añada el BOE de un año nuevo.
+festivos: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.ingesta.boe_festivos
+
+# Meteorología observada de las dos cabeceras. AEMET solo sirve 15 días por petición, así que la
+# ventana del proyecto son más de treinta peticiones por estación: es carga inicial, no DAG. Cada
+# tramo se guarda en data/historico/aemet/ y no se vuelve a pedir, así que se puede relanzar.
+meteo: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.ingesta.aemet_historico --desde $(DESDE)
+
+# Contraste de los coeficientes de config/reglas_demanda.yml contra los trenes que circulan de
+# verdad. No modifica nada: imprime qué coeficientes propone la oferta y qué ocupación implican
+# los actuales. Un día por encima del 100 % es imposible y señala el coeficiente a corregir.
+calibrar: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.prediccion.calibracion
 
 # Silver sintético: corre en el host con el python del venv (como test-python)
 # y habla con MinIO con las variables MINIO_* del .env.

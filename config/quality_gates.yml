@@ -188,6 +188,11 @@ tablas:
        sql: "SELECT abs((SELECT coalesce(sum(viajeros), 0) FROM gold_fact_mercado_trimestral) - (SELECT coalesce(sum(viajeros), 0) FROM silver_cnmc_trimestral WHERE corredor = 'Madrid-Barcelona'))"}
     - {nombre: sin_operadores_otro,         tipo: sql, severidad: aviso,
        sql: "SELECT count(*) FROM gold_fact_mercado_trimestral WHERE operador_id = 'OTRO'"}
+    # La ocupación real (viajeros·km / plazas·km) no puede pasar del 100%: si pasa, el dato o la
+    # fórmula están mal. Ojo, el ratio de cabezas (viajeros / plazas) SÍ lo pasa legítimamente,
+    # porque un asiento se vende por tramos; por eso el gate se define sobre los km.
+    - {nombre: ocupacion_posible,           tipo: sql, severidad: bloqueante,
+       sql: "SELECT count(*) FROM gold_fact_mercado_trimestral WHERE plazas_km > 0 AND viajeros_km > plazas_km"}
 
   gold_fact_precio_trimestral:
     - {nombre: filas_minimas,               tipo: filas_min, minimo: 5, severidad: bloqueante}

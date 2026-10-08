@@ -14,6 +14,7 @@ from raillytics.ingesta.formats import (
     MODOS_SILVER,
     OPCIONES_AUTH,
     OPCIONES_LECTURA,
+    OPCIONES_POR_FORMATO,
     SUPPORTED_FORMATS,
 )
 
@@ -34,7 +35,7 @@ class DataSource:
     name: str
     url: str
     format: str
-    options: dict[str, str] = field(default_factory=dict)  # cómo se lee el fichero: delimiter, encoding (solo csv)
+    options: dict[str, str] = field(default_factory=dict)  # cómo se lee el fichero: delimiter y encoding en csv, rowTag en xml
     checks: dict[str, Any] = field(default_factory=dict)   # reglas de la descarga: min_bytes, min_filas, columnas (solo csv)
     silver: tuple[SilverTabla, ...] = ()                   # tablas Silver que se construyen desde esta fuente
     downloader: str = "http"                               # quién trae la fuente (ver downloaders.py); http = GET directo de `url`
@@ -67,12 +68,23 @@ def _parsear(entry: dict[str, Any]) -> DataSource:
     if fmt not in SUPPORTED_FORMATS:
         raise ValueError(f"Formato no soportado: '{fmt}' (soportados: {sorted(SUPPORTED_FORMATS)})")
     options = _bloque(fuente, "options", entry, OPCIONES_LECTURA)
+    # Cada formato admite sus propias opciones y solo las suyas; los que no admiten ninguna (json,
+    # zip) se leen igual siempre, así que declarar `options` en ellos es un error de configuración.
+    permitidas = OPCIONES_POR_FORMATO.get(fmt, set())
+    impropias = sorted(set(options) - permitidas)
+    if impropias:
+        admite = f" (admite: {', '.join(sorted(permitidas))})" if permitidas else ""
+        raise ValueError(f"Fuente '{fuente}': el formato '{fmt}' no admite {', '.join(impropias)} en 'options'{admite}")
     checks = _bloque(fuente, "checks", entry, CHECKS_DESCARGA)
-    if (options or checks) and fmt != "csv":
-        raise ValueError(f"Fuente '{fuente}': 'options' y 'checks' solo se admiten en fuentes csv (formato '{fmt}')")
+    if checks and fmt != "csv":
+        raise ValueError(f"Fuente '{fuente}': 'checks' solo se admite en fuentes csv (formato '{fmt}')")
     delimitador = options.get("delimiter")
     if delimitador is not None and len(str(delimitador)) != 1:
         raise ValueError(f"Fuente '{fuente}': options.delimiter debe ser un único carácter, no {delimitador!r}")
+    if fmt == "xml" and not str(options.get("rowTag", "")).strip():
+        raise ValueError(
+            f"Fuente '{fuente}': una fuente xml necesita options.rowTag, el elemento que L2 trata como fila"
+        )
     _validar_checks(fuente, checks)
     downloader = entry.get("downloader", "http")
     if downloader not in DESCARGADORES:

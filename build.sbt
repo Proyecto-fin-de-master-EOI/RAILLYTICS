@@ -20,6 +20,23 @@ lazy val hadoopHome: Option[String] =
 lazy val jvmOpts: Seq[String] =
   IO.readLines(file(".jvmopts")).map(_.trim).filter(l => l.nonEmpty && !l.startsWith("#"))
 
+// JDK 21 al que apunta JAVA_HOME, si de verdad lo es. sbt localiza los JDK instalados en las
+// rutas al uso de Linux y macOS (/usr/lib/jvm, sdkman, /Library/Java/JavaVirtualMachines), pero no
+// en ~/.jdks, que es donde los instala IntelliJ en Windows. Como el aviso de abajo pide justamente
+// configurar JAVA_HOME, se mira aquí para que ese consejo funcione.
+//
+// La versión sale del fichero `release` que trae todo JDK desde el 9: así no hay que arrancar una
+// JVM solo para preguntarle qué versión es.
+lazy val jdk21DeJavaHome: Option[File] =
+  sys.env.get("JAVA_HOME").filter(_.nonEmpty).map(file).filter(_.isDirectory).filter { home =>
+    val release = home / "release"
+    release.isFile && IO.readLines(release)
+      .collectFirst { case l if l.startsWith("JAVA_VERSION=") =>
+        l.stripPrefix("JAVA_VERSION=").filterNot(_ == '"').trim
+      }
+      .exists(v => v == "21" || v.startsWith("21."))
+  }
+
 lazy val root = (project in file("."))
   .settings(
     name := "raillytics-spark-jobs",
@@ -52,11 +69,13 @@ lazy val root = (project in file("."))
     // arranca en JDK recientes como el 27 (el que instala Homebrew por defecto):
     // org.apache.spark.unsafe.Platform busca por reflexión jdk.internal.ref.Cleaner,
     // que ya no existe, y todo SparkSession falla con ClassNotFoundException. Como
-    // ambas JVM van en fork, usan el JDK 21 aunque sbt corra con otro; sbt lo
-    // localiza solo (fullJavaHomes: /Library/Java/JavaVirtualMachines, /usr/lib/jvm,
-    // sdkman...). Si no lo encuentra se usa el JDK de sbt, que vale si ya es el 21.
+    // ambas JVM van en fork, usan el JDK 21 aunque sbt corra con otro: primero el que
+    // localiza sbt solo (fullJavaHomes: /Library/Java/JavaVirtualMachines, /usr/lib/jvm,
+    // sdkman...) y, si ahí no está, el de JAVA_HOME (ver jdk21DeJavaHome, que cubre el
+    // caso de Windows con los JDK de IntelliJ en ~/.jdks). Si no hay ninguno se usa el
+    // JDK de sbt, que vale si ya es el 21.
     Test / javaHome := {
-      val jdk21   = fullJavaHomes.value.get("21")
+      val jdk21   = fullJavaHomes.value.get("21").orElse(jdk21DeJavaHome)
       val sbtJava = sys.props("java.specification.version")
       if (jdk21.isEmpty && sbtJava != "21")
         sLog.value.warn(s"No se encuentra un JDK 21 y sbt corre con Java $sbtJava: Spark 4.2 necesita " +

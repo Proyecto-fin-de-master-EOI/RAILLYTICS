@@ -54,10 +54,12 @@ discontinuas hacia la trazabilidad indican que cada proceso registra sus cargas.
 
 ```mermaid
 flowchart LR
-    subgraph fuentes[Fuentes públicas]
-        F1["Renfe GTFS-RT"]
-        F2["CRTM"]
-        F3["CNMC - indicadores y precios del corredor"]
+    subgraph fuentes[Fuentes publicas - 12 en config/data_sources.yml]
+        F1["CNMC - indicadores y precios (3 csv)"]
+        F2["AEMET - climatologia diaria (2 json)"]
+        F3["NAP - GTFS de Renfe y OUIGO (2 zip)"]
+        F4["BOE - calendario laboral (2 xml)"]
+        F5["Renfe GTFS-RT (2 json) y CRTM (1 zip)"]
     end
     subgraph bronze[Bronze]
         STG["data/bronze/ - staging local"]
@@ -66,6 +68,7 @@ flowchart LR
     end
     subgraph silver[Silver]
         SLV[("MinIO raillytics-silver/ - Parquet")]
+        REF["festivos, meteo y oferta_diaria - make festivos / meteo / nap-oferta"]
     end
     subgraph gold[Gold]
         GLD[("MinIO raillytics-gold/ - dim y fact")]
@@ -73,16 +76,24 @@ flowchart LR
     end
     SUP["Superset - DuckDB en memoria"]
     GEN["silver_sample.py - Silver sintetico"]
+    PRED["Prediccion de demanda (capa ml) - reglas + LLM local"]
+    CFG["config/ - prediccion.yml, reglas_demanda.yml, prompts/, eventos_corredor.csv"]
 
     F1 -- "make 00_ingest - DAG ingesta_data_sources (Airflow, Python)" --> STG
-    F2 -- "make 00_ingest - DAG ingesta_data_sources (Airflow, Python)" --> STG
-    F3 -- "make 00_ingest - DAG ingesta_data_sources (Airflow, Python)" --> STG
+    F2 --> STG
+    F3 --> STG
+    F4 --> STG
+    F5 --> STG
     STG -- "make 01_raw-uploader - RawUploaderApp (Spark Streaming)" --> L1
     L1 -- "make 02_parquet-converter - ParquetConverterApp (Spark Streaming)" --> L2
     L2 -- "make 04_silver - SilverBuilderApp (Spark Streaming, quality gates antes de escribir)" --> SLV
     L2 -. "jobs PySpark de Silver (pendientes)" .-> SLV
     GEN -- "make 03_silver-sample" --> SLV
+    REF --> SLV
     SLV -- "make 05_gold - GoldBuilderApp (Spark batch, quality gates de entrada y salida)" --> GLD
+    SLV -- "los 4 origenes" --> PRED
+    CFG -.-> PRED
+    PRED -- "make 07_prediccion - fact_prediccion_demanda" --> GLD
     QG["make quality-gates - QualityGatesApp (Spark batch)"] -.-> SLV
     QG -.-> GLD
     GLD -- "make up - superset-init importa dashboards/superset/ (o make 06_superset-import)" --> SUP
@@ -91,9 +102,13 @@ flowchart LR
     L2 -.-> TRZ
     SLV -.-> TRZ
     GLD -.-> TRZ
+    PRED -.-> TRZ
     QG -.-> TRZ
     TRZ -- "dashboard Trazabilidad de cargas - make cargas / make calidad" --> SUP
 ```
+
+> El recorrido completo, etapa por etapa y con los ficheros que intervienen en cada una, está en
+> [`docs/arquitectura.md`](docs/arquitectura.md). Ahí también está cómo arrancar el proyecto desde cero.
 
 Cada proceso aplica además sus [Quality Gates](#quality-gates): la descarga valida el fichero recibido, L1
 comprueba los bytes subidos, L2 la cabecera y los registros corruptos (lo que no pasa va a cuarentena en
@@ -281,6 +296,11 @@ make install-dev-env        # crea .venv (Python 3.9–3.12), instala requiremen
 make up                     # levanta MinIO + Postgres + Airflow + Superset
 make 00_ingest              # levanta Ollama y dispara el DAG de descarga una vez (+ predicción de demanda al final)
                             # (descarga también las fuentes de la CNMC; L2 se reinicia una vez para que lea las fuentes nuevas)
+make nap-historico          # carga inicial: baja el histórico de GTFS del NAP desde 2025-06
+                            # (los datos NO están en git; hace falta la primera vez)
+make nap-oferta             # serie diaria de oferta (trenes/día por operador y corredor)
+make festivos               # tabla de festivos del corredor desde el calendario laboral del BOE
+make meteo                  # meteorología observada de AEMET en Madrid y Barcelona (carga inicial)
 make 01_raw-uploader        # en una terminal aparte — app L1 (queda en primer plano)
 make 02_parquet-converter   # en otra terminal aparte — app L2 (queda en primer plano)
 make 03_silver-sample       # Silver sintético en MinIO: el detalle diario (estación, operador, puntualidad), que no existe como dato abierto
@@ -307,6 +327,25 @@ Python 3.13+); se puede cambiar con `make install-dev-env VENV_BASE_PYTHON=pytho
 Los targets que necesitan dependencias Python (`test-python`, `03_silver-sample`,
 `cargas`) usan directamente el intérprete de `.venv`, así que no hace falta
 activarlo antes de llamar a `make`.
+
+`make festivos` y `make meteo` construyen en Silver las dos tablas de referencia que consume la
+predicción (`{silver}/festivos/` y `{silver}/meteo/`), y cada construcción queda registrada en la
+trazabilidad de cargas. Los festivos salen de las fuentes `boe_*` del registro; la meteorología,
+de las `aemet_*`. Con esto la predicción ya **no lee ninguna fuente sintética**: `make
+prediccion-sample` sigue existiendo para poder probar el flujo sin haber hecho las cargas.
+
+AEMET solo sirve 15 días por petición, así que la ventana del proyecto son más de treinta
+peticiones por estación y la API limita el ritmo. Cada tramo descargado se guarda en
+`data/historico/aemet/` y no se vuelve a pedir, de modo que `make meteo` se puede relanzar tras
+un corte sin castigar a la API.
+
+`make nap-historico` es una **carga inicial, no parte del pipeline diario**. La fuente
+`nap_gtfs_*` del registro trae el último snapshot, que es lo que necesita el DAG; el histórico
+hace falta para reconstruir la serie de oferta diaria hacia atrás. Los ZIP se guardan en
+`data/historico/`, que **no se versiona**: al clonar el proyecto hay que lanzarlo una vez. Es
+idempotente —no vuelve a bajar lo que ya está en disco—, así que se puede relanzar tras un corte,
+y admite otra ventana con `make nap-historico DESDE=2024-01-01`. Para la ventana del proyecto
+(desde junio de 2025) son unos 570 snapshots y ~465 MB.
 
 ### Configuración: `.env` y `application.conf`
 

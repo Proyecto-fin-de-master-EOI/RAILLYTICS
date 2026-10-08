@@ -48,7 +48,13 @@ def test_zip_valido_declarado_como_zip_pasa():
 @pytest.mark.parametrize(
     ("contenido", "formato", "fragmento"),
     [
-        (b"<html><body>Zscaler</body></html>", "json", "parece HTML/XML"),
+        (b"<html><body>Zscaler</body></html>", "json", "parece HTML"),
+        # Una página de error de proxy es XML bien formado: sin distinguirla del XML de verdad,
+        # colaría como contenido válido en una fuente xml.
+        (b"<html><body>Zscaler</body></html>", "xml", "parece HTML"),
+        (b'<?xml version="1.0"?><documento><texto>', "xml", "XML inválido"),
+        (b'<?xml version="1.0"?><documento/>', "xml", "vacío"),
+        (_zip(("a.txt", b"x")), "xml", "parece ZIP"),
         (b'{"entity": [', "json", "JSON inválido"),
         (b"solo una columna\n1\n2\n", "csv", "no tiene delimitador"),
         (b'{"a": 1}', "csv", "parece JSON"),
@@ -139,3 +145,31 @@ def test_si_el_formato_no_encaja_no_se_evaluan_los_checks_del_csv():
 
     assert "cabecera_esperada" not in gates and "filas_minimas" not in gates
     assert gates["formato_declarado"].resultado == "fallo"
+
+
+def test_xml_valido_declarado_como_xml_pasa():
+    # La forma del XML del BOE: declaración, un documento raíz y la tabla de festivos dentro.
+    contenido = (
+        b'<?xml version="1.0" encoding="UTF-8"?>'
+        b"<documento><texto><table><tbody><tr><td>1 de enero</td></tr></tbody></table></texto></documento>"
+    )
+
+    gates = _por_gate(validar_contenido(contenido, "xml", "application/xml; charset=utf-8"))
+
+    assert [g.resultado for g in gates.values()] == ["ok", "ok", "ok"]
+
+
+def test_un_xml_con_entidades_declaradas_se_rechaza_en_vez_de_expandirse():
+    # «Billion laughs»: con el parser de la librería estándar estas entidades se expanden hasta
+    # agotar la memoria del proceso. defusedxml las rechaza y el gate lo deja en un fichero a
+    # cuarentena, que es lo que debe pasar con un XML que llega de internet.
+    bomba = (
+        b'<?xml version="1.0"?>'
+        b'<!DOCTYPE lolz [<!ENTITY lol "lol"><!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;">]>'
+        b"<lolz>&lol2;</lolz>"
+    )
+
+    gates = _por_gate(validar_contenido(bomba, "xml"))
+
+    assert gates["formato_declarado"].resultado == "fallo"
+    assert "XML inválido" in gates["formato_declarado"].detalle

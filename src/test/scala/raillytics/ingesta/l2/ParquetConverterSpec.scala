@@ -301,4 +301,42 @@ class ParquetConverterSpec extends AnyFlatSpec with Matchers with BeforeAndAfter
     }
     Files.exists(tmpDir.resolve("processed/renfe_vehicle_positions/sample.json")) shouldBe true
   }
+
+  it should "parse an xml source as one row using the rowTag declared by the source" in {
+    val tmpDir = Files.createTempDirectory("parquet-converter-xml-spec")
+    val settings = settingsIn(tmpDir)
+    val l1DoneDir = tmpDir.resolve("l1_done/boe_calendario_laboral_2026")
+    Files.createDirectories(l1DoneDir)
+    // La forma del XML del BOE: un <documento> con sus metadatos y la tabla de festivos en <texto>.
+    Files.writeString(
+      l1DoneDir.resolve("calendario.xml"),
+      """<?xml version="1.0" encoding="UTF-8"?>
+        |<documento>
+        |  <metadatos><identificador>BOE-A-2025-21667</identificador></metadatos>
+        |  <texto><table><tbody>
+        |    <tr><td>1 de enero</td></tr>
+        |    <tr><td>6 de enero</td></tr>
+        |  </tbody></table></texto>
+        |</documento>
+        |""".stripMargin,
+      UTF_8
+    )
+    val source = DataSource("boe_calendario_laboral_2026", "BOE test", "https://example.invalid", "xml",
+      options = Map("rowTag" -> "documento"))
+
+    val query = ParquetConverter.startQuery(source, settings, spark.sparkContext.hadoopConfiguration)
+    query.processAllAvailable()
+    query.stop()
+
+    val result = spark.read.parquet(BronzePaths.l2(settings.bronzeRoot, source.id, today))
+    // rowTag = el elemento raiz -> una fila con el documento entero anidado, sin perder la tabla de
+    // festivos: extraerla es trabajo de Silver, no de la ingesta.
+    result.count() shouldBe 1
+    result.columns should contain allOf ("metadatos", "texto")
+    result.toJSON.collect().head should include ("6 de enero")
+    result.columns should not contain ParquetConverter.CorruptRecordCol
+
+    Files.exists(tmpDir.resolve("processed/boe_calendario_laboral_2026/calendario.xml")) shouldBe true
+  }
+
 }

@@ -89,14 +89,13 @@ def _http(source: DataSource) -> Respuesta:
     return Respuesta(content=r.content, headers=r.headers)
 
 
-def _aemet(source: DataSource) -> Respuesta:
-    """AEMET OpenData: la petición devuelve un enlace temporal y de ahí se bajan los datos.
+def aemet_ventana(source: DataSource, ini: date, fin: date) -> Respuesta:
+    """Un tramo de fechas de AEMET: la petición devuelve un enlace temporal y de ahí se bajan los datos.
 
-    `url` es una plantilla con {fecha_ini} y {fecha_fin}; aquí se rellenan con una
-    ventana de AEMET_DIAS_VENTANA días que termina hace AEMET_DIAS_RETARDO.
+    `url` es una plantilla con {fecha_ini} y {fecha_fin}. La ingesta diaria pide el último tramo
+    (ver `_aemet`); la carga histórica recorre tramos hacia atrás reutilizando esto, para no
+    duplicar la autenticación ni los reintentos del enlace temporal.
     """
-    fin = date.today() - timedelta(days=AEMET_DIAS_RETARDO)
-    ini = fin - timedelta(days=AEMET_DIAS_VENTANA - 1)
     url = source.url.format(fecha_ini=ini.isoformat(), fecha_fin=fin.isoformat())
 
     cabeceras = {source.auth.get("header", "api_key"): _credencial(source)}
@@ -108,6 +107,14 @@ def _aemet(source: DataSource) -> Respuesta:
 
     datos = _con_reintentos(sobre["datos"], AEMET_REINTENTOS, AEMET_ESPERA_SEGUNDOS)
     return Respuesta(content=datos.content, headers={**datos.headers, **_nombre(f"{source.id}_{ini}_{fin}.json")})
+
+
+def _aemet(source: DataSource) -> Respuesta:
+    """El tramo que necesita la ingesta diaria: AEMET_DIAS_VENTANA días que acaban hace
+    AEMET_DIAS_RETARDO, porque AEMET publica con retardo y pedir «hasta hoy» devuelve un tramo vacío.
+    """
+    fin = date.today() - timedelta(days=AEMET_DIAS_RETARDO)
+    return aemet_ventana(source, fin - timedelta(days=AEMET_DIAS_VENTANA - 1), fin)
 
 
 def _con_reintentos(url: str, intentos: int, espera: int) -> requests.Response:

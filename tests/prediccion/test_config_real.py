@@ -25,8 +25,15 @@ def test_trimestrales_suma_los_operadores_del_corredor_sin_el_total_ni_otros_cor
     assert duckdb.connect().execute(sql).fetchall() == [("2026-T1", 1500), ("2026-T2", 1100)]
 
 
-def test_la_config_ya_no_lee_la_demanda_sintetica_pero_si_las_otras_tres_fuentes():
+def test_la_config_no_lee_ninguna_fuente_sintetica():
+    """Los cuatro orígenes apuntan a datos reales; la muestra solo se usa para probar sin ellos.
+
+    El aviso de datos sintéticos de la predicción se decide con esto mismo (`"muestra_" in sql`, ver
+    servicio.py), así que si alguna consulta volviera a la muestra el aviso lo diría y este test
+    también: `trimestrales` sale del Silver de CNMC, `festivos` del calendario del BOE, `meteo` de
+    AEMET y `eventos` del fichero curado a mano.
+    """
     consultas = cargar_config(RAIZ / "config" / "prediccion.yml")
 
-    assert "muestra_" not in consultas["trimestrales"]
-    assert all("muestra_" in consultas[origen] for origen in ("festivos", "eventos", "meteo"))
+    sinteticas = sorted(origen for origen, sql in consultas.items() if "muestra_" in sql)
+    assert sinteticas == []

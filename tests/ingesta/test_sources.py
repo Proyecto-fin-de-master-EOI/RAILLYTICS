@@ -24,7 +24,8 @@ def test_load_sources_parses_valid_yaml():
 
 def test_load_sources_accepts_zip_and_the_project_registry_is_consistent():
     # El registro real del proyecto: CRTM sirve un GTFS (zip); Renfe, JSON; la CNMC, tres CSV con `;`;
-    # AEMET, JSON con descarga en dos pasos; el NAP, el GTFS de cada operador en zip.
+    # AEMET, JSON con descarga en dos pasos; el NAP, el GTFS de cada operador en zip; el BOE, el
+    # calendario laboral de cada año en xml.
     fuentes = load_sources(Path(__file__).parents[2] / "config" / "data_sources.yml")
     sources = {s.id: s.format for s in fuentes}
 
@@ -33,6 +34,7 @@ def test_load_sources_accepts_zip_and_the_project_registry_is_consistent():
         "cnmc_indicadores": "csv", "cnmc_precio_trimestral": "csv", "cnmc_precio_mensual": "csv",
         "aemet_madrid_barajas": "json", "aemet_barcelona_prat": "json",
         "nap_gtfs_renfe": "zip", "nap_gtfs_ouigo": "zip",
+        "boe_calendario_laboral_2025": "xml", "boe_calendario_laboral_2026": "xml",
     }
     # Las fuentes con credencial declaran de qué variable de entorno sale, nunca el secreto.
     con_auth = {s.id: s.auth["env"] for s in fuentes if s.auth}
@@ -115,10 +117,10 @@ def test_los_valores_invalidos_se_rechazan_diciendo_que_falla(tmp_path, cambio, 
         load_sources(_yaml(tmp_path, texto))
 
 
-def test_options_y_checks_solo_se_admiten_en_fuentes_csv(tmp_path):
+def test_un_formato_que_no_admite_opciones_de_lectura_rechaza_options(tmp_path):
     texto = "sources:\n  - id: f\n    name: x\n    url: https://example.invalid/a.json\n    format: json\n    options: {delimiter: ';'}\n"
 
-    with pytest.raises(ValueError, match="solo se admiten en fuentes csv"):
+    with pytest.raises(ValueError, match="el formato 'json' no admite delimiter en 'options'"):
         load_sources(_yaml(tmp_path, texto))
 
 
@@ -224,3 +226,48 @@ def test_load_sources_defaults_to_http_without_auth(tmp_path):
 
     assert fuente.downloader == "http"
     assert fuente.auth == {}
+
+
+def test_cada_formato_solo_admite_sus_propias_opciones_de_lectura(tmp_path):
+    # `delimiter` no significa nada en un xml, ni `rowTag` en un csv: es un error de configuración,
+    # no una opción que se pueda ignorar en silencio.
+    xml_con_delimiter = (
+        "sources:\n  - id: f\n    name: x\n    url: https://example.invalid/a.xml\n"
+        "    format: xml\n    options: {rowTag: documento, delimiter: ';'}\n"
+    )
+    with pytest.raises(ValueError, match="el formato 'xml' no admite delimiter"):
+        load_sources(_yaml(tmp_path, xml_con_delimiter))
+
+    csv_con_rowtag = (
+        "sources:\n  - id: f\n    name: x\n    url: https://example.invalid/a.csv\n"
+        "    format: csv\n    options: {rowTag: documento}\n"
+    )
+    with pytest.raises(ValueError, match="el formato 'csv' no admite rowTag"):
+        load_sources(_yaml(tmp_path, csv_con_rowtag))
+
+
+def test_checks_solo_se_admiten_en_fuentes_csv(tmp_path):
+    texto = (
+        "sources:\n  - id: f\n    name: x\n    url: https://example.invalid/a.json\n"
+        "    format: json\n    checks: {min_bytes: 10}\n"
+    )
+
+    with pytest.raises(ValueError, match="'checks' solo se admite en fuentes csv"):
+        load_sources(_yaml(tmp_path, texto))
+
+
+def test_una_fuente_xml_necesita_declarar_rowtag(tmp_path):
+    # Sin rowTag el lector de Spark no sabe qué elemento es una fila: la fuente no se podría leer.
+    texto = "sources:\n  - id: f\n    name: x\n    url: https://example.invalid/a.xml\n    format: xml\n"
+
+    with pytest.raises(ValueError, match="necesita options.rowTag"):
+        load_sources(_yaml(tmp_path, texto))
+
+
+def test_load_sources_acepta_xml_con_rowtag(tmp_path):
+    texto = (
+        "sources:\n  - id: f\n    name: x\n    url: https://example.invalid/a.xml\n"
+        "    format: xml\n    options: {rowTag: documento}\n"
+    )
+
+    assert load_sources(_yaml(tmp_path, texto))[0].options == {"rowTag": "documento"}
