@@ -54,10 +54,12 @@ discontinuas hacia la trazabilidad indican que cada proceso registra sus cargas.
 
 ```mermaid
 flowchart LR
-    subgraph fuentes[Fuentes públicas]
-        F1["Renfe GTFS-RT"]
-        F2["CRTM"]
-        F3["CNMC - indicadores y precios del corredor"]
+    subgraph fuentes[Fuentes publicas - 12 en config/data_sources.yml]
+        F1["CNMC - indicadores y precios (3 csv)"]
+        F2["AEMET - climatologia diaria (2 json)"]
+        F3["NAP - GTFS de Renfe y OUIGO (2 zip)"]
+        F4["BOE - calendario laboral (2 xml)"]
+        F5["Renfe GTFS-RT (2 json) y CRTM (1 zip)"]
     end
     subgraph bronze[Bronze]
         STG["data/bronze/ - staging local"]
@@ -66,6 +68,7 @@ flowchart LR
     end
     subgraph silver[Silver]
         SLV[("MinIO raillytics-silver/ - Parquet")]
+        REF["festivos, meteo y oferta_diaria - make festivos / meteo / nap-oferta"]
     end
     subgraph gold[Gold]
         GLD[("MinIO raillytics-gold/ - dim y fact")]
@@ -73,16 +76,24 @@ flowchart LR
     end
     SUP["Superset - DuckDB en memoria"]
     GEN["silver_sample.py - Silver sintetico"]
+    PRED["Prediccion de demanda (capa ml) - reglas + LLM local"]
+    CFG["config/ - prediccion.yml, reglas_demanda.yml, prompts/, eventos_corredor.csv"]
 
     F1 -- "make 00_ingest - DAG ingesta_data_sources (Airflow, Python)" --> STG
-    F2 -- "make 00_ingest - DAG ingesta_data_sources (Airflow, Python)" --> STG
-    F3 -- "make 00_ingest - DAG ingesta_data_sources (Airflow, Python)" --> STG
+    F2 --> STG
+    F3 --> STG
+    F4 --> STG
+    F5 --> STG
     STG -- "make 01_raw-uploader - RawUploaderApp (Spark Streaming)" --> L1
     L1 -- "make 02_parquet-converter - ParquetConverterApp (Spark Streaming)" --> L2
     L2 -- "make 04_silver - SilverBuilderApp (Spark Streaming, quality gates antes de escribir)" --> SLV
     L2 -. "jobs PySpark de Silver (pendientes)" .-> SLV
     GEN -- "make 03_silver-sample" --> SLV
+    REF --> SLV
     SLV -- "make 05_gold - GoldBuilderApp (Spark batch, quality gates de entrada y salida)" --> GLD
+    SLV -- "los 4 origenes" --> PRED
+    CFG -.-> PRED
+    PRED -- "make 07_prediccion - fact_prediccion_demanda" --> GLD
     QG["make quality-gates - QualityGatesApp (Spark batch)"] -.-> SLV
     QG -.-> GLD
     GLD -- "make up - superset-init importa dashboards/superset/ (o make 06_superset-import)" --> SUP
@@ -91,9 +102,13 @@ flowchart LR
     L2 -.-> TRZ
     SLV -.-> TRZ
     GLD -.-> TRZ
+    PRED -.-> TRZ
     QG -.-> TRZ
     TRZ -- "dashboard Trazabilidad de cargas - make cargas / make calidad" --> SUP
 ```
+
+> El recorrido completo, etapa por etapa y con los ficheros que intervienen en cada una, está en
+> [`docs/arquitectura.md`](docs/arquitectura.md). Ahí también está cómo arrancar el proyecto desde cero.
 
 Cada proceso aplica además sus [Quality Gates](#quality-gates): la descarga valida el fichero recibido, L1
 comprueba los bytes subidos, L2 la cabecera y los registros corruptos (lo que no pasa va a cuarentena en
