@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo calibrar 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo calibrar ml-dataset ml-modelo 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -70,6 +70,8 @@ help:
 	@echo "  festivos              Construye la tabla de festivos del corredor desde el calendario laboral del BOE"
 	@echo "  meteo                 Descarga la meteorología observada de AEMET en Madrid y Barcelona (carga inicial)"
 	@echo "  calibrar              Contrasta las reglas de reparto diario contra la oferta real del NAP"
+	@echo "  ml-dataset            Construye la tabla de entrenamiento de ocupación diaria en Silver"
+	@echo "  ml-modelo             Entrena y valida el modelo de ocupación (ver docs/modelo-ocupacion.md)"
 	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
 	@echo "  04_silver             Silver real en streaming: lee Bronze L2 y construye las tablas Silver con quality gates (primer plano; terminal aparte)"
 	@echo "  05_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold), con quality gates"
@@ -173,6 +175,17 @@ meteo: $(VENV)/.deps-installed
 # los actuales. Un día por encima del 100 % es imposible y señala el coeficiente a corregir.
 calibrar: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.prediccion.calibracion
+
+# Tabla de entrenamiento del modelo: una fila por día, con la ocupación como objetivo y el
+# calendario, los festivos, los eventos y la meteo como variables. Es el entregable «Silver listo
+# para entrenar». Necesita la oferta (`make nap-oferta`), los festivos y la meteo.
+ml-dataset: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.ml.dataset
+
+# Entrena el modelo y lo valida en varios tramos temporales contra una referencia trivial. Las
+# conclusiones del experimento están en docs/modelo-ocupacion.md.
+ml-modelo: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.ml.modelo
 
 # Silver sintético: corre en el host con el python del venv (como test-python)
 # y habla con MinIO con las variables MINIO_* del .env.
