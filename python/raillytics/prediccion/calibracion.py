@@ -45,6 +45,11 @@ CORREDOR = "Madrid-Barcelona"
 SEMANA = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
 # El día de referencia: un martes vale 1.00 en las reglas, así que todo se normaliza contra él.
 REFERENCIA = 1
+# Cobertura mínima de un trimestre para poder calcular su ocupación. Las plazas por tren salen
+# de dividir las plazas·km del TRIMESTRE COMPLETO (de CNMC) entre los trenes observados: si solo
+# se observa una parte de los días, salen muchas más plazas por tren de las que hay y la
+# ocupación se desploma. Pasó con 2025-T4, que con 18 días de 92 daba un 15 %.
+COBERTURA_MINIMA = 0.9
 # Operadores del NAP. Iryo no publica GTFS, así que la oferta cubre el corredor pero no entero.
 SIN_GTFS = "Iryo"
 
@@ -139,8 +144,11 @@ def ocupacion_implicada(con, layout, oferta: pd.DataFrame, reglas,
     filas = []
     for t in cnmc.itertuples(index=False):
         trimestre = Trimestre(int(t.anio), int(t.trimestre))
-        dias = [d for d in trimestre.dias() if d in trenes]
-        if not dias:
+        del_trimestre = trimestre.dias()
+        dias = [d for d in del_trimestre if d in trenes]
+        if len(dias) < len(del_trimestre) * COBERTURA_MINIMA:
+            logger.info("%d-T%d: solo %d días de %d con oferta, se omite (ver COBERTURA_MINIMA)",
+                        trimestre.anio, trimestre.numero, len(dias), len(del_trimestre))
             continue
         total_trenes = sum(trenes[d] for d in dias)
         plazas_km_tren = t.plazas_km / total_trenes
