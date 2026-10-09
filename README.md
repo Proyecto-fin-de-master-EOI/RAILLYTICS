@@ -1074,3 +1074,31 @@ Para descargar o levantar el entorno:
    ```bash
    docker compose -f docker/docker-compose.yml --env-file .env pull
    ```
+---
+
+## Origen de los datos y licencias
+
+Este proyecto reutiliza datos abiertos de terceros. Algunas de sus licencias imponen condiciones
+que hay que cumplir al publicar, y el detalle de cada una está en
+[`docs/licencias.md`](docs/licencias.md).
+
+**Atribución obligatoria:**
+
+> Origen de los datos: Comisión Nacional de los Mercados y la Competencia
+
+Los datos de la CNMC están bajo **Creative Commons Reconocimiento-CompartirIgual 4.0 Internacional
+([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.es))**, que obliga a citar la
+fuente y a distribuir las obras derivadas bajo la misma licencia. En este proyecto son obra derivada
+las tablas de Silver y Gold construidas desde sus CSV y los gráficos que las muestran.
+
+Otras fuentes:
+
+- **Datos meteorológicos:** © AEMET (Agencia Estatal de Meteorología). La reutilización está
+  autorizada citando a AEMET como autor.
+- **Festivos:** resoluciones de la Dirección General de Trabajo publicadas en el BOE. Son
+  disposiciones oficiales y no están sujetas a derecho de autor (art. 13 TRLPI).
+- **Horarios:** Punto de Acceso Nacional de Transporte Multimodal (Ministerio de Transportes).
+
+> **Pendiente:** el repositorio todavía no tiene fichero `LICENSE`. Hace falta decidir bajo qué
+> licencia se publica el código, que es obra propia y no deriva de los datos de la CNMC. Los datos
+> derivados sí van obligatoriamente bajo CC BY-SA 4.0. Ver [`docs/licencias.md`](docs/licencias.md).
