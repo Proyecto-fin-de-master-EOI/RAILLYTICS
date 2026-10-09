@@ -118,3 +118,25 @@ sources:
     url: "https://www.boe.es/diario_boe/xml.php?id=BOE-A-2025-21667"
     format: xml
     options: {rowTag: documento}
+  # --- INE (API Tempus3): turismo interprovincial, operación TMOV ---
+  # Tabla 53267, «turistas por provincia de destino desagregados por provincia de origen». El INE la
+  # estima con la POSICIÓN DE TELÉFONOS MÓVILES, no con una encuesta, así que es un conteo y no una
+  # muestra. Serie MENSUAL desde julio de 2019 y sin clave de API.
+  #
+  # Para qué está: es el único dato real de nivel mensual del proyecto. CNMC solo publica trimestres,
+  # así que el reparto diario de la predicción trataba enero y marzo como el mismo nivel. Con esta
+  # tabla se calibra `base_mes` en config/reglas_demanda.yml (`make perfil-mensual`).
+  #
+  # Lo que mide y lo que NO: son viajes en TODOS los medios de transporte, no solo tren, y «turista»
+  # en TMOV implica pernoctación, así que la ida y vuelta en el día no entra. Se usa por su FORMA
+  # (qué peso tiene cada mes), no por su nivel.
+  #
+  # La URL lleva los parámetros dentro porque es un GET sin cuerpo: `tv` repetido filtra el cubo
+  # (FK_Variable 96 = provincia de origen, id 29 = Madrid; 115 = provincia de destino, id 9 =
+  # Barcelona) y `nult` pide los últimos N meses. Los ids se localizan en
+  # servicios.ine.es/wstempus/js/ES/VALORES_GRUPOSTABLA/53267/115.
+  # No declara `silver`: la tabla la construye `make turismo` desde Python, como los festivos.
+  - id: ine_turismo_madrid_barcelona
+    name: "INE - Turistas de Madrid a Barcelona, mensual (operación TMOV, tabla 53267)"
+    url: "https://servicios.ine.es/wstempus/js/ES/DATOS_TABLA/53267?tv=96:29&tv=115:9&nult=100"
+    format: json

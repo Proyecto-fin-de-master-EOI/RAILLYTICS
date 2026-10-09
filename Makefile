@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo calibrar ml-dataset ml-modelo 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo turismo calibrar perfil-mensual ml-dataset ml-modelo 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -69,7 +69,9 @@ help:
 	@echo "  nap-oferta            Construye la serie diaria de oferta (trenes/día por corredor) desde el histórico del NAP"
 	@echo "  festivos              Construye la tabla de festivos del corredor desde el calendario laboral del BOE"
 	@echo "  meteo                 Descarga la meteorología observada de AEMET en Madrid y Barcelona (carga inicial)"
+	@echo "  turismo               Construye la serie mensual de turismo Madrid-Barcelona (INE, tabla 53267)"
 	@echo "  calibrar              Contrasta las reglas de reparto diario contra la oferta real del NAP"
+	@echo "  perfil-mensual        Calibra el peso de cada mes del trimestre con el turismo del INE"
 	@echo "  ml-dataset            Construye la tabla de entrenamiento de ocupación diaria en Silver"
 	@echo "  ml-modelo             Entrena y valida el modelo de ocupación (ver docs/modelo-ocupacion.md)"
 	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
@@ -170,11 +172,23 @@ festivos: $(VENV)/.deps-installed
 meteo: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.ingesta.aemet_historico --desde $(DESDE)
 
+# Turismo interprovincial del INE: la serie MENSUAL de turistas Madrid-Barcelona. Es el único dato
+# de nivel mensual del proyecto (CNMC solo publica trimestres) y es con lo que se calibra el peso de
+# cada mes dentro de su trimestre. Una sola petición sin clave, así que se puede relanzar.
+turismo: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.ingesta.ine_turismo
+
 # Contraste de los coeficientes de config/reglas_demanda.yml contra los trenes que circulan de
 # verdad. No modifica nada: imprime qué coeficientes propone la oferta y qué ocupación implican
 # los actuales. Un día por encima del 100 % es imposible y señala el coeficiente a corregir.
 calibrar: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.prediccion.calibracion
+
+# Peso de cada mes dentro de su trimestre, medido con el turismo del INE. No modifica nada: imprime
+# el bloque `base_mes` que propone y el estadístico t de cada mes, para decidir cuáles se mueven del
+# 1.000 neutro. Necesita la serie del INE (`make turismo`).
+perfil-mensual: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.prediccion.perfil_mensual
 
 # Tabla de entrenamiento del modelo: una fila por día, con la ocupación como objetivo y el
 # calendario, los festivos, los eventos y la meteo como variables. Es el entregable «Silver listo

@@ -9,6 +9,7 @@ de esas licencias imponen condiciones que hay que cumplir.
 | fuente | licencia | ¿atribución? | ¿compartir igual? |
 | --- | --- | --- | --- |
 | CNMC | **CC BY-SA 4.0** | **sí, con texto concreto** | **sí** |
+| INE | **CC BY 4.0** | **sí, con texto concreto** | no |
 | AEMET | reutilización autorizada citando a AEMET | **sí** | no |
 | BOE | disposiciones oficiales, sin derecho de autor | recomendable | no |
 | NAP (Mº Transportes) | **pendiente de confirmar** | — | — |
@@ -44,6 +45,34 @@ para condiciones de acceso, no para la licencia: es un error de metadatos de la 
 **Qué hay en el proyecto que sea obra derivada:** `silver/cnmc_trimestral`,
 `silver/cnmc_precio_trimestral`, `silver/cnmc_precio_mensual`, los hechos de Gold que salen de
 ellas, y la ocupación calculada en `ml_ocupacion_diaria`.
+
+## INE — la segunda que obliga a un texto concreto
+
+**Licencia: Creative Commons Reconocimiento 4.0 Internacional (CC BY 4.0).**
+
+Tiene el mismo tipo de trampa que la CNMC, y conviene saber distinguirlo: el pie del sitio web del
+INE dice *«Este sitio web y su contenido están bajo licencia CC BY-SA 4.0»*, pero eso se refiere al
+**sitio**. Su [aviso legal](https://ine.es/dyngs/AYU/index.htm?cid=125) es explícito sobre los datos:
+*«La licencia de uso general a aplicar a la **información estadística** de este sitio web, salvo que
+se indique lo contrario, es la Creative Commons Reconocimiento 4.0 (CC BY 4.0)»*.
+
+La diferencia importa: **CC BY 4.0 no obliga a compartir igual**. Al contrario que la CNMC, el INE no
+añade ninguna obligación de copyleft al proyecto.
+
+**A qué obliga:**
+
+1. **Atribución, y el texto depende de si se tratan los datos.** Aquí se tratan —se calculan cuotas
+   mensuales a partir de la serie—, así que el texto que exige el INE es el segundo:
+   > Elaboración propia con datos extraídos del sitio web del INE: www.ine.es
+2. **Citar la fecha de última actualización** cuando venga en el original.
+3. **No desnaturalizar el sentido de la información.** Importa en este caso concreto: TMOV mide
+   turistas en todos los medios de transporte y con pernoctación, y el proyecto solo usa la FORMA de
+   la serie (el peso de cada mes), nunca su nivel como si fuera demanda ferroviaria. Presentarla como
+   viajeros de tren sería exactamente lo que la licencia prohíbe.
+4. **No se puede dar a entender que el INE patrocina o apoya** el trabajo.
+
+**Qué hay en el proyecto que sea obra derivada:** `silver/turismo_mensual` y los coeficientes
+`base_mes` de `config/reglas_demanda.yml`, que salen de promediar esas cuotas.
 
 ## AEMET
 

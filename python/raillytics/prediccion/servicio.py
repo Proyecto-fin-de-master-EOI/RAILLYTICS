@@ -27,7 +27,7 @@ from raillytics.prediccion.ollama import OllamaClient, OllamaSettings
 from raillytics.prediccion.prompt import cargar_plantilla, construir_prompt
 from raillytics.prediccion.publicacion import GOLD_TABLA, construir_gold, publicar_gold
 from raillytics.prediccion.reglas import RUTA_POR_DEFECTO as RUTA_REGLAS
-from raillytics.prediccion.reglas import cargar_reglas, combinar, es_modo_eventos, indices_base
+from raillytics.prediccion.reglas import cargar_reglas, combinar, es_modo_eventos, indices_base, perfil_mensual
 from raillytics.prediccion.salida import (
     CORREDOR,
     RAIZ_POR_DEFECTO,
@@ -141,7 +141,9 @@ def _indices_modo_eventos(
         parametros["cache"] = _estado_cache(cliente)
     else:
         parametros["cache"] = "sin llamada"
-    indices = combinar(indices_base(calendario, reglas), factores, calendario, reglas)
+    # El perfil del mes se aplica al final, sobre el valor ya combinado: es un nivel, así que escala
+    # también el factor del LLM y el ajuste de los días junto a un evento.
+    indices = perfil_mensual(combinar(indices_base(calendario, reglas), factores, calendario, reglas), reglas)
     return indices, [d.isoformat() for d in con_evento]
 
 

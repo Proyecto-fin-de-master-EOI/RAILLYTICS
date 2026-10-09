@@ -44,6 +44,7 @@ from dotenv import find_dotenv, load_dotenv
 from raillytics.ingesta.referencia import conexion, escribir
 from raillytics.prediccion.calendario import construir_calendario, tipos_de_dia
 from raillytics.prediccion.calibracion import CORREDOR, oferta_diaria, ocupacion_implicada
+from raillytics.prediccion.reglas import RUTA_POR_DEFECTO as RUTA_REGLAS
 from raillytics.prediccion.reglas import cargar_reglas
 from raillytics.prediccion.trimestre import Trimestre
 from raillytics.utils.lake import LakeLayout
@@ -119,7 +120,9 @@ def construir(desde: date, hasta: date, registro: Path = Path("config/data_sourc
     load_dotenv(find_dotenv(usecwd=True))
     layout = LakeLayout.from_env(os.environ)
     con = conexion(layout, os.environ)
-    reglas = cargar_reglas(Path("config/reglas_demanda.yml"))
+    # Misma convención que el servicio de predicción: REGLAS_DEMANDA permite apuntar a otro fichero
+    # sin tocar el del repositorio, que es lo que hace falta para comparar dos juegos de reglas.
+    reglas = cargar_reglas(Path(os.environ.get("REGLAS_DEMANDA") or RUTA_REGLAS))
 
     oferta = oferta_diaria(con, layout)
     objetivo = ocupacion_implicada(con, layout, oferta, reglas, registro)

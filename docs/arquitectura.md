@@ -54,7 +54,7 @@ si fue bien. Ese cuaderno vive en el bucket de Gold porque es una tabla que se c
 
 ## Paso a paso, con sus ficheros
 
-### Origen · las 12 fuentes
+### Origen · las 13 fuentes
 
 Todo lo que entra está declarado en `config/data_sources.yml`. Dar de alta una fuente nueva son seis
 líneas ahí: no hay que tocar código, porque el DAG lee ese fichero.
@@ -67,6 +67,7 @@ líneas ahí: no hay que tocar código, porque el DAG lee ese fichero.
 | `boe_calendario_laboral_*` (2) | xml | festivos nacionales y por comunidad |
 | `renfe_*` (2) | json | posición y retrasos de los trenes en tiempo real |
 | `crtm` (1) | zip | GTFS de Madrid; ejemplo del framework |
+| `ine_turismo_*` (1) | json | turistas Madrid→Barcelona mes a mes; el único nivel mensual |
 
 ### Paso 1 · descarga y quality gates — `make 00_ingest`
 
@@ -122,6 +123,7 @@ tener clara una mezcla**: no todo lo que hay en Silver es real.
 **Tablas de referencia** — cargas iniciales, no van en el DAG
 - `python/raillytics/ingesta/boe_festivos.py` → `festivos` (`make festivos`)
 - `python/raillytics/ingesta/aemet_historico.py` → `meteo` (`make meteo`)
+- `python/raillytics/ingesta/ine_turismo.py` → `turismo_mensual` (`make turismo`)
 - `python/raillytics/ingesta/nap_historico.py` + `nap_oferta.py` → `oferta_diaria` (`make nap-oferta`)
 - `python/raillytics/ingesta/referencia.py` — las escribe en el lago y registra la carga
 
@@ -212,14 +214,22 @@ make nap-historico    # ~20 min · 572 ficheros, 420 MB
 make nap-oferta       # ~10 min · abre esos ZIP y cuenta trenes por día
 make festivos         # segundos · el calendario laboral del BOE
 make meteo            # ~5 min · AEMET solo sirve 15 días por petición
+make turismo          # segundos · la serie mensual del INE
 ```
 
 Sin `festivos` y `meteo`, `make 07_prediccion` falla diciendo qué origen no encuentra.
 
+Las dos calibraciones no escriben nada, solo informan de qué coeficientes propone el dato medido:
+
+```bash
+make calibrar         # el día de la semana, contra los trenes que circulan (NAP)
+make perfil-mensual   # el peso de cada mes del trimestre, contra el turismo del INE
+```
+
 ### 3. El pipeline, paso a paso
 
 ```bash
-make 00_ingest              # descarga las 12 fuentes
+make 00_ingest              # descarga las 13 fuentes
 make 01_raw-uploader        # ⚠ se queda abierto
 make 02_parquet-converter   # ⚠ se queda abierto
 make 04_silver              # ⚠ se queda abierto

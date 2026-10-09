@@ -4,10 +4,11 @@ Experimento de modelado del coeficiente de ocupación diaria del corredor Madrid
 lo que pide el Sprint 2 («Silver enriquecido para un GBTRegressor que prediga el coeficiente de
 ocupación a 5 días con MAPE ≤ 15 %»).
 
-**Resumen:** el modelo cumple el umbral de MAPE, pero una validación temporal seria muestra que **no
-mejora a una referencia trivial**, y ninguna de las variables externas aporta nada. No es un fallo
-de implementación: es consecuencia de cómo está construido el objetivo, y se explica abajo con los
-números.
+**Resumen:** el modelo cumple el umbral de MAPE y, desde que el reparto diario incorpora un perfil
+mensual medido, **mejora a la referencia trivial por poco** (10,1 % frente a 10,3 %). Antes de eso
+perdía (12,0 % frente a 11,4 %). La lección del experimento no cambió por ganar: lo que mueve el
+resultado no es el modelo ni las variables, es **la calidad del reparto que construye el objetivo**.
+Se explica abajo con los números, incluido el A/B.
 
 - [Qué se predice](#qué-se-predice)
 - [Cómo se construye el objetivo](#cómo-se-construye-el-objetivo)
@@ -15,6 +16,7 @@ números.
 - [Resultados](#resultados)
 - [Qué aporta cada variable](#qué-aporta-cada-variable)
 - [Por qué sale así](#por-qué-sale-así)
+- [Lo que sí cambió el resultado: el perfil mensual](#lo-que-sí-cambió-el-resultado-el-perfil-mensual)
 - [Limitaciones](#limitaciones)
 
 ---
@@ -44,7 +46,7 @@ dividir las plazas·km del trimestre completo entre los trenes observados: con c
 salen muchas más plazas por tren de las que hay y la ocupación se desploma. Con 18 días de 92,
 2025-T4 daba un 15 % de ocupación media, que es imposible.
 
-Quedan **180 días** (2026-T1 y 2026-T2), de los que **157 son utilizables**: 23 se marcan
+Quedan **180 días** (2026-T1 y 2026-T2), de los que **155 son utilizables**: 25 se marcan
 `plausible = False` porque dan una ocupación por encima del 100 %, lo que señala días en que el
 conteo de trenes del NAP falla. No se borran, se marcan.
 
@@ -69,57 +71,65 @@ deja vacíos en vez de inventar un cero; imputar aquí contradiría esa decisió
 
 ## Resultados
 
-Con una sola partición (los últimos 32 días como evaluación):
+Con una sola partición (los últimos 31 días como evaluación):
 
 ```
-MAPE 7.9 %  ·  error medio 6.7 puntos de ocupación  ·  R² 0.18
+MAPE 8.0 %  ·  error medio 6.6 puntos de ocupación  ·  R² −0.10
 ```
 
-Cumple el umbral del plan. **Pero ese número es frágil**: depende de qué semanas tocaron. Con
-validación temporal en cinco tramos, comparando siempre contra la referencia trivial —predecir la
-media de lo ya visto—:
+Cumple el umbral del plan. **Pero ese número es frágil**: depende de qué semanas tocaron, y el R²
+negativo ya avisa de que sobre ese corte concreto el modelo no explica la varianza. Con validación
+temporal en cinco tramos, comparando siempre contra la referencia trivial —predecir la media de lo ya
+visto—:
 
 | tramo | días evaluados | MAPE | MAPE de la referencia | R² | ¿gana? |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 29-ene a 24-feb | 12,1 % | 12,1 % | −0,10 | no |
-| 2 | 25-feb a 23-mar | 13,8 % | 15,3 % | −0,74 | sí |
-| 3 | 24-mar a 23-abr | 17,4 % | 9,9 % | −2,13 | no |
-| 4 | 24-abr a 27-may | 8,5 % | 10,1 % | −0,41 | sí |
-| 5 | 28-may a 30-jun | 8,0 % | 9,4 % | 0,25 | sí |
-| **media** | | **12,0 %** | **11,4 %** | | **3 de 5** |
+| 1 | 1-feb a 26-feb | 11,4 % | 11,4 % | −0,00 | no |
+| 2 | 27-feb a 24-mar | 11,3 % | 9,5 % | −1,06 | no |
+| 3 | 25-mar a 20-abr | 12,2 % | 12,4 % | −0,94 | sí |
+| 4 | 21-abr a 22-may | 8,1 % | 9,3 % | −0,18 | sí |
+| 5 | 25-may a 30-jun | 7,4 % | 9,0 % | 0,00 | sí |
+| **media** | | **10,1 %** | **10,3 %** | | **3 de 5** |
 
-**El modelo es, en media, ligeramente peor que predecir siempre la media.** El 7,9 % de la partición
-única era el mejor tramo de los cinco.
+**El modelo gana a predecir la media, pero por 0,2 puntos.** Con 155 días y unos 26 por tramo, esa
+diferencia no es concluyente: lo honesto es decir que empata con la referencia trivial, no que la
+bate.
 
-El tramo 3 es el peor con diferencia (17,4 % frente a 9,9 %): es **Semana Santa**. Las reglas mueven
-mucho la demanda esos días y el modelo, entrenado solo con enero a marzo, no tiene con qué
-anticiparlo.
+Lo que sí es un cambio real está en el tramo 3, **Semana Santa**, que antes era el desastre del
+experimento (17,4 % frente al 9,9 % de la referencia) y ahora empata (12,2 % frente a 12,4 %). El
+perfil mensual le da al modelo con qué anticipar que marzo y abril no están al mismo nivel.
 
 ## Qué aporta cada variable
 
 Entrenando sin cada grupo y midiendo cuánto empeora el MAPE medio de los cinco tramos:
 
 ```
-con todas las variables      12,0 %
-solo el día de la semana     11,7 %      <- mejor con menos
+con todas las variables      10,1 %   (referencia trivial 10,3 %)
+solo el día de la semana     10,8 %
 ```
 
 | grupo | columnas | MAPE sin él | cambio | |
 | --- | --- | --- | --- | --- |
-| día de la semana | 7 | 12,3 % | +0,4 pp | **aporta** |
-| mes | 1 | 11,8 % | −0,2 pp | da igual |
-| festivos | 3 | 12,0 % | +0,0 pp | da igual |
-| vísperas y puentes | 3 | 12,0 % | +0,0 pp | da igual |
-| eventos | 7 | 12,0 % | +0,0 pp | da igual |
-| meteo | 4 | 11,8 % | −0,2 pp | da igual |
+| **mes** | 1 | 10,4 % | **+0,3 pp** | **aporta** |
+| día de la semana | 7 | 10,1 % | +0,0 pp | da igual |
+| festivos | 3 | 10,1 % | +0,0 pp | da igual |
+| vísperas y puentes | 3 | 10,1 % | +0,0 pp | da igual |
+| eventos | 7 | 10,1 % | +0,0 pp | da igual |
+| **meteo** | 4 | **9,3 %** | **−0,8 pp** | **estorba** |
 
-**Ninguna variable externa aporta.** Ni los festivos del BOE, ni los eventos curados a mano, ni la
-meteorología de AEMET. Un modelo con solo el día de la semana es ligeramente mejor que uno con las
-26 variables.
+**El mes es la primera variable que aporta algo**, y es exactamente la que acaba de recibir un dato
+medido detrás (ver la sección siguiente). Festivos, eventos y vísperas siguen en +0,0 pp.
 
-La temperatura de Madrid aparecía con un 15 % en la importancia por permutación de una partición
-única, pero al quitarla el modelo mejora: era ruido, no señal. Es un buen recordatorio de que la
-importancia por permutación sobre un solo corte no demuestra nada.
+**La meteorología no es que dé igual: estorba.** Quitarla mejora el MAPE en 0,8 pp y deja el mejor
+resultado de todo el experimento (9,3 % frente al 10,3 % de la referencia). El signo es el mismo que
+la vez anterior (−0,2 pp), medido sobre dos versiones distintas del objetivo, así que no parece
+casualidad. La temperatura de Madrid, además, aparecía con un 15 % en la importancia por permutación
+de una partición única: **era ruido**, y es un buen recordatorio de que esa métrica sobre un solo
+corte no demuestra nada.
+
+Dicho eso, con 26 días por tramo una diferencia de 0,8 pp tampoco es concluyente, así que la meteo
+**se deja dentro y documentada** en vez de quitarla: sacar una variable por un resultado de esta
+muestra sería elegir el modelo mirando el conjunto de evaluación.
 
 ## Por qué sale así
 
@@ -143,13 +153,63 @@ pocos casos no hay nada estable que aprender.
 La única señal disponible es la que se introdujo al escribir las reglas, y el modelo la encuentra
 enseguida porque no hay más.
 
+Eso tiene un corolario que se comprobó después y que cambia por dónde hay que trabajar: **si la
+señal del modelo es la que metieron las reglas, mejorar las reglas mejora el modelo**. Es lo que pasó
+con el perfil mensual.
+
+## Lo que sí cambió el resultado: el perfil mensual
+
+El total que reparte la DTC es **trimestral**, porque CNMC no publica meses. Las reglas miraban el día
+de la semana, los festivos y los puentes, así que arrastraban una hipótesis que nadie había escrito:
+**que dentro de un trimestre todos los meses están al mismo nivel**. Un martes de enero y un martes de
+marzo recibían el mismo índice.
+
+Es falsa, y hay con qué medirlo. El INE publica mes a mes los turistas que se mueven de Madrid a
+Barcelona (operación TMOV, tabla 53267, estimada por posición de teléfonos móviles). Promediando qué
+cuota de cada trimestre cae en cada mes, sobre 2019 y 2022-2026:
+
+| mes | cuota del trimestre | t | coeficiente |
+| --- | --- | --- | --- |
+| mar | 38,1 % | 4,0 | **1,143** |
+| jul | 38,1 % | 16,4 | **1,142** |
+| oct | 33,9 % | 2,1 | 1,016 |
+| feb | 31,9 % | −3,1 | 0,957 |
+| abr | 31,4 % | −3,4 | 0,942 |
+| ene | 30,0 % | −3,6 | **0,901** |
+| ago | 29,1 % | −9,2 | **0,873** |
+
+Los otros cinco meses (may, jun, sep, nov, dic) no se distinguen del tercio neutro con cinco años de
+muestra y **se quedan en 1,000 clavado**: medir una diferencia no da derecho a afirmarla.
+
+**El efecto en el experimento, medido con un A/B** (mismo código, mismos días, solo cambia si
+`config/reglas_demanda.yml` declara `base_mes`):
+
+| | MAPE validación temporal | referencia trivial | veredicto |
+| --- | --- | --- | --- |
+| sin perfil mensual | 12,0 % | 11,4 % | **pierde** por 0,6 pp |
+| con perfil mensual | **10,1 %** | 10,3 % | **gana** por 0,2 pp |
+
+**Lo que esto demuestra y lo que no.** No demuestra que el modelo haya aprendido algo del mundo: la
+variable `mes` predice mejor porque metimos un perfil mensual en las reglas que generan el objetivo,
+así que el modelo está redescubriendo una regla nuestra. Lo que sí demuestra es que **el cuello de
+botella está en el reparto, no en el modelado**, y que el reparto se puede mejorar con dato medido en
+vez de con hipótesis. El reparto diario de la DTC es hoy más creíble que ayer, y eso vale
+independientemente de lo que haga el modelo encima.
+
 ## ¿Se pueden inferir los coeficientes en vez de ponerlos a mano?
 
-Los pesos de `config/reglas_demanda.yml` son hipótesis. Dos de ellos se pudieron calibrar y el resto
-no, y la diferencia tiene una causa clara: **hace falta una señal diaria**.
+Los pesos de `config/reglas_demanda.yml` eran todos hipótesis. Dos familias se han podido calibrar y
+una no, y la diferencia tiene una causa clara: **hace falta una fuente medida a la misma resolución
+que el coeficiente**.
 
-**El día de la semana sí.** Se calibró contra la oferta real del NAP, que da trenes por día. Es el
-único dato diario medido que existe en el proyecto.
+**El día de la semana sí.** Se calibró contra la oferta real del NAP, que da trenes por día.
+
+**El mes también.** Se calibró contra el turismo mensual del INE (ver la sección anterior). Y aquí
+está el contraste que explica por qué los festivos no se pudieron: el efecto de los festivos salía con
+**t = 0,71** sobre 34 trimestres y el del mes sale con **t = 16,4** para julio y **t = −9,2** para
+agosto. No es que haya más datos —son menos años—, es que **la cuota mensual se mide dentro del
+trimestre, así que la estacionalidad trimestral ya está descontada**, y era justo la estacionalidad lo
+que confundía la estimación de los festivos.
 
 **Los festivos y los puentes no.** Se intentó estimarlos de los **42 trimestres de CNMC**
 (2016T1–2026T2), aprovechando que el número de festivos que caen en día laborable cambia de un
@@ -184,13 +244,18 @@ contrafactual, es decir cuánta gente habría viajado ese día sin el evento.
 
 **Conclusión:** `festivo_entre_semana`, `puente` y los ajustes de víspera y regreso **se mantienen
 como hipótesis documentadas**, no porque no se haya intentado estimarlos, sino porque las fuentes
-disponibles no contienen la información necesaria.
+disponibles no contienen la información necesaria. `base_dia_semana` y `base_mes` sí salen de dato
+medido, y queda escrito en el propio fichero de reglas de dónde sale cada uno.
 
 ## Limitaciones
 
 **La principal, y la que lo explica todo:** no existe ocupación diaria observada. Mientras el
 objetivo se construya a partir de un reparto por reglas, ninguna variable puede aportar información
 que no estuviera ya en esas reglas. El cuello de botella es de datos, no de modelado.
+
+El perfil mensual no es una excepción a eso, es una confirmación: mejoró el resultado **metiendo el
+dato en las reglas**, no en el modelo. El camino que queda abierto es el mismo —seguir sustituyendo
+hipótesis del reparto por fuentes medidas—, no probar más algoritmos.
 
 **El horizonte.** El plan pide predecir a 5 días. La meteo que entra es la **observada**, que a cinco
 días no se conoce: habría que usar la previsión. Pero AEMET no archiva previsiones pasadas, así que

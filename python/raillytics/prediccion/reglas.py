@@ -8,6 +8,7 @@ recibe los días con evento y devuelve un factor por día (1.00 = el evento no c
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -18,11 +19,17 @@ from raillytics.prediccion.calendario import SEMANA, Calendario, tipos_de_dia
 from raillytics.prediccion.gates import DIAS_SEMANA
 from raillytics.prediccion.normalizar import IndiceDia
 
+logger = logging.getLogger(__name__)
+
 PREFIJO_MODO_EVENTOS = "eventos_"
 RUTA_POR_DEFECTO = Path("config/reglas_demanda.yml")
 # El ajuste de «junto a un evento» solo se suma si algún evento vecino mueve viajeros según el LLM: con un evento que
 # valora en 1.00, subir el día de antes y el de después contradiría su propia valoración.
 FACTOR_MIN_JUNTO = 1.05
+MESES = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
+# `base_mes` es opcional: sin él el reparto trata todos los meses de un trimestre al mismo nivel, que es como funcionó
+# hasta que hubo un dato mensual con el que medirlo (raillytics.prediccion.perfil_mensual).
+MES_NEUTRO = 1.0
 
 
 class ReglasError(ValueError):
@@ -37,10 +44,11 @@ class Reglas:
     vispera: float
     regreso: float
     junto_a_evento: float
+    base_mes: Mapping[str, float]
 
     def como_dict(self) -> dict:
         """Para la trazabilidad: las reglas con las que se calculó cada ejecución."""
-        return {**asdict(self), "base_dia_semana": dict(self.base_dia_semana)}
+        return {**asdict(self), "base_dia_semana": dict(self.base_dia_semana), "base_mes": dict(self.base_mes)}
 
 
 def es_modo_eventos(version_prompt: str) -> bool:
@@ -51,6 +59,9 @@ def cargar_reglas(ruta: Path) -> Reglas:
     if not ruta.is_file():
         raise ReglasError(f"no existe el fichero de reglas {ruta} (REGLAS_DEMANDA)")
     datos = yaml.safe_load(ruta.read_text(encoding="utf-8")) or {}
+    # Fuera del try de abajo a propósito: ese convierte cualquier fallo en el mensaje de las claves
+    # obligatorias, y un `base_mes` mal escrito necesita que se diga que es `base_mes`.
+    base_mes = _base_mes(datos, ruta)
     try:
         base = {dia: float(datos["base_dia_semana"][dia]) for dia in SEMANA}
         ajustes = datos["ajustes"]
@@ -61,10 +72,59 @@ def cargar_reglas(ruta: Path) -> Reglas:
             vispera=float(ajustes["vispera"]),
             regreso=float(ajustes["regreso"]),
             junto_a_evento=float(ajustes["junto_a_evento"]),
+            base_mes=base_mes,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ReglasError(f"{ruta}: falta o no es un número {exc}. Claves: base_dia_semana (lun..dom), "
                           "festivo_entre_semana, puente y ajustes (vispera, regreso, junto_a_evento)") from exc
+
+
+def _base_mes(datos: Mapping[str, object], ruta: Path) -> Mapping[str, float]:
+    """El perfil mensual del fichero, o todos los meses a 1.00 si no lo declara.
+
+    Es opcional porque llegó después: hasta que hubo un dato mensual con el que medirlo, el reparto
+    trataba igual a todos los meses de un trimestre. Pero si está, tiene que estar completo: con
+    cuatro meses escritos y ocho olvidados el reparto saldría sesgado hacia los que faltan y nada lo
+    diría. O los doce o ninguno.
+    """
+    declarado = datos.get("base_mes")
+    if declarado is None:
+        logger.info("%s no declara base_mes: el reparto trata igual a todos los meses del trimestre", ruta)
+        return {mes: MES_NEUTRO for mes in MESES}
+    if not isinstance(declarado, Mapping):
+        raise ReglasError(f"{ruta}: base_mes tiene que ser un mapa de mes a número, no {type(declarado).__name__}")
+    faltan = [mes for mes in MESES if mes not in declarado]
+    if faltan:
+        raise ReglasError(f"{ruta}: base_mes tiene que declarar los doce meses ({', '.join(MESES)}); "
+                          f"faltan {', '.join(faltan)}")
+    sobran = sorted(set(declarado) - set(MESES))
+    if sobran:
+        raise ReglasError(f"{ruta}: base_mes no reconoce {', '.join(map(str, sobran))}; los meses son "
+                          f"{', '.join(MESES)}")
+    try:
+        return {mes: float(declarado[mes]) for mes in MESES}
+    except (TypeError, ValueError) as exc:
+        raise ReglasError(f"{ruta}: base_mes tiene un valor que no es un número ({exc})") from exc
+
+
+def perfil_mensual(indices: Sequence[IndiceDia], reglas: Reglas) -> list[IndiceDia]:
+    """Escala el valor de cada día por el coeficiente de su mes.
+
+    Va en un paso aparte, después de `indices_base` y de `combinar`, y no dentro de ellos, porque es
+    una cosa distinta: `indices_base` responde «qué clase de día es este» y el perfil responde «a qué
+    nivel está este mes». Separarlo deja las reglas de clase de día verificables por sí solas y hace
+    que el factor del mes escale también el ajuste de los días junto a un evento y el factor del LLM,
+    que es lo que corresponde a un nivel.
+
+    El reparto se normaliza después contra el total trimestral de CNMC, así que esto solo cambia el
+    PESO RELATIVO de los meses dentro del trimestre, nunca el total, que es dato real.
+    """
+    resultado = []
+    for dia in indices:
+        factor = reglas.base_mes[MESES[dia.fecha.month - 1]]
+        motivo = dia.motivo if factor == MES_NEUTRO else f"{dia.motivo}, perfil de {MESES[dia.fecha.month - 1]} ({factor:g})"
+        resultado.append(IndiceDia(dia.fecha, round(dia.indice * factor, 6), motivo))
+    return resultado
 
 
 def indices_base(calendario: Calendario, reglas: Reglas) -> list[IndiceDia]:

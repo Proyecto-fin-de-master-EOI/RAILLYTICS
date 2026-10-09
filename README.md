@@ -54,12 +54,13 @@ discontinuas hacia la trazabilidad indican que cada proceso registra sus cargas.
 
 ```mermaid
 flowchart LR
-    subgraph fuentes[Fuentes publicas - 12 en config/data_sources.yml]
+    subgraph fuentes[Fuentes publicas - 13 en config/data_sources.yml]
         F1["CNMC - indicadores y precios (3 csv)"]
         F2["AEMET - climatologia diaria (2 json)"]
         F3["NAP - GTFS de Renfe y OUIGO (2 zip)"]
         F4["BOE - calendario laboral (2 xml)"]
         F5["Renfe GTFS-RT (2 json) y CRTM (1 zip)"]
+        F6["INE - turismo Madrid-Barcelona mensual (1 json)"]
     end
     subgraph bronze[Bronze]
         STG["data/bronze/ - staging local"]
@@ -68,7 +69,7 @@ flowchart LR
     end
     subgraph silver[Silver]
         SLV[("MinIO raillytics-silver/ - Parquet")]
-        REF["festivos, meteo y oferta_diaria - make festivos / meteo / nap-oferta"]
+        REF["festivos, meteo, oferta_diaria y turismo_mensual - make festivos / meteo / nap-oferta / turismo"]
     end
     subgraph gold[Gold]
         GLD[("MinIO raillytics-gold/ - dim y fact")]
@@ -263,7 +264,8 @@ typo como `optons` no se ignora en silencio.
 | `checks` | no | reglas de la descarga sobre un `csv`: `min_bytes`, `min_filas` y `columnas` (la cabecera esperada) |
 | `silver` | no | tablas que construye `make 04_silver` desde la fuente: lista de `{tabla, modo}` con modo `snapshot` o `incremental` |
 
-`options`, `checks` y `silver` solo se admiten en fuentes `csv`, y una tabla Silver no puede declararla más de una fuente. Ejemplo
+Cada formato admite sus propias `options` (`delimiter` y `encoding` en csv, `rowTag` en xml), y declarar una que el formato no
+reconoce es un error. `checks` solo se evalúa en `csv`, y una tabla Silver no puede declararla más de una fuente. Ejemplo
 (la fuente de indicadores de la CNMC, CSV con `;` y BOM):
 
 ```yaml

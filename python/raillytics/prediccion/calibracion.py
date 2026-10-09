@@ -35,7 +35,7 @@ from raillytics.ingesta.downloaders import obtener
 from raillytics.ingesta.referencia import conexion
 from raillytics.ingesta.sources import load_sources
 from raillytics.prediccion.calendario import construir_calendario
-from raillytics.prediccion.reglas import cargar_reglas, indices_base
+from raillytics.prediccion.reglas import cargar_reglas, indices_base, perfil_mensual
 from raillytics.prediccion.trimestre import Trimestre
 from raillytics.utils.lake import LakeLayout
 
@@ -152,7 +152,9 @@ def ocupacion_implicada(con, layout, oferta: pd.DataFrame, reglas,
             continue
         total_trenes = sum(trenes[d] for d in dias)
         plazas_km_tren = t.plazas_km / total_trenes
-        idx = indices_base(construir_calendario(trimestre, festivos, eventos, meteo), reglas)
+        # Con el perfil del mes incluido: la ocupación implicada tiene que medirse sobre el
+        # mismo reparto que usa la predicción, no sobre uno sin perfil.
+        idx = perfil_mensual(indices_base(construir_calendario(trimestre, festivos, eventos, meteo), reglas), reglas)
         suma = sum(i.indice for i in idx)
         for i in idx:
             if i.fecha not in trenes:
