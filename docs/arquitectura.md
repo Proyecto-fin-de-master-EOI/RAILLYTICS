@@ -120,6 +120,12 @@ tener clara una mezcla**: no todo lo que hay en Silver es real.
 > Los jobs reales de Silver para esas dos tablas **no existen todavía**, y de ellas comen dos de los
 > hechos de Gold. Lo dice la cabecera del propio `silver_sample.py`.
 
+De `viajeros_enriquecidos`, **una de sus tres dimensiones ya no es inventada**: la cuota de viajeros
+de cada operador sale de la columna `Empresa` del CSV de CNMC (`make cuotas-operador`), que la publica
+por trimestre y corredor. Estación y línea siguen siendo supuestos, y no hay forma de medirlos: nadie
+publica viajeros por estación en este corredor. El reparto entre Renfe y Avlo también sigue siendo
+supuesto, porque CNMC agrega las dos marcas bajo la misma empresa.
+
 **Tablas de referencia** — cargas iniciales, no van en el DAG
 - `python/raillytics/ingesta/boe_festivos.py` → `festivos` (`make festivos`)
 - `python/raillytics/ingesta/aemet_historico.py` → `meteo` (`make meteo`)
@@ -224,6 +230,7 @@ Las dos calibraciones no escriben nada, solo informan de qué coeficientes propo
 ```bash
 make calibrar         # el día de la semana, contra los trenes que circulan (NAP)
 make perfil-mensual   # el peso de cada mes del trimestre, contra el turismo del INE
+make cuotas-operador  # la cuota de cada operador, contra la columna Empresa de CNMC
 ```
 
 ### 3. El pipeline, paso a paso
@@ -299,7 +306,7 @@ make carga-e2e
 | Mercado trimestral | real | CNMC, de principio a fin |
 | `festivos`, `meteo`, `oferta_diaria` | real | BOE, AEMET y NAP |
 | Los 4 orígenes de la predicción | real | ninguno lee ya la muestra sintética |
-| `viajeros_enriquecidos` | **sintético** | no existe como dato abierto: tiene que salir de la propia DTC |
+| `viajeros_enriquecidos` | **sintético, con la cuota de operador real** | el detalle diario no existe como dato abierto, pero el reparto entre operadores sí lo publica CNMC |
 | `puntualidad_enriquecida` | **sintético** | el GTFS-RT ya se ingiere y nadie lo consume todavía |
 
 Las dos sintéticas no son un descuido: son el andamio que permitió desarrollar Gold y los dashboards

@@ -16,10 +16,18 @@ mismos prefijos; Gold (la app Spark GoldBuilderApp) y Superset no cambian.
 Los datos NO son reales y cubren SOLO el corredor AVE Madrid–Barcelona (una
 línea, AVE-MAD-BCN, y sus cuatro estaciones: Madrid Puerta de Atocha, Zaragoza
 Delicias, Camp de Tarragona y Barcelona Sants) y sus cuatro operadores (Renfe,
-Iryo, Ouigo y Avlo), con códigos inventados. Cuotas, servicios y retrasos de cada
-operador son inventados. Demanda
-y retrasos siguen un modelo simple (estacionalidad, día de la semana, festivos,
-lluvia, hora punta) para que los dashboards tengan algo que contar.
+Iryo, Ouigo y Avlo), con códigos inventados. Demanda y retrasos siguen un modelo
+simple (estacionalidad, día de la semana, festivos, lluvia, hora punta) para que
+los dashboards tengan algo que contar.
+
+Qué parte es supuesto y qué parte no, porque importa al presentar la tabla:
+
+  cuota de cada operador   MEDIDA: sale de la columna `Empresa` de CNMC
+                           (`make cuotas-operador`). El reparto interno entre
+                           Renfe y Avlo sí es supuesto: CNMC las agrega.
+  estación y línea         supuesto, y no hay forma de medirlo: nadie publica
+                           viajeros por estación en este corredor.
+  servicios y retrasos     inventados.
 
 Uso:  python -m raillytics.procesamiento.silver_sample [--start AAAA-MM-DD] [--end AAAA-MM-DD] [--seed N]
 """
@@ -106,11 +114,34 @@ LINEAS = (
 )
 
 # Operadores del corredor: cuotas que suman 1 y 28 servicios al día en total. Avlo es la marca low cost de Renfe.
+#
+# CUOTAS CALIBRADAS (2026-10-09). Ya no son inventadas: el CSV de indicadores de CNMC trae columna
+# `Empresa`, así que el reparto de viajeros entre operadores está MEDIDO. Media de los ocho
+# trimestres más recientes del corredor Madrid-Barcelona (`make cuotas-operador` para recalcularlo):
+#
+#   empresa           cuota medida   rango observado   antes      ahora
+#   Renfe Viajeros        60.3 %      57.1 - 62.3 %     0.55      0.603  (RENFE 0.439 + AVLO 0.164)
+#   Iryo                  23.7 %      22.0 - 24.8 %     0.25      0.237
+#   OUIGO                 16.0 %      14.9 - 19.0 %     0.20      0.160
+#
+# Solo los ocho últimos trimestres porque el corredor se liberalizó por tramos (OUIGO entró en 2021,
+# Iryo en diciembre de 2022): promediar desde 2016 mezclaría un monopolio con un mercado de tres.
+#
+# Redondeadas a tres decimales suman 1.000 exacto, que es el invariante que el generador necesita:
+# si no sumaran 1, la demanda total del corredor cambiaría sin que nadie lo haya decidido.
+#
+# LO QUE SIGUE SIENDO SUPUESTO: el reparto entre Renfe y Avlo. CNMC las agrega bajo «Renfe Viajeros»
+# porque son la misma compañía, así que se conserva la proporción que ya tenía el generador
+# (RENFE 72.7 %, AVLO 27.3 % de la empresa) y eso no mejora con este cambio.
+#
+# Y lo que no cambia: `servicios_dia`, `retraso_medio_min`, `p_cancelacion` y `factor_finde` siguen
+# inventados. El NAP da trenes al día por operador y serviría para calibrar `servicios_dia`, pero no
+# cubre a Iryo, así que quedaría medio medido y medio supuesto.
 OPERADORES = (
-    Operador("RENFE", "Renfe", "Renfe Viajeros", "Alta velocidad", 0.40, 12, 2.5, 0.004, 1.00),
-    Operador("IRYO", "Iryo", "ILSA (Trenitalia, Air Nostrum)", "Alta velocidad", 0.25, 7, 2.2, 0.003, 1.00),
-    Operador("OUIGO", "Ouigo", "SNCF Voyageurs España", "Low cost", 0.20, 5, 3.4, 0.008, 1.08),
-    Operador("AVLO", "Avlo", "Renfe Viajeros", "Low cost", 0.15, 4, 2.8, 0.006, 1.06),
+    Operador("RENFE", "Renfe", "Renfe Viajeros", "Alta velocidad", 0.439, 12, 2.5, 0.004, 1.00),   # antes 0.40
+    Operador("IRYO", "Iryo", "ILSA (Trenitalia, Air Nostrum)", "Alta velocidad", 0.237, 7, 2.2, 0.003, 1.00),  # antes 0.25
+    Operador("OUIGO", "Ouigo", "SNCF Voyageurs España", "Low cost", 0.160, 5, 3.4, 0.008, 1.08),   # antes 0.20
+    Operador("AVLO", "Avlo", "Renfe Viajeros", "Low cost", 0.164, 4, 2.8, 0.006, 1.06),            # antes 0.15
 )
 
 # Factores de demanda del AVE. Índice 0 = lunes ... 6 = domingo.

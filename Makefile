@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo turismo calibrar perfil-mensual ml-dataset ml-modelo 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo turismo calibrar perfil-mensual cuotas-operador ml-dataset ml-modelo 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -72,6 +72,7 @@ help:
 	@echo "  turismo               Construye la serie mensual de turismo Madrid-Barcelona (INE, tabla 53267)"
 	@echo "  calibrar              Contrasta las reglas de reparto diario contra la oferta real del NAP"
 	@echo "  perfil-mensual        Calibra el peso de cada mes del trimestre con el turismo del INE"
+	@echo "  cuotas-operador       Mide la cuota de viajeros de cada operador con los datos de CNMC"
 	@echo "  ml-dataset            Construye la tabla de entrenamiento de ocupación diaria en Silver"
 	@echo "  ml-modelo             Entrena y valida el modelo de ocupación (ver docs/modelo-ocupacion.md)"
 	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
@@ -189,6 +190,12 @@ calibrar: $(VENV)/.deps-installed
 # 1.000 neutro. Necesita la serie del INE (`make turismo`).
 perfil-mensual: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.prediccion.perfil_mensual
+
+# Cuota de viajeros de cada operador del corredor segun CNMC, frente a la que tiene el Silver
+# sintetico. No modifica nada: imprime lo que propone el dato. Necesita la tabla cnmc_trimestral en
+# Silver (`make 04_silver`).
+cuotas-operador: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.procesamiento.cuotas_operador
 
 # Tabla de entrenamiento del modelo: una fila por día, con la ocupación como objetivo y el
 # calendario, los festivos, los eventos y la meteo como variables. Es el entregable «Silver listo
