@@ -45,6 +45,18 @@ object GoldBuilder extends Logging {
   val MercadoSilver: Seq[String] = Seq("cnmc_trimestral", "cnmc_precio_trimestral", "cnmc_precio_mensual")
   val MercadoGold: Seq[String] = Seq("fact_mercado_trimestral", "fact_precio_trimestral", "fact_precio_mensual")
 
+  // Grupo OPCIONAL «corredor»: el dato diario REAL del proyecto, que lo construyen las cargas iniciales de Python
+  // (`make nap-oferta`, `make festivos`, `make meteo`, `make turismo`, `make ml-dataset`) y no `make 04_silver`.
+  // Todo o nada, como el de mercado: con una parte no se puede construir ni la ocupación ni la dimensión de fecha.
+  val CorredorSilver: Seq[String] = Seq("oferta_diaria", "ml_ocupacion_diaria", "turismo_mensual", "festivos", "meteo")
+  val CorredorGold: Seq[String] = Seq("fact_oferta_diaria", "fact_ocupacion_diaria", "fact_turismo_mensual")
+
+  // Cuando el grupo «corredor» está, dim_fecha se construye con OTRO SQL sobre la MISMA tabla Gold: cubre también
+  // las fechas de los hechos reales y toma los festivos del BOE en vez de la marca del Silver sintético. Sin el
+  // grupo, los hechos reales tendrían fechas que no existen en la dimensión, y el festivo seguiría siendo inventado
+  // teniendo la tabla real al lado. Ver src/main/resources/gold/dim_fecha_corredor.sql.
+  private val SqlAlternativo: Map[String, String] = Map("dim_fecha" -> "dim_fecha_corredor")
+
   private def silverViews(tablas: Seq[String]): Seq[String] = tablas.map(LakeViews.SilverPrefix + _)
   private def goldViews(tablas: Seq[String]): Seq[String] = tablas.map(LakeViews.GoldPrefix + _)
 
@@ -68,6 +80,19 @@ object GoldBuilder extends Logging {
     }
   }
 
+  // ¿Están las cinco tablas Silver del grupo «corredor»? Con solo una parte se omite el grupo y se avisa.
+  private def corredorDisponible(lake: LakeSettings)(implicit spark: SparkSession): Boolean = {
+    val faltan = LakeViews.registrar(lake, silverViews(CorredorSilver)).keySet
+    if (faltan.isEmpty) true
+    else {
+      if (faltan.size < CorredorSilver.size)
+        logger.warn(s"grupo 'corredor' omitido: faltan tablas Silver (${faltan.toSeq.sorted.mkString(", ")}); " +
+                    "las construyen make nap-oferta, festivos, meteo, turismo y ml-dataset")
+      else logger.info("grupo 'corredor' omitido: aún no hay dato diario real (make nap-oferta y siguientes)")
+      false
+    }
+  }
+
   // El SQL de cada tabla va como recurso; ${umbral_puntualidad_min} se sustituye
   // antes de ejecutarlo (Spark SQL no tiene variables de sesión portables).
   private def modelSql(table: String, umbralPuntualidadMin: Int): String = {
@@ -83,8 +108,9 @@ object GoldBuilder extends Logging {
   // la de calidad (una fila por gate, mismo run_id).
   def build(settings: GoldBuilderSettings)(implicit spark: SparkSession): Map[String, Long] = {
     val mercado = mercadoDisponible(settings.lake)
-    val silverTablas = SilverTables ++ (if (mercado) MercadoSilver else Nil)
-    val goldTablas = GoldTables ++ (if (mercado) MercadoGold else Nil)
+    val corredor = corredorDisponible(settings.lake)
+    val silverTablas = SilverTables ++ (if (mercado) MercadoSilver else Nil) ++ (if (corredor) CorredorSilver else Nil)
+    val goldTablas = GoldTables ++ (if (mercado) MercadoGold else Nil) ++ (if (corredor) CorredorGold else Nil)
     val parametros = Map("umbral_puntualidad_min" -> settings.umbralPuntualidadMin, "tablas" -> goldTablas,
                          "quality_gates" -> settings.calidadConfig)
     Cargas.registrar(Proceso, "gold", settings.lake.cargasDir, parametros) { ejecucion =>
@@ -100,7 +126,8 @@ object GoldBuilder extends Logging {
       // 2. Todas las tablas en memoria, sin tocar el destino. cache + count: si el SQL
       //    falla se sabe aquí, y ni los gates ni el recuento vuelven a ejecutar la consulta.
       val construidas: Seq[(String, DataFrame, Long)] = goldTablas.map { table =>
-        val df = spark.sql(modelSql(table, settings.umbralPuntualidadMin)).cache()
+        val recurso = if (corredor) SqlAlternativo.getOrElse(table, table) else table
+        val df = spark.sql(modelSql(recurso, settings.umbralPuntualidadMin)).cache()
         val n = df.count()
         df.createOrReplaceTempView(LakeViews.GoldPrefix + table)   // para los gates gold_* (y su conciliación con silver_*)
         (table, df, n)

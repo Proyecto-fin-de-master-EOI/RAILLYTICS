@@ -140,7 +140,27 @@ supuesto, porque CNMC agrega las dos marcas bajo la misma empresa.
 Tablas preparadas para responder rápido: los hechos y las dimensiones.
 
 - `src/main/scala/raillytics/gold/GoldBuilder.scala`
-- `src/main/resources/gold/*.sql` — 9 ficheros: 4 dimensiones y 5 hechos
+- `src/main/resources/gold/*.sql` — 13 ficheros: 4 dimensiones (una con dos variantes) y 8 hechos
+
+**Tres grupos, y los dos últimos son opcionales**: si falta alguna de sus tablas Silver, el grupo se
+omite con un aviso en vez de fallar. Quien solo tenga el Silver sintético no tiene por qué haber
+lanzado las cargas iniciales.
+
+| grupo | hechos | de dónde | ¿real? |
+| --- | --- | --- | --- |
+| núcleo | `fact_viajeros`, `fact_puntualidad` | las dos tablas Silver sintéticas | no |
+| `mercado` | `fact_mercado_trimestral`, `fact_precio_trimestral`, `fact_precio_mensual` | CNMC | **sí** |
+| `corredor` | `fact_oferta_diaria`, `fact_ocupacion_diaria`, `fact_turismo_mensual` | NAP, INE y la ocupación | **sí** / mitad |
+
+**`dim_fecha` tiene dos variantes y conviene saber por qué.** La del núcleo
+(`dim_fecha.sql`) saca los días de las dos tablas sintéticas y el festivo de la marca que genera el
+propio generador. Cuando el grupo `corredor` está disponible se construye con
+`dim_fecha_corredor.sql`, que escribe la MISMA tabla pero:
+
+- cubre también las fechas de los hechos reales —sin eso se quedaban sin atributos al enlazar—;
+- **toma los festivos del BOE** en vez de la marca sintética, y añade su **ámbito** (nacional, Madrid
+  o Cataluña: un festivo en un solo extremo del corredor mueve viajes igual);
+- añade la meteo observada de las dos cabeceras.
 
 → `s3://raillytics-gold/`
 

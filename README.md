@@ -72,7 +72,7 @@ flowchart LR
         REF["festivos, meteo, oferta_diaria y turismo_mensual - make festivos / meteo / nap-oferta / turismo"]
     end
     subgraph gold[Gold]
-        GLD[("MinIO raillytics-gold/ - dim y fact")]
+        GLD[("MinIO raillytics-gold/ - 4 dim y 8 fact")]
         TRZ[("raillytics-gold/_trazabilidad/cargas/")]
     end
     SUP["Superset - DuckDB en memoria"]

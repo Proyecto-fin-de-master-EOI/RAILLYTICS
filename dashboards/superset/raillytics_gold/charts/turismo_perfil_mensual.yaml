@@ -1,0 +1,49 @@
+slice_name: Peso de cada mes dentro de su trimestre
+description: 1,000 = mes neutro (un tercio del trimestre). De aquí sale base_mes. Fuera 2020 y 2021.
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  adhoc_filters:
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_corredor_del_proyecto
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: sin_pandemia
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: cuota_del_trimestre IS NOT NULL
+  query_mode: aggregate
+  groupby:
+  - nombre_mes
+  metrics:
+  - factor_del_mes
+  - cuota_media_del_trimestre
+  - meses
+  all_columns: []
+  percent_metrics: []
+  order_by_cols:
+  - '["factor_del_mes", false]'
+  row_limit: 1000
+  server_page_length: 15
+  include_search: false
+  show_totals: false
+  table_timestamp_format: smart_date
+  show_cell_bars: true
+  color_pn: false
+  allow_render_html: false
+  column_config: {}
+  conditional_formatting: []
+  temporal_columns_lookup: {}
+  time_grain_sqla: null
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: c2859aec-ad16-51a8-8a83-0c2d37478789
+version: 1.0.0
+dataset_uuid: 321d6d44-b657-5d0c-a49e-bb9feb5a3761
+is_managed_externally: false
+external_url: null

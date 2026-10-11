@@ -1,0 +1,210 @@
+table_name: turismo_mensual
+main_dttm_col: primer_dia_mes
+description: 'Turistas que se mueven de Madrid a cada provincia destino, mes a mes (INE, operación TMOV, tabla 53267, datos
+  REALES estimados por posición de teléfonos móviles). Es el único dato de nivel MENSUAL del proyecto, y de él sale el coeficiente
+  «base_mes» del reparto diario de la predicción. QUÉ NO SE PUEDE CONCLUIR: son viajes en TODOS los medios de transporte,
+  no solo en tren, y «turista» implica pernoctación, así que la ida y vuelta en el día no entra. Se usa la FORMA (cuota del
+  mes dentro de su trimestre), no el nivel. Atribución obligatoria: «Elaboración propia con datos extraídos del sitio web
+  del INE: www.ine.es».'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: "-- Fact_Turismo_Mensual: turistas de Madrid a cada provincia destino, mes a mes (INE, operación TMOV, tabla 53267).\n\
+  -- DATOS REALES, estimados por POSICIÓN DE TELÉFONOS MÓVILES (no es una encuesta).\n-- QUÉ NO SE PUEDE CONCLUIR: son viajes\
+  \ en TODOS los medios de transporte, y «turista» en TMOV implica\n-- pernoctación, así que la ida y vuelta en el día no\
+  \ entra. Se usa la FORMA (cuota del mes dentro de su\n-- trimestre), no el nivel: presentarlo como viajeros de tren sería\
+  \ desnaturalizar el dato, que es lo que\n-- prohíbe la licencia del INE.\nSELECT\n    primer_dia_mes,\n    anio, mes, nombre_mes,\
+  \ trimestre,\n    anio || '-T' || trimestre                               AS trimestre_etiqueta,\n    origen, destino, tipo_dato,\n\
+  \    turistas,\n    cuota_del_trimestre,\n    anio NOT IN (2020, 2021)                                AS sin_pandemia,\n\
+  \    destino = 'Barcelona'                                   AS es_corredor_del_proyecto\nFROM read_parquet('s3://raillytics-gold/fact_turismo_mensual/*.parquet')"
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: 321d6d44-b657-5d0c-a49e-bb9feb5a3761
+metrics:
+- metric_name: total_turistas
+  verbose_name: Turistas
+  metric_type: null
+  expression: SUM(turistas)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: cuota_media_del_trimestre
+  verbose_name: Cuota del trimestre
+  metric_type: null
+  expression: AVG(cuota_del_trimestre)
+  description: Parte de los turistas del trimestre que cae en el mes. Un mes neutro vale 33,3 %. Solo se calcula en trimestres
+    con sus tres meses.
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: factor_del_mes
+  verbose_name: Factor del mes
+  metric_type: null
+  expression: AVG(cuota_del_trimestre) * 3
+  description: 'La cuota traducida al coeficiente de base_mes: 1,000 = mes neutro.'
+  d3format: ',.3f'
+  extra: null
+  warning_text: null
+- metric_name: meses
+  verbose_name: Meses
+  metric_type: null
+  expression: COUNT(*)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+columns:
+- column_name: primer_dia_mes
+  verbose_name: Mes
+  is_dttm: true
+  is_active: true
+  type: DATE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: nombre_mes
+  verbose_name: Mes (nombre)
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: mes
+  verbose_name: Mes (nº)
+  is_dttm: false
+  is_active: true
+  type: INT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: anio
+  verbose_name: Año
+  is_dttm: false
+  is_active: true
+  type: INT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: trimestre_etiqueta
+  verbose_name: Trimestre
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: origen
+  verbose_name: Origen
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: destino
+  verbose_name: Destino
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: tipo_dato
+  verbose_name: Tipo de dato
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: 'definitivo, provisional o avance: el INE marca los meses recientes como provisionales.'
+  python_date_format: null
+  extra: null
+- column_name: turistas
+  verbose_name: Turistas
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: cuota_del_trimestre
+  verbose_name: Cuota del trimestre
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: sin_pandemia
+  verbose_name: Fuera 2020 y 2021
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: La pandemia movió los viajes por razones que no son de calendario.
+  python_date_format: null
+  extra: null
+- column_name: es_corredor_del_proyecto
+  verbose_name: Destino Barcelona
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

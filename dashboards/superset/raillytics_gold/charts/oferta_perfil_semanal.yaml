@@ -1,0 +1,45 @@
+slice_name: Trenes al día por día de la semana
+description: Solo días con cobertura completa. Es el perfil con el que se calibró base_dia_semana.
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  adhoc_filters:
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_corredor_del_proyecto
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: cobertura_completa
+  query_mode: aggregate
+  groupby:
+  - nombre_dia
+  metrics:
+  - trenes_por_dia
+  - dias
+  all_columns: []
+  percent_metrics: []
+  order_by_cols:
+  - '["trenes_por_dia", false]'
+  row_limit: 1000
+  server_page_length: 15
+  include_search: false
+  show_totals: false
+  table_timestamp_format: smart_date
+  show_cell_bars: true
+  color_pn: false
+  allow_render_html: false
+  column_config: {}
+  conditional_formatting: []
+  temporal_columns_lookup: {}
+  time_grain_sqla: null
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 6449951b-197a-5ea5-87d0-87c28d9c5a76
+version: 1.0.0
+dataset_uuid: 608cfd93-3735-5a48-9bd2-e204ec892260
+is_managed_externally: false
+external_url: null

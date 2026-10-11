@@ -1,0 +1,32 @@
+slice_name: Cobertura completa
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_corredor_del_proyecto
+  metric: pct_cobertura_completa
+  header_font_size: 0.4
+  subheader: días con todos los operadores que publican
+  subheader_font_size: 0.15
+  y_axis_format: .1%
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 34a0bbde-7225-5ec9-960e-c06181f827da
+version: 1.0.0
+dataset_uuid: 608cfd93-3735-5a48-9bd2-e204ec892260
+is_managed_externally: false
+external_url: null
