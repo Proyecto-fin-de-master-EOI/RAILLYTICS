@@ -238,6 +238,64 @@ si el verano vende más porque es verano o porque tiene pocos festivos, y el efe
 mucho mayor. El experimento que lo rompería es el movimiento de la Semana Santa entre trimestres,
 pero **solo cambia dos veces en once años** (2016 y 2024).
 
+### ¿Y contrastar el día de la semana con el interés de búsqueda?
+
+`base_dia_semana` se calibró contra la **oferta** del NAP, que es capacidad y no demanda; el propio
+fichero de reglas dice que «lo medido es el TECHO, no el valor». Así que se buscó un contraste del
+lado de la demanda y además independiente: cuánta gente busca el viaje cada día de la semana en
+Google Trends (`scripts/contraste_trends.py`).
+
+**Por qué esto se puede hacer y una serie diaria larga no.** Trends normaliza cada descarga poniendo
+el máximo de la ventana pedida a 100, así que dos ventanas no son comparables y construir histórico
+obliga a encadenarlas por solapes, acumulando error. Pero **un perfil semanal no necesita encadenar
+nada**: «¿qué día se busca más?» se contesta dentro de una sola ventana, donde la normalización es la
+misma para los siete días. La granularidad la decide el rango pedido —menos de 9 meses da días, más
+de 5 años da meses—, así que las ventanas son de 260 días.
+
+**Hay patrón semanal, y es estable.** Tres ventanas independientes, una por año:
+
+| día | 2024 | 2025 | 2026 | media | reglas | oferta |
+| --- | --- | --- | --- | --- | --- | --- |
+| lun | 1,052 | 1,020 | 1,093 | 1,055 | 1,05 | 0,99 |
+| mar | 1,000 | 1,000 | 1,000 | 1,000 | 1,00 | 1,00 |
+| mié | 0,981 | 0,946 | 0,979 | 0,969 | 1,00 | 1,03 |
+| jue | 0,998 | 0,937 | 1,030 | 0,988 | 1,05 | 1,04 |
+| **vie** | 0,930 | 0,937 | 0,955 | **0,941** | **1,15** | 0,96 |
+| sáb | 0,897 | 0,907 | 0,971 | 0,925 | 0,80 | 0,68 |
+| **dom** | 1,042 | 1,119 | 1,166 | **1,109** | **1,00** | 0,76 |
+
+El domingo es el día de más búsquedas y el viernes y el sábado los de menos, con el mismo signo en
+las tres ventanas y significativo en al menos dos cada uno. Las reglas dicen lo contrario de esos dos
+días: para ellas el viernes es el más fuerte de la semana y el domingo está en la media.
+
+**Y aun así no sirve de contraste.** Por dos razones medidas:
+
+1. **El desfase entre buscar y viajar no se puede identificar.** Quien busca el domingo puede estar
+   planificando un viaje del viernes. Si las búsquedas adelantan a los viajes *k* días, el perfil
+   rotado *k* posiciones debería encajar con el de viajes. Ninguna rotación lo hace: el mejor ajuste
+   es r = 0,34 contra las reglas y r = 0,60 contra la oferta, y con siete puntos hace falta
+   |r| > 0,75 para hablar de correlación al 5 %.
+2. **La amplitud no cuadra.** El perfil de búsquedas varía 1,20× a lo largo de la semana, frente a
+   1,44× en las reglas y 1,54× en la oferta. Las búsquedas están mucho más repartidas que los
+   viajes, que es justo lo que se espera si la gente planifica varios días antes.
+
+De hecho, **domingo alto y viernes bajo es exactamente lo que predice la hipótesis del desfase**
+—planificar el domingo, viajar el viernes—, así que el dato no contradice a las reglas: es compatible
+con ellas y con su contrario, y por eso no decide.
+
+**Una lección metodológica que costó encontrar.** El contraste de cada día **no se puede anclar en un
+día concreto**. Al principio se medía la significación contra el martes y salía que ningún día se
+distingue de nada: resulta que un pico de noticias del 20 de enero de 2026 cayó en martes, infló su
+error y contaminó las siete comparaciones. Comparando cada día contra los otros seis juntos aparece el
+patrón. El martes en 1,000 de la tabla es solo un cambio de unidad para poder ponerla al lado de las
+reglas: dividir por otro día deja idénticas todas las proporciones, y el nivel absoluto no lo usa
+nadie porque el reparto se reescala a media 1,0 antes de aplicar el total de CNMC.
+
+**Por qué no entra en el pipeline.** Es un endpoint no documentado, devuelve una **muestra aleatoria**
+—dos peticiones idénticas dan números distintos— y redondea a entero, así que una tabla construida con
+esto no sería reproducible y rompería la trazabilidad del lago. Queda como experimento relanzable
+(`make contraste-trends`), no como fuente.
+
 **Los factores de los eventos tampoco.** Los que devuelve el LLM (1,15 para una feria, 1,25 para un
 Clásico) no son estimables: son 63 días con evento en un solo corredor y no existe el escenario
 contrafactual, es decir cuánta gente habría viajado ese día sin el evento.
@@ -246,6 +304,13 @@ contrafactual, es decir cuánta gente habría viajado ese día sin el evento.
 como hipótesis documentadas**, no porque no se haya intentado estimarlos, sino porque las fuentes
 disponibles no contienen la información necesaria. `base_dia_semana` y `base_mes` sí salen de dato
 medido, y queda escrito en el propio fichero de reglas de dónde sale cada uno.
+
+De los tres intentos de contraste, uno funcionó (el mes, con el turismo del INE) y dos no (los
+festivos con los trimestres de CNMC, y el día de la semana con el interés de búsqueda). Los dos
+fracasos tienen la misma forma: **la fuente contiene la señal mezclada con otra que no se puede
+separar** —la estacionalidad trimestral en un caso, el desfase entre planificar y viajar en el otro—.
+Y el éxito también: funcionó porque medir la cuota dentro del trimestre descuenta precisamente lo que
+estorbaba.
 
 ## Limitaciones
 
