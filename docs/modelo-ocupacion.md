@@ -342,38 +342,68 @@ de cuántos asientos hay. La de Trends vale aunque el desfase entre buscar y via
 porque **rotar un perfil no cambia su amplitud**, y es una cota inferior porque las búsquedas de un
 viaje se reparten entre varios días previos y esa convolución solo puede aplanar.
 
-| día | α = 0,43 | α = 1,0 | antes | oferta | Trends |
+| día | α = 0,43 | α = 1,0 | oferta medida | en el fichero | (Trends, **no comparable**) |
 | --- | --- | --- | --- | --- | --- |
-| lun | 0,99 | 0,99 | 1,05 | 0,99 | 1,06 |
+| lun | 0,99 | 0,99 | 0,99 | 1,05 | 1,06 |
 | mar | 1,00 | 1,00 | 1,00 | 1,00 | 1,00 |
-| mié | 1,01 | 1,03 | 1,00 | 1,03 | 0,97 |
-| jue | 1,02 | 1,04 | 1,05 | 1,04 | 0,99 |
-| **vie** | **0,98** | **0,96** | **1,15** | 0,96 | 0,94 |
-| sáb | 0,85 | 0,68 | 0,80 | 0,68 | 0,93 |
-| dom | 0,89 | 0,76 | 1,00 | 0,76 | 1,11 |
+| mié | 1,01 | 1,03 | 1,03 | 1,00 | 0,97 |
+| jue | 1,02 | 1,04 | 1,04 | 1,05 | 0,99 |
+| **vie** | 0,98 | 0,96 | 0,96 | **1,15** | 0,94 |
+| sáb | 0,85 | 0,68 | 0,68 | 0,80 | 0,93 |
+| dom | 0,89 | 0,76 | 0,76 | 1,00 | 1,11 |
 
-**El viernes se cambió de 1,15 a 0,98.** Era el coeficiente con menos apoyo del fichero: tres medidas
-independientes lo ponen en o por debajo del martes —oferta 0,96, búsquedas 0,94, la familia α entre
-0,96 y 0,98— y ninguna lo pone por encima. Es además **robusto en todo el rango de α**, así que no
-depende de elegir un valor concreto del parámetro. Tras el cambio su ocupación implícita pasa del
-85,7 % al 75,8 %, en línea con el resto de los laborables (75-82 %) en vez de ser el más alto.
+Dos avisos sobre cómo leer esa tabla, y los dos se me pasaron la primera vez:
 
-**Lo que el cambio NO está justificado por:** el MAPE del modelo mejoró (de 10,1 % a 8,6 % frente al
-9,6 % de la referencia trivial), pero eso **no es un argumento**. El objetivo lo generan estas mismas
-reglas, así que aplanar un coeficiente hace el objetivo más fácil de predecir sin que eso diga nada
-sobre si el coeficiente es correcto. Elegir coeficientes por el MAPE sería circular, y el código avisa
-cuando el MAPE baja del 5 % por esa razón.
+- **Las columnas α no son medidas independientes de la oferta**: son la oferta elevada a α, o sea la
+  misma señal comprimida hacia la media. Hay **un** perfil medido, no tres.
+- **La última columna está por referencia y no se puede usar día a día.** Los valores de Trends
+  dependen del desfase entre buscar y viajar, que no se identifica (ver la sección anterior). De
+  Trends solo sirve la amplitud del conjunto, que es lo que acota α.
 
-**El sábado y el domingo se dejan como están**, y no por falta de ganas de medirlos: la ocupación
-implícita del fin de semana está contaminada por el denominador (ver arriba, 21 de los 25 días
-imposibles son fin de semana), así que no sirve de contraste. La familia α los pondría entre 0,68 y
-0,89, pero el argumento de las reglas —el operador no puede añadir trenes y la demanda extra se
-absorbe en ocupación— sigue en pie y los datos disponibles no lo refutan. **Queda como la duda abierta
-principal del fichero de reglas.**
+**Se intentó bajar el viernes de 1,15 a 0,98 y se devolvió.** Queda escrito porque el intento
+delimita lo que se puede medir, y porque el 1,15 sigue siendo el coeficiente con menos apoyo.
 
-Efecto colateral que conviene saber: **los coeficientes están acoplados**. El total del trimestre es
-fijo, así que bajar el viernes reparte su peso entre los demás y subió la ocupación implícita del
-domingo del 96,3 % al 98,4 %. Cambiar un coeficiente no es una operación local.
+Lo que se midió, y es lo único que hay: el operador pone **65 trenes un viernes** (mediana) frente a
+**71 un jueves**, y ha llegado a poner 78 un jueves. El viernes **no está topado por capacidad**:
+pone menos porque quiere. Si fuera el día de más demanda de la semana, estaría dejando dinero en la
+mesa.
+
+Por qué no basta:
+
+- **Es una sola medida, no tres.** La familia α da 0,96-0,98 para el viernes, pero **no es
+  independiente de la oferta**: es la misma oferta comprimida hacia la media. Presentarlas como dos
+  confirmaciones fue un error de razonamiento.
+- **El 0,94 del interés de búsqueda no es utilizable, y esto está dicho tres párrafos más arriba en
+  este mismo documento.** De Trends solo sirve la *amplitud*, porque no cambia al rotar el perfil;
+  los valores por día dependen del desfase entre buscar y viajar, que no se identifica. Usarlo es
+  exactamente el error que la sección anterior advierte.
+- **La oferta arrastra el aviso de siempre:** el NAP da trenes, no plazas. Esos 65 trenes del viernes
+  pueden ser composiciones más largas. Es el mismo problema que impide decidir el fin de semana, y
+  vale igual aquí.
+
+Y hay un motivo de coherencia: el argumento que sostiene el 1,15 —la demanda del viernes supera lo
+que el operador ofrece y la diferencia se absorbe en ocupación, con un 85,7 % implicado, que es alto
+pero posible— es **el mismo** que mantiene el domingo en 1,00. Aplicarlo a uno y no al otro no se
+sostiene.
+
+**Qué haría falta para cerrarlo:** plazas por día en vez de trenes, o demanda diaria observada.
+Mientras no haya una de las dos, el viernes se queda como hipótesis documentada, igual que los
+festivos.
+
+**El sábado y el domingo, por la misma razón y una propia.** La ocupación implícita del fin de semana
+está contaminada por el denominador (21 de los 25 días imposibles son fin de semana, ver arriba), así
+que tampoco sirve de contraste. La familia α los pondría entre 0,68 y 0,89, pero el argumento de las
+reglas sigue en pie y los datos disponibles no lo refutan.
+
+**Resumen de lo que se puede y no se puede calibrar hoy:**
+
+| coeficiente | ¿medido? | con qué |
+| --- | --- | --- |
+| `base_mes` | **sí** | turismo mensual del INE |
+| `base_dia_semana`, lun a jue | **sí** | oferta del NAP; ocupación implícita coherente (73-84 %) |
+| `base_dia_semana`, vie, sáb, dom | **no** | la oferta no distingue demanda alta de capacidad topada, y da trenes y no plazas |
+| `festivo_entre_semana`, `puente`, vísperas | **no** | confundidos con la estacionalidad trimestral |
+| factores de eventos | **no** | 63 días en un corredor y no existe el contrafactual |
 
 **Los factores de los eventos tampoco.** Los que devuelve el LLM (1,15 para una feria, 1,25 para un
 Clásico) no son estimables: son 63 días con evento en un solo corredor y no existe el escenario

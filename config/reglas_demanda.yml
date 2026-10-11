@@ -28,41 +28,43 @@
 # Lo medido es el TECHO, no el valor. Para recalcularlo tras ampliar el histórico:
 # `make nap-oferta && make calibrar`.
 #
-# EL VIERNES, REVISADO (2026-10-11). Era 1.15, el día más alto de la semana, y resultó ser el
-# coeficiente con menos apoyo del fichero: TRES medidas independientes lo ponen en o por debajo del
-# martes, y ninguna lo pone por encima.
+# EL VIERNES: SE INTENTÓ BAJARLO A 0.98 Y SE DEVOLVIÓ A 1.15 (2026-10-11).
 #
-#   oferta del NAP (trenes/día, mediana)          0.96
-#   interés de búsqueda (Google Trends, 3 años)   0.94
-#   demanda = oferta atenuada (ver abajo)         0.98
-#   ----------------------------------------------------
-#   valor anterior, solo hipótesis                1.15
+# Queda anotado porque el intento enseña dónde está el límite de lo que se puede medir, y porque el
+# 1.15 sigue siendo el coeficiente con menos apoyo del fichero.
 #
-# La tercera sale de modelar la demanda como la oferta ATENUADA hacia la media —el operador pone
-# capacidad donde espera gente, pero no puede partir trenes— con `demanda = oferta ** alfa`. El alfa
-# queda acotado por abajo por dos medidas INDEPENDIENTES que coinciden en 0.43:
+# Lo que se midió, y es lo único que hay: el operador pone 65 trenes un viernes (mediana) frente a
+# 71 un jueves, y ha llegado a poner 78 un jueves. O sea que el viernes NO está topado por
+# capacidad: pone menos porque quiere. Si el viernes fuera el día de más demanda de la semana,
+# dejaría dinero en la mesa.
 #
-#   - la amplitud semanal del interés de búsqueda (1.20x) frente a la de la oferta (1.54x). Vale
-#     aunque el desfase entre buscar y viajar sea desconocido, porque rotar un perfil no cambia su
-#     amplitud; y es una cota INFERIOR, porque las búsquedas de un viaje se reparten entre varios
-#     días previos y esa convolución solo puede aplanar.
-#   - el techo del 100 %: por debajo de 0.43 el sábado medio sale al 105-113 % de ocupación, que es
-#     imposible.
+# Por qué no basta para cambiarlo:
 #
-# Además, el perfil que produce menos días físicamente imposibles es el que sigue a la oferta: 5 de
-# 180 frente a los 25 que daba con el viernes en 1.15.
+#   - Es UNA sola medida, no tres. Modelar la demanda como la oferta atenuada
+#     (`demanda = oferta ** alfa`) da 0.96-0.98 para el viernes, pero eso NO es una medida
+#     independiente: es la misma oferta comprimida hacia la media.
+#   - El interés de búsqueda de Google Trends da 0.94, pero **ese número no es utilizable**. De
+#     Trends solo se puede usar la AMPLITUD del perfil semanal, porque no cambia al rotarlo; los
+#     valores por día dependen del desfase entre buscar y viajar, que no se puede identificar (ver
+#     docs/modelo-ocupacion.md). Usarlo fue un error, y es lo que hizo parecer que había tres
+#     medidas coincidentes.
+#   - Y la oferta arrastra el aviso de siempre: **el NAP da trenes, no plazas**. Esos 65 trenes del
+#     viernes pueden ser composiciones más largas. Es el mismo problema que impide decidir el fin de
+#     semana, y vale igual aquí.
 #
-# Lo que esto NO zanja: el argumento de las reglas era que el operador no puede añadir trenes el
-# viernes y la demanda extra se absorbe en ocupación. Con un 85,7 % implicado eso era posible, no
-# imposible. La ocupación implícita no decide entre las dos historias, y para decidirlo hace falta
-# demanda diaria observada, que no existe. Se elige el valor medido porque tres fuentes apuntan ahí y
-# ninguna apunta al 1.15. Ver docs/modelo-ocupacion.md y `make contraste-trends`.
+# El argumento que sostiene el 1.15 sigue en pie: el viernes la demanda puede superar lo que el
+# operador ofrece y la diferencia se absorbe en ocupación. Con un 85.7 % implicado eso es posible,
+# no imposible. Es el MISMO argumento que mantiene el domingo en 1.00, y aplicarlo a uno y no al
+# otro sería incoherente.
+#
+# Qué haría falta para cerrarlo: plazas por día (no trenes), o demanda diaria observada. Mientras no
+# haya una de las dos, el viernes se queda como hipótesis documentada, igual que los festivos.
 base_dia_semana:
   lun: 1.05
   mar: 1.00
   mié: 1.00
   jue: 1.05
-  vie: 0.98   # antes 1.15 (solo hipótesis); ver el bloque EL VIERNES, REVISADO
+  vie: 1.15   # hipótesis; se intentó bajarlo a 0.98 y no hay con qué sostenerlo (ver arriba)
   sáb: 0.80
   dom: 1.00
 festivo_entre_semana: 0.70
