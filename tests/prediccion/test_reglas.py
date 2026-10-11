@@ -34,10 +34,13 @@ def _calendario(*eventos):
 def test_el_fichero_de_reglas_del_repo_se_carga():
     # Calibrados contra la oferta real del NAP el 2026-10-06 (ver la cabecera de reglas_demanda.yml
     # y `make calibrar`): con los anteriores el domingo implicaba un 99 % de ocupación.
-    assert REGLAS.base_dia_semana == {"lun": 1.05, "mar": 1.00, "mié": 1.00, "jue": 1.05, "vie": 1.15, "sáb": 0.80, "dom": 1.00}
+    # El viernes se revisó el 2026-10-11 de 1.15 a 0.98: era el coeficiente con menos apoyo, y tres
+    # medidas independientes (oferta 0.96, interés de búsqueda 0.94, demanda como oferta atenuada
+    # 0.96-0.98) lo ponen en o por debajo del martes.
+    assert REGLAS.base_dia_semana == {"lun": 1.05, "mar": 1.00, "mié": 1.00, "jue": 1.05, "vie": 0.98, "sáb": 0.80, "dom": 1.00}
     assert (REGLAS.festivo_entre_semana, REGLAS.puente) == (0.70, 0.75)
     assert (REGLAS.vispera, REGLAS.regreso, REGLAS.junto_a_evento) == (0.20, 0.20, 0.05)
-    assert REGLAS.como_dict()["base_dia_semana"]["vie"] == 1.15
+    assert REGLAS.como_dict()["base_dia_semana"]["vie"] == 0.98
 
 
 def test_un_fichero_de_reglas_incompleto_o_ausente_falla_con_un_mensaje_claro(tmp_path):
@@ -54,7 +57,7 @@ def test_un_fichero_de_reglas_incompleto_o_ausente_falla_con_un_mensaje_claro(tm
     ("dia", "valor", "motivo"),
     [
         (date(2026, 10, 6), 1.00, "martes laborable"),
-        (date(2026, 10, 9), 1.35, "viernes víspera de tramo festivo"),  # 1.15 + 0.20
+        (date(2026, 10, 9), 1.18, "viernes víspera de tramo festivo"),  # 0.98 + 0.20
         (date(2026, 10, 10), 0.80, "sábado de fin de semana"),  # dentro del tramo, pero ni víspera ni regreso
         (date(2026, 10, 12), 0.90, "lunes festivo (Fiesta Nacional de España), regreso de tramo festivo"),  # 0.70 + 0.20
         (date(2026, 11, 1), 1.20, "domingo festivo (Todos los Santos), regreso de tramo festivo"),  # en domingo: 1.00 + 0.20
@@ -87,7 +90,7 @@ def test_combinar_aplica_el_factor_del_evento_y_el_ajuste_de_los_dias_de_al_lado
     assert final[date(2026, 11, 17)].indice == pytest.approx(1.05)  # martes: 1.00 + 0.05
     assert final[date(2026, 11, 19)].indice == pytest.approx(1.10)  # jueves: 1.05 + 0.05
     assert final[date(2026, 11, 19)].motivo == "jueves laborable, junto a un evento"
-    assert final[date(2026, 11, 20)].indice == pytest.approx(1.15)  # el viernes no está junto al evento
+    assert final[date(2026, 11, 20)].indice == pytest.approx(0.98)  # el viernes no está junto al evento
 
 
 def test_un_evento_que_el_llm_valora_sin_efecto_no_sube_los_dias_de_al_lado():

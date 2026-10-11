@@ -20,19 +20,49 @@
 # cuatro trimestres medidos. Con los valores anteriores (vie 1.30, dom 1.25) el domingo implicaba un
 # 99 % de ocupación media: todos los domingos del año prácticamente llenos, que no se sostiene.
 #
-# Los valores de ahora conservan la DIRECCIÓN de la hipótesis —el viernes y el domingo van más
-# llenos, porque el operador no puede añadir trenes sin límite— pero moderada hasta que cabe en la
-# capacidad medida. El domingo queda en un 86 % de ocupación implicada, dentro del rango observado
-# en los trimestres reales (74-87 %).
+# El domingo conserva la DIRECCIÓN de la hipótesis —va más lleno, porque el operador no puede añadir
+# trenes sin límite— moderada hasta que cabe en la capacidad medida: queda en un 96 % de ocupación
+# implicada, que es alto pero posible, y tiene detrás un argumento real (la oferta cae un 24 % el
+# domingo, así que si la demanda no cae tanto, la ocupación sube).
 #
-# Lo medido es el TECHO, no el valor: que el viernes sea 1.15 y no 1.10 sigue siendo un juicio.
-# Para recalcularlo tras ampliar el histórico: `make nap-oferta && make calibrar`.
+# Lo medido es el TECHO, no el valor. Para recalcularlo tras ampliar el histórico:
+# `make nap-oferta && make calibrar`.
+#
+# EL VIERNES, REVISADO (2026-10-11). Era 1.15, el día más alto de la semana, y resultó ser el
+# coeficiente con menos apoyo del fichero: TRES medidas independientes lo ponen en o por debajo del
+# martes, y ninguna lo pone por encima.
+#
+#   oferta del NAP (trenes/día, mediana)          0.96
+#   interés de búsqueda (Google Trends, 3 años)   0.94
+#   demanda = oferta atenuada (ver abajo)         0.98
+#   ----------------------------------------------------
+#   valor anterior, solo hipótesis                1.15
+#
+# La tercera sale de modelar la demanda como la oferta ATENUADA hacia la media —el operador pone
+# capacidad donde espera gente, pero no puede partir trenes— con `demanda = oferta ** alfa`. El alfa
+# queda acotado por abajo por dos medidas INDEPENDIENTES que coinciden en 0.43:
+#
+#   - la amplitud semanal del interés de búsqueda (1.20x) frente a la de la oferta (1.54x). Vale
+#     aunque el desfase entre buscar y viajar sea desconocido, porque rotar un perfil no cambia su
+#     amplitud; y es una cota INFERIOR, porque las búsquedas de un viaje se reparten entre varios
+#     días previos y esa convolución solo puede aplanar.
+#   - el techo del 100 %: por debajo de 0.43 el sábado medio sale al 105-113 % de ocupación, que es
+#     imposible.
+#
+# Además, el perfil que produce menos días físicamente imposibles es el que sigue a la oferta: 5 de
+# 180 frente a los 25 que daba con el viernes en 1.15.
+#
+# Lo que esto NO zanja: el argumento de las reglas era que el operador no puede añadir trenes el
+# viernes y la demanda extra se absorbe en ocupación. Con un 85,7 % implicado eso era posible, no
+# imposible. La ocupación implícita no decide entre las dos historias, y para decidirlo hace falta
+# demanda diaria observada, que no existe. Se elige el valor medido porque tres fuentes apuntan ahí y
+# ninguna apunta al 1.15. Ver docs/modelo-ocupacion.md y `make contraste-trends`.
 base_dia_semana:
   lun: 1.05
   mar: 1.00
   mié: 1.00
   jue: 1.05
-  vie: 1.15
+  vie: 0.98   # antes 1.15 (solo hipótesis); ver el bloque EL VIERNES, REVISADO
   sáb: 0.80
   dom: 1.00
 festivo_entre_semana: 0.70

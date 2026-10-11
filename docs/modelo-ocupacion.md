@@ -47,8 +47,30 @@ salen muchas más plazas por tren de las que hay y la ocupación se desploma. Co
 2025-T4 daba un 15 % de ocupación media, que es imposible.
 
 Quedan **180 días** (2026-T1 y 2026-T2), de los que **155 son utilizables**: 25 se marcan
-`plausible = False` porque dan una ocupación por encima del 100 %, lo que señala días en que el
-conteo de trenes del NAP falla. No se borran, se marcan.
+`plausible = False` porque dan una ocupación por encima del 100 %. No se borran, se marcan.
+
+**Y esos 25 no están repartidos al azar**, que es lo que se creía al principio:
+
+| día | imposibles | de | |
+| --- | --- | --- | --- |
+| lun, jue | 0 | 26 | |
+| mar, vie | 1 | 26 | |
+| mié | 2 | 25 | uno de ellos al 277 %: ahí sí falla el conteo del NAP |
+| **sáb** | **10** | 25 | **40 %** |
+| **dom** | **11** | 26 | **42 %** |
+
+**21 de 25 caen en fin de semana.** Eso no es un fallo aleatorio de la fuente, es un sesgo
+sistemático, y la causa más probable es el aviso que arrastra todo el proyecto: **el NAP da trenes, no
+plazas**. Las plazas por tren se calculan como una constante trimestral, así que si el operador pone
+composiciones dobles los días de ocio —práctica habitual—, la capacidad del fin de semana sale corta y
+la ocupación sale alta. Cuantificado: haría falta un **1,26× en la capacidad del domingo** para que
+ningún domingo pase del 100 %, lo que equivale a que una cuarta parte de los trenes lleven doble
+composición.
+
+**La consecuencia práctica importa para los coeficientes:** la ocupación implícita del fin de semana
+**no sirve** para decidir `sáb` y `dom`, porque el error del denominador se concentra justo ahí.
+Bajarlos para que «cuadre» sería arreglar un error de medición de la capacidad distorsionando un
+parámetro de demanda. Para los días laborables el contraste sí es utilizable (0-8 % de imposibles).
 
 ## Decisiones de diseño
 
@@ -295,6 +317,63 @@ nadie porque el reparto se reescala a media 1,0 antes de aplicar el total de CNM
 —dos peticiones idénticas dan números distintos— y redondea a entero, así que una tabla construida con
 esto no sería reproducible y rompería la trazabilidad del lago. Queda como experimento relanzable
 (`make contraste-trends`), no como fuente.
+
+### Qué coeficientes saldrían partiendo de cero, y el viernes revisado
+
+Juntando lo medido se puede estimar el perfil semanal sin partir de ninguna hipótesis. La idea: **la
+oferta es una señal revelada de la demanda** —el operador pone capacidad donde espera gente, y sabe
+más que nosotras— pero no la sigue perfectamente, porque no puede partir trenes y prefiere ir más
+lleno un día punta que añadir servicio. Así que la demanda es la oferta atenuada hacia la media:
+
+```
+demanda_i = oferta_i ^ alfa        con 0 <= alfa <= 1
+```
+
+Un único parámetro libre, y se acota **por los dos lados con dato medido**:
+
+| cota | de dónde sale | resultado |
+| --- | --- | --- |
+| inferior | amplitud semanal del interés de búsqueda (1,20×) frente a la de la oferta (1,54×) | α ≥ 0,42 |
+| inferior | techo del 100 %: por debajo, el sábado medio sale al 105-113 %, imposible | α ≥ 0,43 |
+| superior | α = 1 es el caso límite en que el operador ajusta la capacidad a la demanda | α ≤ 1 |
+
+**Las dos cotas inferiores son independientes y coinciden.** Una sale de cuánta gente busca y la otra
+de cuántos asientos hay. La de Trends vale aunque el desfase entre buscar y viajar sea desconocido,
+porque **rotar un perfil no cambia su amplitud**, y es una cota inferior porque las búsquedas de un
+viaje se reparten entre varios días previos y esa convolución solo puede aplanar.
+
+| día | α = 0,43 | α = 1,0 | antes | oferta | Trends |
+| --- | --- | --- | --- | --- | --- |
+| lun | 0,99 | 0,99 | 1,05 | 0,99 | 1,06 |
+| mar | 1,00 | 1,00 | 1,00 | 1,00 | 1,00 |
+| mié | 1,01 | 1,03 | 1,00 | 1,03 | 0,97 |
+| jue | 1,02 | 1,04 | 1,05 | 1,04 | 0,99 |
+| **vie** | **0,98** | **0,96** | **1,15** | 0,96 | 0,94 |
+| sáb | 0,85 | 0,68 | 0,80 | 0,68 | 0,93 |
+| dom | 0,89 | 0,76 | 1,00 | 0,76 | 1,11 |
+
+**El viernes se cambió de 1,15 a 0,98.** Era el coeficiente con menos apoyo del fichero: tres medidas
+independientes lo ponen en o por debajo del martes —oferta 0,96, búsquedas 0,94, la familia α entre
+0,96 y 0,98— y ninguna lo pone por encima. Es además **robusto en todo el rango de α**, así que no
+depende de elegir un valor concreto del parámetro. Tras el cambio su ocupación implícita pasa del
+85,7 % al 75,8 %, en línea con el resto de los laborables (75-82 %) en vez de ser el más alto.
+
+**Lo que el cambio NO está justificado por:** el MAPE del modelo mejoró (de 10,1 % a 8,6 % frente al
+9,6 % de la referencia trivial), pero eso **no es un argumento**. El objetivo lo generan estas mismas
+reglas, así que aplanar un coeficiente hace el objetivo más fácil de predecir sin que eso diga nada
+sobre si el coeficiente es correcto. Elegir coeficientes por el MAPE sería circular, y el código avisa
+cuando el MAPE baja del 5 % por esa razón.
+
+**El sábado y el domingo se dejan como están**, y no por falta de ganas de medirlos: la ocupación
+implícita del fin de semana está contaminada por el denominador (ver arriba, 21 de los 25 días
+imposibles son fin de semana), así que no sirve de contraste. La familia α los pondría entre 0,68 y
+0,89, pero el argumento de las reglas —el operador no puede añadir trenes y la demanda extra se
+absorbe en ocupación— sigue en pie y los datos disponibles no lo refutan. **Queda como la duda abierta
+principal del fichero de reglas.**
+
+Efecto colateral que conviene saber: **los coeficientes están acoplados**. El total del trimestre es
+fijo, así que bajar el viernes reparte su peso entre los demás y subió la ocupación implícita del
+domingo del 96,3 % al 98,4 %. Cambiar un coeficiente no es una operación local.
 
 **Los factores de los eventos tampoco.** Los que devuelve el LLM (1,15 para una feria, 1,25 para un
 Clásico) no son estimables: son 63 días con evento en un solo corredor y no existe el escenario

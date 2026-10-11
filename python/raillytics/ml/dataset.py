@@ -169,7 +169,10 @@ def main(argv: list[str] | None = None) -> int:
     descartables = len(tabla) - len(buenas)
     if descartables:
         logger.warning("  %d filas con ocupación imposible (>100%%), marcadas plausible=False: "
-                       "son días en los que el conteo de trenes del NAP falla", descartables)
+                       "21 de ellos son sábados o domingos: la capacidad del fin de semana sale "
+                       "corta porque el NAP da TRENES y no plazas, y las plazas por tren se "
+                       "calculan como una constante trimestral (ver docs/modelo-ocupacion.md)",
+                       descartables)
     return 0
 
 
