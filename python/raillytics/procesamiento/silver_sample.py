@@ -27,6 +27,7 @@ Qué parte es supuesto y qué parte no, porque importa al presentar la tabla:
                            Renfe y Avlo sí es supuesto: CNMC las agrega.
   estación y línea         supuesto, y no hay forma de medirlo: nadie publica
                            viajeros por estación en este corredor.
+  estacionalidad mensual   MEDIDA: índice del turismo del INE (ver _FACTOR_MES).
   servicios y retrasos     inventados.
 
 Uso:  python -m raillytics.procesamiento.silver_sample [--start AAAA-MM-DD] [--end AAAA-MM-DD] [--seed N]
@@ -149,8 +150,40 @@ _FACTOR_DIA_SEMANA = {
     "AVE": (1.05, 0.85, 0.85, 0.95, 1.25, 0.80, 1.20),
 }
 # Índice 0 = enero ... 11 = diciembre.
+#
+# ESTACIONALIDAD CALIBRADA (2026-10-11). Antes era inventada, y estaba equivocada en el mes que más
+# importa: suponía 1.20 en agosto —un pico de verano— y el dato dice 0.816, el mes MÁS BAJO del año.
+# Un 47 % de error y en dirección contraria.
+#
+# Sale del turismo interprovincial del INE (silver_turismo_mensual, operación TMOV): para cada año
+# completo se divide cada mes por la media de su año y se promedia sobre 2022-2025 (2019 y 2026 están
+# incompletos; 2020 y 2021 fuera por la pandemia). `make perfil-mensual` lo recalcula.
+#
+#   mes    medido    t vs 1    antes      mes    medido    t vs 1    antes
+#   ene     0.856     -2.0      0.85      jul     1.071     +2.4      1.20
+#   feb     0.886     -1.8      0.85      ago     0.816     -4.5      1.20  <- el error gordo
+#   mar     1.036     +0.8      0.95      sep     0.935     -3.2      1.05
+#   abr     1.006     +0.4      1.05      oct     1.072     +5.3      1.00
+#   may     1.117     +2.8      1.00      nov     1.060     +5.9      0.95
+#   jun     1.124     +8.7      1.05      dic     1.020     +0.5      1.10
+#
+# Que agosto sea el mínimo tiene sentido en un corredor de negocio: en agosto el viaje de trabajo
+# desaparece y el madrileño se va a la costa, no a Barcelona. La amplitud apenas cambia (1.38x medida
+# frente a 1.41x inventada): el generador tenía bien la MAGNITUD de la estacionalidad y mal la FORMA.
+#
+# Dos cosas que conviene tener claras:
+#   - TMOV es un PROXY: cuenta viajes en todos los medios de transporte y solo los que implican
+#     pernoctación. Esta tabla es sintética, así que el objetivo es que sea PLAUSIBLE, no inferir la
+#     demanda real; para eso está `base_mes` de config/reglas_demanda.yml, que solo usa la forma
+#     dentro del trimestre y se queda en 1.000 en los meses no significativos.
+#   - Se usan los doce valores medidos, incluidos los que no se distinguen de 1 (mar, abr, dic), por
+#     la misma razón: aquí no se afirma nada sobre el mundo, se genera una muestra.
+#
+# Coherencia con `base_mes`, que se calculó por otro camino: las dos dicen que agosto es bajo (0.816
+# aquí, 0.873 dentro de su trimestre) y julio alto dentro del verano. No se contradicen.
 _FACTOR_MES = {
-    "AVE": (0.85, 0.85, 0.95, 1.05, 1.00, 1.05, 1.20, 1.20, 1.05, 1.00, 0.95, 1.10),
+    # antes: (0.85, 0.85, 0.95, 1.05, 1.00, 1.05, 1.20, 1.20, 1.05, 1.00, 0.95, 1.10)
+    "AVE": (0.856, 0.886, 1.036, 1.006, 1.117, 1.124, 1.071, 0.816, 0.935, 1.072, 1.060, 1.020),
 }
 _FACTOR_FESTIVO = {"AVE": 1.15}
 # (tipo de tren, condición meteorológica) -> factor sobre la demanda; el resto, 1.0.

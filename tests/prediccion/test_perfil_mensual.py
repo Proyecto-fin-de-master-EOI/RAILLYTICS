@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from raillytics.prediccion.normalizar import IndiceDia, normalizar_indices
-from raillytics.prediccion.perfil_mensual import coeficientes, cuotas_por_mes
+from raillytics.prediccion.perfil_mensual import coeficientes, cuotas_por_mes, indice_estacional
 from raillytics.prediccion.reglas import MESES, ReglasError, cargar_reglas, perfil_mensual
 
 REGLAS_DEL_REPO = cargar_reglas(Path("config/reglas_demanda.yml"))
@@ -146,3 +146,57 @@ def test_un_base_mes_a_medias_o_mal_escrito_falla_diciendo_que_es_base_mes(tmp_p
 
     with pytest.raises(ReglasError, match=mensaje):
         cargar_reglas(roto)
+
+
+# --- índice estacional del año completo (alimenta _FACTOR_MES del Silver sintético) ---
+
+def test_el_indice_estacional_divide_cada_mes_por_la_media_de_su_anio():
+    # Un año en que junio vale el doble que los demás: su índice tiene que salir por encima de 1 y
+    # el de los otros por debajo, y la media de los doce vale 1 por construcción.
+    valores = {(2023, m): (200.0 if m == 6 else 100.0) for m in range(1, 13)}
+    valores.update({(2024, m): (200.0 if m == 6 else 100.0) for m in range(1, 13)})
+
+    indices = indice_estacional(_serie(valores)).set_index("mes")
+
+    assert indices.loc[6, "indice"] > 1.0
+    assert indices.loc[1, "indice"] < 1.0
+    assert indices["indice"].mean() == pytest.approx(1.0)
+
+
+def test_un_anio_incompleto_no_entra_en_el_indice_estacional():
+    # Dividir por la media de un año al que le faltan meses sesgaría el índice hacia los que sí están.
+    completo = {(2023, m): 100.0 for m in range(1, 13)}
+    medio = {(2024, m): 500.0 for m in range(1, 7)}
+
+    indices = indice_estacional(_serie({**completo, **medio}))
+
+    assert set(indices["anios"]) == {1}
+
+
+def test_la_pandemia_queda_fuera_del_indice_estacional():
+    normal = {(a, m): 100.0 for a in (2023, 2024) for m in range(1, 13)}
+    pandemia = {(2020, m): (1.0 if m in (3, 4) else 100.0) for m in range(1, 13)}
+
+    indices = indice_estacional(_serie({**normal, **pandemia})).set_index("mes")
+
+    assert indices.loc[4, "indice"] == pytest.approx(1.0)
+    assert indices.loc[4, "anios"] == 2
+
+
+def test_sin_ningun_anio_completo_el_indice_sale_vacio_en_vez_de_inventarse():
+    indices = indice_estacional(_serie({(2024, m): 100.0 for m in range(1, 7)}))
+
+    assert indices.empty
+
+
+def test_la_estacionalidad_del_silver_sintetico_esta_calibrada():
+    # Guarda de regresión del hallazgo: el generador suponía 1.20 en agosto (pico de verano) y el
+    # turismo del INE dice que es el mes MÁS BAJO del año. Si alguien vuelve a poner un agosto alto,
+    # esto falla y le manda a leer de dónde sale el número.
+    from raillytics.procesamiento.silver_sample import _FACTOR_MES
+
+    meses = _FACTOR_MES["AVE"]
+
+    assert len(meses) == 12
+    assert sum(meses) / 12 == pytest.approx(1.0, abs=0.01)
+    assert meses.index(min(meses)) == 7, "agosto debería ser el mínimo del año (ver _FACTOR_MES)"

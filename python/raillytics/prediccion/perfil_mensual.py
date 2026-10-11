@@ -124,6 +124,60 @@ def coeficientes(resumen: pd.DataFrame, t_minimo: float = T_MINIMO) -> dict[str,
     return coef
 
 
+def indice_estacional(serie: pd.DataFrame, anios_fuera: tuple[int, ...] = ANIOS_FUERA) -> pd.DataFrame:
+    """Índice estacional del año completo: cada mes dividido por la media de su año.
+
+    Es una cantidad DISTINTA de `cuotas_por_mes`, y las dos salen de la misma serie porque las usan
+    dos consumidores distintos:
+
+    - la cuota DENTRO del trimestre alimenta `base_mes` del reparto de la predicción, que ya tiene el
+      total del trimestre puesto por CNMC y solo necesita repartirlo entre sus tres meses;
+    - este índice alimenta `_FACTOR_MES` del Silver sintético, que no tiene ningún ancla y necesita la
+      estacionalidad del año entero.
+
+    Solo entran los años COMPLETOS: dividir por la media de un año al que le faltan meses sesgaría el
+    índice hacia los meses que sí están.
+    """
+    completos = [int(a) for a, g in serie.groupby("anio") if len(g) == 12 and int(a) not in anios_fuera]
+    filas: list[dict] = []
+    for anio in completos:
+        g = serie[serie["anio"] == anio]
+        media = g["turistas"].mean()
+        if media <= 0:
+            continue
+        for mes, turistas in zip(g["mes"], g["turistas"]):
+            filas.append({"mes": int(mes), "anio": anio, "indice": turistas / media})
+    if not filas:
+        return pd.DataFrame(columns=["mes", "indice", "desviacion", "anios", "t"])
+
+    indices = pd.DataFrame(filas)
+    resumen = indices.groupby("mes").agg(
+        indice=("indice", "mean"), desviacion=("indice", "std"), anios=("indice", "size")
+    ).reset_index()
+    error = resumen["desviacion"] / resumen["anios"].pow(0.5)
+    resumen["t"] = [
+        (0.0 if d == 0 else math.copysign(math.inf, d)) if (e == 0 or math.isnan(e)) else d / e
+        for d, e in zip(resumen["indice"] - 1.0, error)
+    ]
+    return resumen
+
+
+def informe_estacional(resumen: pd.DataFrame) -> list[str]:
+    """El índice del año completo, para `_FACTOR_MES` de raillytics.procesamiento.silver_sample."""
+    if resumen.empty:
+        return ["", "   (no hay ningún año completo fuera de la pandemia: no se puede calcular el",
+                "    índice estacional del año)"]
+    out = ["", "ÍNDICE ESTACIONAL DEL AÑO COMPLETO (para _FACTOR_MES del Silver sintético)", "",
+           f"   años completos usados: {int(resumen['anios'].max())}", "",
+           f"   {'mes':5} {'índice':>7} {'desv':>7} {'t vs 1':>7}"]
+    for fila in resumen.itertuples():
+        out.append(f"   {MESES[int(fila.mes) - 1]:5} {fila.indice:>7.3f} {fila.desviacion:>7.3f} {fila.t:>+7.1f}")
+    out += ["", "   Para llevarlo a _FACTOR_MES (son los doce, también los no significativos: esa tabla",
+            "   es sintética y busca ser plausible, no inferir nada):", "",
+            '    "AVE": (' + ", ".join(f"{fila.indice:.3f}" for fila in resumen.itertuples()) + "),"]
+    return out
+
+
 def informe(resumen: pd.DataFrame, propuestos: dict[str, float], actuales: dict[str, float]) -> list[str]:
     out = ["PESO DE CADA MES DENTRO DE SU TRIMESTRE", "",
            f"   fuente: INE, turistas Madrid -> {DESTINO} (tabla 53267, operación TMOV)",
@@ -166,7 +220,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     actuales = dict(cargar_reglas(args.reglas).base_mes)
-    print("\n".join(informe(resumen, coeficientes(resumen), actuales)))
+    salida = informe(resumen, coeficientes(resumen), actuales)
+    # El mismo dato alimenta dos consumidores distintos: la cuota dentro del trimestre va a
+    # `base_mes` del reparto, y el índice del año completo a `_FACTOR_MES` del Silver sintético.
+    salida += informe_estacional(indice_estacional(serie))
+    print("\n".join(salida))
     return 0
 
 
