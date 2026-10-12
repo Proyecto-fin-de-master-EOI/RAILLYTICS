@@ -61,3 +61,34 @@ EXTRA_CATEGORICAL_COLOR_SCHEMES = [
         ],
     },
 ]
+
+# Tema de marca. Superset 6 usa tokens de Ant Design: tocando colorPrimary y los de superficie
+# cambia el color de TODA la interfaz (botones, enlaces, pestañas, bordes), que es lo que el CSS por
+# dashboard no puede hacer. Se parte del tema base y solo se pisan los tokens que interesan: así una
+# versión futura que añada tokens nuevos los sigue trayendo.
+try:
+    from superset.config import THEME_DEFAULT as _TEMA_BASE
+
+    THEME_DEFAULT = {
+        **_TEMA_BASE,
+        "token": {
+            **_TEMA_BASE.get("token", {}),
+            "colorPrimary": "#6C3FD1",
+            "colorLink": "#6C3FD1",
+            "colorInfo": "#6C3FD1",
+            "colorSuccess": "#16A34A",
+            "colorWarning": "#D97706",
+            "colorError": "#E2574C",
+            "colorBgLayout": "#F6F7FB",
+            "colorBgContainer": "#FFFFFF",
+            "colorBorder": "#E8EAF2",
+            "colorBorderSecondary": "#EEF0F6",
+            "colorTextBase": "#1F2437",
+            "borderRadius": 12,
+            "borderRadiusLG": 14,
+            "fontFamily": "'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif",
+            "fontSize": 13,
+        },
+    }
+except Exception:  # pragma: no cover - si cambia la forma del tema, mejor arrancar sin marca
+    pass

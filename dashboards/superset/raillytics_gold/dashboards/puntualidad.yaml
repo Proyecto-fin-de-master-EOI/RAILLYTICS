@@ -1,41 +1,36 @@
 dashboard_title: Puntualidad · AVE Madrid–Barcelona
 description: 'Puntualidad del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN): retrasos por operador, estación de llegada,
   franja horaria y tipo de día, impacto de la meteorología y estaciones críticas. Fuente: capa Gold (DuckDB sobre MinIO).'
-css: "/* ===== Raillytics — estilo de cuadro de mandos =====\n   Tarjetas blancas sobre fondo gris, acento violeta y números\
-  \ grandes legibles.\n   Los selectores son los de Superset 6; si alguno cambia de nombre en una versión\n   futura, lo único\
-  \ que pasa es que esa regla deja de aplicarse. */\n\n:root {\n  --rl-violeta: #6C3FD1;\n  --rl-violeta-claro: #F1ECFB;\n\
-  \  --rl-fondo: #F6F7FB;\n  --rl-borde: #E8EAF2;\n  --rl-texto: #1F2437;\n  --rl-suave: #6B7187;\n  --rl-ok: #16A34A;\n \
-  \ --rl-aviso: #D97706;\n}\n\n/* Fondo de la rejilla: gris claro, para que las tarjetas blancas despeguen */\n.dashboard\
-  \ .dashboard-content,\n.dashboard .grid-content,\n.dashboard-content {\n  background-color: var(--rl-fondo);\n}\n\n/* Cada\
-  \ gráfica, una tarjeta */\n.dashboard-component-chart-holder {\n  background: #FFFFFF;\n  border: 1px solid var(--rl-borde);\n\
-  \  border-radius: 14px;\n  box-shadow: 0 1px 2px rgba(31, 36, 55, .04), 0 8px 24px rgba(31, 36, 55, .05);\n  padding: 4px\
-  \ 6px 8px;\n  transition: box-shadow .18s ease, transform .18s ease;\n}\n.dashboard-component-chart-holder:hover {\n  box-shadow:\
-  \ 0 2px 4px rgba(31, 36, 55, .06), 0 12px 32px rgba(108, 63, 209, .10);\n}\n\n/* Título de cada gráfica: más pequeño, en\
-  \ mayúsculas y gris, como en la maqueta */\n.dashboard-component-chart-holder .header-title,\n.dashboard-component-chart-holder\
-  \ .chart-header .header-title,\n.dashboard-component-chart-holder .editable-title {\n  font-size: 11.5px !important;\n \
-  \ font-weight: 700 !important;\n  letter-spacing: .055em;\n  text-transform: uppercase;\n  color: var(--rl-suave) !important;\n\
-  }\n\n/* Números grandes (los KPI) */\n.dashboard-component-chart-holder .header-line,\n.superset-legacy-chart-big-number\
-  \ .header-line {\n  color: var(--rl-texto) !important;\n  font-weight: 700 !important;\n  letter-spacing: -.02em;\n}\n.dashboard-component-chart-holder\
-  \ .subheader-line,\n.superset-legacy-chart-big-number .subheader-line {\n  color: var(--rl-suave) !important;\n  font-weight:\
-  \ 500 !important;\n  line-height: 1.35;\n}\n\n/* Barra violeta al pie de las tarjetas de KPI, como en la maqueta */\n#CHART-kpi_demanda_prevista,\n\
-  #CHART-kpi_dias_alerta,\n#CHART-kpi_mercado_precio,\n#CHART-kpi_backtest_mape,\n#CHART-kpi_cobertura_oferta,\n#CHART-kpi_ocupacion_media,\n\
-  #CHART-kpi_dias_imposibles {\n  border-top: 3px solid var(--rl-violeta);\n}\n\n/* Cabecera del dashboard */\n.dashboard-header,\n\
-  .dashboard .dashboard-header {\n  background: #FFFFFF;\n  border-bottom: 1px solid var(--rl-borde);\n}\n.dashboard-header\
-  \ .editable-title input,\n.dashboard-header .dashboard-title,\n.dashboard-header h4 {\n  font-weight: 700 !important;\n\
-  \  color: var(--rl-texto) !important;\n  letter-spacing: -.01em;\n}\n\n/* Bloques de texto: tarjeta con filo violeta a la\
-  \ izquierda */\n.dashboard-markdown {\n  background: #FFFFFF;\n  border: 1px solid var(--rl-borde);\n  border-left: 4px\
-  \ solid var(--rl-violeta);\n  border-radius: 12px;\n  padding: 14px 20px;\n  color: var(--rl-texto);\n  box-shadow: 0 1px\
-  \ 2px rgba(31, 36, 55, .04);\n}\n.dashboard-markdown h2 {\n  font-size: 15px;\n  font-weight: 700;\n  color: var(--rl-violeta);\n\
-  \  margin: 2px 0 10px;\n}\n.dashboard-markdown table { font-size: 12.5px; }\n.dashboard-markdown th {\n  background: var(--rl-violeta-claro);\n\
-  \  color: var(--rl-texto);\n  font-weight: 600;\n}\n.dashboard-markdown td, .dashboard-markdown th {\n  border-color: var(--rl-borde);\n\
-  \  padding: 6px 10px;\n}\n.dashboard-markdown a { color: var(--rl-violeta); }\n\n/* Tablas de datos */\n.dashboard-component-chart-holder\
-  \ .table thead th,\n.dashboard-component-chart-holder table thead th {\n  background: var(--rl-violeta-claro) !important;\n\
-  \  color: var(--rl-texto) !important;\n  font-size: 11px !important;\n  font-weight: 700 !important;\n  letter-spacing:\
-  \ .04em;\n  text-transform: uppercase;\n  border-bottom: 1px solid var(--rl-borde) !important;\n}\n.dashboard-component-chart-holder\
-  \ table tbody tr:hover td {\n  background: #FAF8FE !important;\n}\n\n/* Fila de atribución: discreta, que no compita con\
-  \ los datos */\n#MARKDOWN-atribucion {\n  font-size: 11.5px;\n  color: var(--rl-suave);\n}\n#MARKDOWN-atribucion .dashboard-markdown\
-  \ {\n  border-left-color: var(--rl-borde);\n  background: #FBFBFD;\n}\n#MARKDOWN-atribucion h2 {\n  font-size: 12px;\n \
-  \ color: var(--rl-suave);\n  text-transform: uppercase;\n  letter-spacing: .05em;\n}"
+css: "/* ===== Raillytics — estilo de cuadro de mandos =====\n   El COLOR de marca no se pone aqui: va en THEME_DEFAULT de\
+  \ superset_config.py, que son tokens de\n   Ant Design y tinen toda la interfaz. Esto solo da forma de TARJETA a las graficas,\
+  \ que el tema no\n   cubre. Las reglas llevan !important y van prefijadas con body porque Superset genera su CSS con\n \
+  \  emotion y gana por especificidad a un selector de clase suelto. */\n\nbody .dashboard .dashboard-content,\nbody .dashboard\
+  \ .grid-content {\n  background-color: #F6F7FB !important;\n}\n\n/* Cada grafica, una tarjeta blanca */\nbody .dashboard-component-chart-holder\
+  \ {\n  background: #FFFFFF !important;\n  border: 1px solid #E8EAF2 !important;\n  border-radius: 14px !important;\n  box-shadow:\
+  \ 0 1px 2px rgba(31,36,55,.05), 0 10px 28px rgba(31,36,55,.06) !important;\n  box-sizing: border-box !important;\n  overflow:\
+  \ hidden !important;\n}\n\n/* Filo violeta sobre las tarjetas de KPI */\nbody #CHART-kpi_demanda_prevista .dashboard-component-chart-holder,\n\
+  body #CHART-kpi_dias_alerta .dashboard-component-chart-holder,\nbody #CHART-kpi_mercado_precio .dashboard-component-chart-holder,\n\
+  body #CHART-kpi_backtest_mape .dashboard-component-chart-holder,\nbody #CHART-kpi_cobertura_oferta .dashboard-component-chart-holder,\n\
+  body #CHART-kpi_ocupacion_media .dashboard-component-chart-holder,\nbody #CHART-kpi_dias_imposibles .dashboard-component-chart-holder,\n\
+  body #CHART-kpi_demanda_prevista,\nbody #CHART-kpi_dias_alerta,\nbody #CHART-kpi_mercado_precio,\nbody #CHART-kpi_backtest_mape\
+  \ {\n  border-top: 3px solid #6C3FD1 !important;\n}\n\n/* Titulo de cada grafica: versalitas grises, como en la maqueta\
+  \ */\nbody .dashboard-component-chart-holder .header-title,\nbody .dashboard-component-chart-holder .header-title span,\n\
+  body .dashboard-component-chart-holder .editable-title {\n  font-size: 11.5px !important;\n  font-weight: 700 !important;\n\
+  \  letter-spacing: .055em !important;\n  text-transform: uppercase !important;\n  color: #6B7187 !important;\n}\n\n/* Numeros\
+  \ grandes */\nbody .header-line { color: #1F2437 !important; font-weight: 700 !important; letter-spacing: -.02em !important;\
+  \ }\nbody .subheader-line { color: #6B7187 !important; font-weight: 500 !important; }\n\n/* Bloques de texto */\nbody .dashboard-markdown\
+  \ {\n  background: #FFFFFF !important;\n  border: 1px solid #E8EAF2 !important;\n  border-left: 4px solid #6C3FD1 !important;\n\
+  \  border-radius: 12px !important;\n  padding: 14px 20px !important;\n  box-shadow: 0 1px 2px rgba(31,36,55,.05) !important;\n\
+  }\nbody .dashboard-markdown h2 { font-size: 15px !important; font-weight: 700 !important; color: #6C3FD1 !important; margin:\
+  \ 2px 0 10px !important; }\nbody .dashboard-markdown th { background: #F1ECFB !important; font-weight: 600 !important; }\n\
+  body .dashboard-markdown td, body .dashboard-markdown th { border-color: #E8EAF2 !important; padding: 6px 10px !important;\
+  \ }\nbody .dashboard-markdown a { color: #6C3FD1 !important; }\n\n/* Cabeceras de tabla */\nbody .dashboard-component-chart-holder\
+  \ table thead th {\n  background: #F1ECFB !important;\n  color: #1F2437 !important;\n  font-size: 11px !important;\n  font-weight:\
+  \ 700 !important;\n  letter-spacing: .04em !important;\n  text-transform: uppercase !important;\n}\nbody .dashboard-component-chart-holder\
+  \ table tbody tr:hover td { background: #FAF8FE !important; }\n\n/* Pie de atribucion: discreto */\nbody #MARKDOWN-atribucion\
+  \ .dashboard-markdown {\n  border-left-color: #E8EAF2 !important;\n  background: #FBFBFD !important;\n  font-size: 11.5px\
+  \ !important;\n  color: #6B7187 !important;\n}\nbody #MARKDOWN-atribucion h2 { font-size: 12px !important; color: #6B7187\
+  \ !important; text-transform: uppercase !important; letter-spacing: .05em !important; }"
 slug: puntualidad
 uuid: 68ac736c-7245-51f8-9308-c394a5125a22
 position:
