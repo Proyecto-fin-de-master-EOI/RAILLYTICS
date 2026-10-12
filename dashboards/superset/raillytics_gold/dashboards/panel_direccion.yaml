@@ -1,0 +1,272 @@
+dashboard_title: Panel de dirección · Corredor Madrid–Barcelona
+description: 'Vista ejecutiva del corredor: demanda prevista para el trimestre, días de demanda punta y las alertas de capacidad
+  con la causa que las explica. Es una PREVISIÓN, no una medición: el total del trimestre es real (CNMC) y el reparto entre
+  días lo hacen reglas, dos de ellas calibradas con dato medido. No incluye demanda por tren ni por franja horaria —nadie
+  las publica— ni precio recomendado: el KPI de precio es el observado de la CNMC. Glosario y linaje en docs/gobierno-datos.md.'
+css: ''
+slug: panel-direccion
+uuid: a62fb7d9-a39e-5bdd-abdd-a94d3bbf1bb1
+position:
+  DASHBOARD_VERSION_KEY: v2
+  ROOT_ID:
+    type: ROOT
+    id: ROOT_ID
+    children:
+    - GRID_ID
+  GRID_ID:
+    type: GRID
+    id: GRID_ID
+    children:
+    - ROW-dir-kpis
+    - ROW-dir-que-es
+    - ROW-dir-paneles
+    - ROW-dir-alertas
+    - ROW-dir-atribucion
+    parents:
+    - ROOT_ID
+  HEADER_ID:
+    id: HEADER_ID
+    type: HEADER
+    meta:
+      text: Panel de dirección · Corredor Madrid–Barcelona
+  CHART-kpi_demanda_prevista:
+    type: CHART
+    id: CHART-kpi_demanda_prevista
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-kpis
+    meta:
+      width: 3
+      height: 50
+      chartId: 920
+      uuid: 4756b622-9707-5e8a-97c7-75f7f2a6acfb
+      sliceName: Demanda media prevista
+  CHART-kpi_dias_alerta:
+    type: CHART
+    id: CHART-kpi_dias_alerta
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-kpis
+    meta:
+      width: 3
+      height: 50
+      chartId: 921
+      uuid: 5312157a-d7d3-5313-987c-786aae26d1af
+      sliceName: Días de demanda punta
+  CHART-kpi_mercado_precio:
+    type: CHART
+    id: CHART-kpi_mercado_precio
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-kpis
+    meta:
+      width: 3
+      height: 50
+      chartId: 922
+      uuid: 8d4f2733-1f2c-554d-9581-873c2f7dd2c9
+      sliceName: Precio medio del corredor (€)
+  CHART-kpi_backtest_mape:
+    type: CHART
+    id: CHART-kpi_backtest_mape
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-kpis
+    meta:
+      width: 3
+      height: 50
+      chartId: 923
+      uuid: f3e892b8-26e3-596a-8517-48b8880ccf18
+      sliceName: Error medio absoluto (últimos 8 trimestres)
+  ROW-dir-kpis:
+    type: ROW
+    id: ROW-dir-kpis
+    children:
+    - CHART-kpi_demanda_prevista
+    - CHART-kpi_dias_alerta
+    - CHART-kpi_mercado_precio
+    - CHART-kpi_backtest_mape
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  MARKDOWN-que_es:
+    type: MARKDOWN
+    id: MARKDOWN-que_es
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-que-es
+    meta:
+      width: 12
+      height: 68
+      code: '## Qué estás viendo, y qué no
+
+
+        **Esto es una previsión, no una medición.** El total del trimestre es real —lo publica la CNMC— pero
+
+        el reparto entre los días lo hacen las reglas de `config/reglas_demanda.yml`. Dos de sus coeficientes
+
+        salen de dato medido (el día de la semana, de los trenes que circulan; el mes, del turismo del INE) y
+
+        el resto son hipótesis documentadas.
+
+
+        **La «causa detectada» no la adivina un modelo**: es el campo `motivo`, que dice literalmente qué
+
+        reglas se aplicaron a ese día. Por eso se puede auditar fila a fila.
+
+
+        **Tres cosas que esta pantalla NO puede decirte, y conviene saberlo antes de que alguien pregunte:**
+
+
+        | lo que falta | por qué |
+
+        | --- | --- |
+
+        | demanda por tren o por servicio | nadie la publica; el NAP da qué trenes circulan, no cuánta gente va |
+
+        | demanda por franja horaria | la serie es diaria, no intradía |
+
+        | un precio recomendado | no hay modelo de precios. El KPI de precio es el **observado** de la CNMC |
+
+
+        La ocupación prevista tampoco aparece, y por una razón concreta: hace falta la oferta futura, y la
+
+        serie de trenes solo llega hasta el último snapshot descargado del NAP. La ocupación **histórica**
+
+        está en el cuadro de mandos de oferta y ocupación.'
+  ROW-dir-que-es:
+    type: ROW
+    id: ROW-dir-que-es
+    children:
+    - MARKDOWN-que_es
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-prediccion_demanda_diaria:
+    type: CHART
+    id: CHART-prediccion_demanda_diaria
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-paneles
+    meta:
+      width: 8
+      height: 60
+      chartId: 924
+      uuid: 9af4da31-2e03-5754-8e01-fe3c5b734766
+      sliceName: Demanda diaria prevista
+  CHART-top_dias_demanda:
+    type: CHART
+    id: CHART-top_dias_demanda
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-paneles
+    meta:
+      width: 4
+      height: 60
+      chartId: 925
+      uuid: 1119e651-5587-5204-926e-39c0e67b0f8f
+      sliceName: Días con más demanda prevista
+  ROW-dir-paneles:
+    type: ROW
+    id: ROW-dir-paneles
+    children:
+    - CHART-prediccion_demanda_diaria
+    - CHART-top_dias_demanda
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-alertas_capacidad:
+    type: CHART
+    id: CHART-alertas_capacidad
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-alertas
+    meta:
+      width: 12
+      height: 62
+      chartId: 926
+      uuid: d71a847a-1ee9-56dc-b3a5-d03d85f4503e
+      sliceName: Próximas alertas de capacidad
+  ROW-dir-alertas:
+    type: ROW
+    id: ROW-dir-alertas
+    children:
+    - CHART-alertas_capacidad
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  MARKDOWN-atribucion:
+    type: MARKDOWN
+    id: MARKDOWN-atribucion
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-atribucion
+    meta:
+      width: 12
+      height: 36
+      code: '## Origen de los datos y atribución
+
+
+        - **Origen de los datos: Comisión Nacional de los Mercados y la Competencia** — [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.es),
+        que obliga a citar la fuente y a distribuir las obras derivadas bajo la misma licencia.
+
+        - **Elaboración propia con datos extraídos del sitio web del INE: www.ine.es** — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.es).
+
+        - **Festivos:** resoluciones de la Dirección General de Trabajo publicadas en el BOE.
+
+        - **Datos meteorológicos: © AEMET** (Agencia Estatal de Meteorología).
+
+
+        Glosario, linaje y qué no se puede concluir de cada concepto: `docs/gobierno-datos.md`. Licencias completas: `NOTICE`.'
+  ROW-dir-atribucion:
+    type: ROW
+    id: ROW-dir-atribucion
+    children:
+    - MARKDOWN-atribucion
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+metadata:
+  show_native_filters: true
+  color_scheme: supersetColors
+  refresh_frequency: 0
+  expanded_slices: {}
+  label_colors: {}
+  timed_refresh_immune_slices: []
+  cross_filters_enabled: true
+  default_filters: '{}'
+  chart_configuration: {}
+  global_chart_configuration:
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    chartsInScope: []
+version: 1.0.0
