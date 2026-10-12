@@ -36,6 +36,7 @@ import argparse
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -48,7 +49,8 @@ from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error,
 
 from raillytics.ingesta.referencia import conexion
 from raillytics.ml.dataset import SEMANA, TABLA
-from raillytics.utils.lake import LakeLayout
+from raillytics.utils.cargas import registrar_carga
+from raillytics.utils.lake import LakeLayout, ensure_parent_dir
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,8 @@ logger = logging.getLogger(__name__)
 NO_SON_VARIABLES = ("ocupacion", "fecha", "plausible")
 # Proporción de días finales que se reservan para evaluar. Con ~270 días utiles son unos 54.
 PROPORCION_TEST = 0.2
+# El unico corredor del proyecto; viaja en la fila de metricas para que la tabla admita mas en el futuro.
+CORREDOR = "Madrid-Barcelona"
 # Tramos de la validación temporal. Con ~157 días útiles salen unos 26 días por tramo: un solo
 # corte da un número que depende de qué semanas tocaron, y con cinco se ve si el resultado se
 # sostiene o fue suerte.
@@ -154,6 +158,68 @@ def validar(df: pd.DataFrame, tramos: int = TRAMOS_VALIDACION) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 
+GOLD_TABLA = "fact_metricas_modelo"
+
+
+def publicar_metricas(con, layout: LakeLayout, metricas: dict) -> str:
+    """Deja las métricas del entrenamiento en Gold, una fila por ejecución.
+
+    Por qué en Gold y no solo en `resultados/modelo/metricas.json`: el plan del Sprint 2 pide MAPE y
+    R² como métricas publicadas, y un JSON en el disco de quien entrena no lo ve el cuadro de mandos
+    ni queda en la trazabilidad. Una fila por ejecución, además, permite ver si el modelo mejora o
+    empeora conforme crece el histórico, que es más útil que el último número suelto.
+
+    El `run_id` da nombre al fichero, así que relanzar el mismo entrenamiento sobrescribe su fila en
+    vez de duplicarla.
+    """
+    vt = metricas.get("validacion_temporal", {})
+    ahora = datetime.now(timezone.utc)
+    run_id = ahora.strftime("%Y%m%dT%H%M%S") + "-ml_ocupacion"
+    fila = {
+        "run_id": run_id,
+        "generado_en": ahora.replace(tzinfo=None),
+        "corredor": CORREDOR,
+        "modelo": "HistGradientBoostingRegressor",
+        "objetivo": "coeficiente de ocupacion diaria (viajeros.km / plazas.km)",
+        "dias_entrenamiento": metricas.get("dias_entrenamiento"),
+        "dias_test": metricas.get("dias_test"),
+        "variables": metricas.get("variables"),
+        # Partición única: el número que cumple el umbral del plan, y que es frágil.
+        "mape": metricas.get("mape"),
+        "mae_puntos": metricas.get("mae_puntos"),
+        "r2": metricas.get("r2"),
+        "desde": metricas.get("desde"),
+        "hasta": metricas.get("hasta"),
+        # Validación temporal: el número que hay que mirar, con su referencia trivial al lado.
+        "vt_tramos": vt.get("tramos"),
+        "vt_mape": vt.get("mape_medio"),
+        "vt_mape_referencia": vt.get("mape_base_medio"),
+        "vt_r2": vt.get("r2_medio"),
+        "vt_tramos_en_que_gana": vt.get("tramos_en_que_gana"),
+        # Positivo = el modelo bate a predecir la media de lo ya visto. Es LA cifra honesta.
+        "mejora_sobre_referencia": (
+            None if vt.get("mape_base_medio") is None or vt.get("mape_medio") is None
+            else vt["mape_base_medio"] - vt["mape_medio"]
+        ),
+    }
+    destino = f"{layout.gold_root}/{GOLD_TABLA}/{run_id}.parquet"
+    with registrar_carga("ml_metricas", "gold", layout, con,
+                         parametros={"modelo": fila["modelo"]}) as ejecucion:
+        with ejecucion.tabla(GOLD_TABLA, origen="silver/ml_ocupacion_diaria", destino=destino) as carga:
+            ensure_parent_dir(destino)
+            con.register("metricas_modelo", pd.DataFrame([fila]))
+            try:
+                con.execute(
+                    "COPY (SELECT * REPLACE (CAST(generado_en AS TIMESTAMP) AS generado_en, "
+                    "CAST(desde AS DATE) AS desde, CAST(hasta AS DATE) AS hasta) "
+                    f"FROM metricas_modelo) TO '{destino}' (FORMAT PARQUET)"
+                )
+            finally:
+                con.unregister("metricas_modelo")
+            carga.filas = 1
+    return destino
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv(find_dotenv(usecwd=True))
     p = argparse.ArgumentParser(description="Entrena el modelo de ocupación diaria del corredor.")
@@ -206,6 +272,11 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     logger.info("métricas en %s", args.destino / "metricas.json")
+
+    completas = {**metricas, "variables": int(variables(train).shape[1]),
+                 "dias_entrenamiento": int(len(train))}
+    destino_gold = publicar_metricas(conexion(layout, os.environ), layout, completas)
+    logger.info("métricas en Gold: %s", destino_gold)
 
     if metricas["mape"] < 0.05:
         logger.warning(
