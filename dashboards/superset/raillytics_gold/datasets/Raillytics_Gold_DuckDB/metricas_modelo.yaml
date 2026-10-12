@@ -1,0 +1,355 @@
+table_name: metricas_modelo
+main_dttm_col: generado_en
+description: 'Métricas de cada entrenamiento del modelo de ocupación diaria. Lo que hay que mirar NO es el MAPE de partición
+  única (8,0 %, que cumple el umbral del plan pero depende de qué semanas tocaron): es el de validación temporal frente a
+  su referencia trivial. Hoy: 10,1 % contra 10,3 %, es decir que empata con predecir la media de lo ya visto. El intervalo
+  del 90 % cubre el 78 % y mide 24,6 puntos de ocupación, o sea que es ancho Y se queda corto: el modelo es genuinamente incierto.
+  Y el aviso de fondo: el objetivo lo generan las reglas de reparto del propio proyecto, así que esto mide reproducir nuestras
+  reglas, no acertar la demanda real.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: "-- Metricas de cada entrenamiento del modelo de ocupacion (raillytics.ml.modelo), una fila por ejecucion.\n-- Las dos\
+  \ lecturas van juntas a proposito y hay que leerlas asi:\n--   mape / r2            particion unica. Es el numero que cumple\
+  \ el umbral del plan y es FRAGIL:\n--                        depende de que semanas tocaron en el ultimo corte.\n--   vt_*\
+  \                 validacion temporal en 5 tramos, entrenando con el pasado y evaluando en el\n--                      \
+  \  futuro, con la referencia trivial (predecir la media de lo ya visto) al lado.\n-- `mejora_sobre_referencia` es la cifra\
+  \ honesta: positiva solo si el modelo bate a no hacer nada.\n-- El intervalo (ic_*) sale de dos modelos cuantilicos al 5\
+  \ % y al 95 %. Su cobertura MEDIDA es lo que\n-- lo hace creible o no: una banda que dice 90 % y cubre 65 % miente, y una\
+  \ que cubre el 90 % por ser\n-- enorme tampoco dice nada. Por eso va tambien la amplitud.\nSELECT\n    run_id,\n    generado_en,\n\
+  \    corredor,\n    modelo,\n    objetivo,\n    dias_entrenamiento,\n    dias_test,\n    variables,\n    mape,\n    mae_puntos,\n\
+  \    r2,\n    desde,\n    hasta,\n    vt_tramos,\n    vt_mape,\n    vt_mape_referencia,\n    vt_r2,\n    vt_tramos_en_que_gana,\n\
+  \    mejora_sobre_referencia,\n    mejora_sobre_referencia > 0                                   AS bate_a_la_referencia,\n\
+  \    ic_confianza,\n    ic_cobertura,\n    ic_amplitud_media,\n    generado_en = max(generado_en) OVER ()              \
+  \          AS es_ultima\nFROM read_parquet('s3://raillytics-gold/fact_metricas_modelo/*.parquet', union_by_name = true)"
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: b2040c98-f025-5f6d-9bbc-bd963ad8ca74
+metrics:
+- metric_name: vt_mape_ultimo
+  verbose_name: MAPE (validación temporal)
+  metric_type: null
+  expression: MAX(vt_mape)
+  description: El número que hay que mirar. El de partición única es más bonito y menos fiable.
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: vt_referencia_ultimo
+  verbose_name: MAPE de la referencia trivial
+  metric_type: null
+  expression: MAX(vt_mape_referencia)
+  description: Predecir siempre la media de lo ya visto. Si el modelo no baja de aquí, no aporta.
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: vt_r2_ultimo
+  verbose_name: R² (validación temporal)
+  metric_type: null
+  expression: MAX(vt_r2)
+  description: null
+  d3format: .2f
+  extra: null
+  warning_text: null
+- metric_name: r2_particion
+  verbose_name: R² (partición única)
+  metric_type: null
+  expression: MAX(r2)
+  description: null
+  d3format: .2f
+  extra: null
+  warning_text: null
+- metric_name: mape_particion
+  verbose_name: MAPE (partición única)
+  metric_type: null
+  expression: MAX(mape)
+  description: null
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: ic_cobertura_ultima
+  verbose_name: Cobertura medida del IC
+  metric_type: null
+  expression: MAX(ic_cobertura)
+  description: Qué parte de los días reales cae dentro de la banda. Si es mucho menor que la confianza nominal, el intervalo
+    es optimista.
+  d3format: .0%
+  extra: null
+  warning_text: null
+- metric_name: ic_amplitud_ultima
+  verbose_name: Amplitud media del IC
+  metric_type: null
+  expression: MAX(ic_amplitud_media)
+  description: En puntos de ocupación. Una banda ancha que además no cubre señala incertidumbre real.
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: entrenamientos
+  verbose_name: Entrenamientos
+  metric_type: null
+  expression: COUNT(*)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+columns:
+- column_name: generado_en
+  verbose_name: Entrenado el
+  is_dttm: true
+  is_active: true
+  type: TIMESTAMP
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: run_id
+  verbose_name: Ejecución
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: modelo
+  verbose_name: Algoritmo
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: objetivo
+  verbose_name: Objetivo
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: corredor
+  verbose_name: Corredor
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: mape
+  verbose_name: MAPE (partición única)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: r2
+  verbose_name: R² (partición única)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: mae_puntos
+  verbose_name: Error medio (puntos)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: vt_mape
+  verbose_name: MAPE (validación temporal)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: vt_mape_referencia
+  verbose_name: MAPE de la referencia
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: vt_r2
+  verbose_name: R² (validación temporal)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: vt_tramos_en_que_gana
+  verbose_name: Tramos en que gana
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: mejora_sobre_referencia
+  verbose_name: Mejora sobre la referencia
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: bate_a_la_referencia
+  verbose_name: ¿Bate a la referencia?
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ic_confianza
+  verbose_name: Confianza del IC
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ic_cobertura
+  verbose_name: Cobertura medida del IC
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ic_amplitud_media
+  verbose_name: Amplitud media del IC
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: dias_entrenamiento
+  verbose_name: Días de entrenamiento
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: dias_test
+  verbose_name: Días de evaluación
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: variables
+  verbose_name: Variables
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: es_ultima
+  verbose_name: Última ejecución
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

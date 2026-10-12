@@ -48,6 +48,8 @@ position:
     children:
     - ROW-dir-kpis
     - ROW-dir-negocio
+    - ROW-dir-modelo
+    - ROW-dir-banda
     - ROW-dir-paneles
     - ROW-dir-alertas
     - ROW-dir-atribucion
@@ -274,6 +276,84 @@ position:
     - CHART-kpi_ocupacion_vs_umbral
     - CHART-kpi_revenue_asiento
     - CHART-revenue_asiento_evolucion
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-kpi_modelo_mape:
+    type: CHART
+    id: CHART-kpi_modelo_mape
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-modelo
+    meta:
+      width: 4
+      height: 50
+      chartId: 940
+      uuid: 22f65f5b-bd56-5e78-bb81-ef06090ef6df
+      sliceName: MAPE del modelo de ocupación
+  CHART-kpi_modelo_r2:
+    type: CHART
+    id: CHART-kpi_modelo_r2
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-modelo
+    meta:
+      width: 4
+      height: 50
+      chartId: 941
+      uuid: 0abd1547-bd9c-5388-b82a-dd9034cb95c9
+      sliceName: R² del modelo
+  CHART-kpi_modelo_ic:
+    type: CHART
+    id: CHART-kpi_modelo_ic
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-modelo
+    meta:
+      width: 4
+      height: 50
+      chartId: 942
+      uuid: 600b35f9-feb8-510b-84cc-ee2246c86658
+      sliceName: Cobertura del intervalo del 90 %
+  ROW-dir-modelo:
+    type: ROW
+    id: ROW-dir-modelo
+    children:
+    - CHART-kpi_modelo_mape
+    - CHART-kpi_modelo_r2
+    - CHART-kpi_modelo_ic
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-prediccion_con_banda:
+    type: CHART
+    id: CHART-prediccion_con_banda
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-banda
+    meta:
+      width: 12
+      height: 60
+      chartId: 943
+      uuid: 106a4c59-b985-5cc1-a921-44916a0ffbc4
+      sliceName: Demanda diaria prevista, con su intervalo del 90 %
+  ROW-dir-banda:
+    type: ROW
+    id: ROW-dir-banda
+    children:
+    - CHART-prediccion_con_banda
     parents:
     - ROOT_ID
     - GRID_ID
