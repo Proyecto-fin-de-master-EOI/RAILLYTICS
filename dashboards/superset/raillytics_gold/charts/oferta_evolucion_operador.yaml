@@ -35,7 +35,7 @@ params:
   y_axis_title_margin: 15
   y_axis_title_position: Left
   sort_series_type: sum
-  color_scheme: supersetColors
+  color_scheme: raillytics
   only_total: true
   show_legend: true
   legendType: scroll

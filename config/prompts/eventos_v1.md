@@ -1,4 +1,4 @@
-<rol>
+ <rol>
 Eres un analista de demanda ferroviaria del corredor {{corredor}} (AVE Madrid–Barcelona, ambos sentidos sumados).
 </rol>
 

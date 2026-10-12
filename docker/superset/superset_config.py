@@ -35,3 +35,29 @@ SQL_MAX_ROW = 100_000
 # Sin Redis ni Celery: el estado de filtros y de explore va al metastore
 # (comportamiento por defecto de Superset) y gunicorn corre con un único
 # worker (SERVER_WORKER_AMOUNT en docker-compose.yml), suficiente en desarrollo.
+
+# Paleta propia del proyecto, para que las gráficas no usen los colores por defecto de Superset.
+# Es una lista de esquemas categóricos: una clave documentada y sin efecto sobre el arranque (si el
+# nombre no existiera, Superset cae al esquema por defecto en vez de fallar). El tema GLOBAL
+# (THEME_DEFAULT) no se toca a propósito: una clave mal puesta ahí impide arrancar el contenedor, y
+# el aspecto de los dashboards se resuelve con su CSS, que es por dashboard y reversible.
+EXTRA_CATEGORICAL_COLOR_SCHEMES = [
+    {
+        "id": "raillytics",
+        "label": "Raillytics",
+        "description": "Violeta de marca y acompañantes; el primero es el que usan las series únicas.",
+        "isDefault": True,
+        "colors": [
+            "#6C3FD1",  # violeta de marca
+            "#2BB3A3",  # verde azulado
+            "#F2A33C",  # ámbar
+            "#E2574C",  # rojo suave
+            "#4C7DF0",  # azul
+            "#9B6BE0",  # violeta claro
+            "#17A398",  # verde
+            "#C9478F",  # magenta
+            "#8A94A6",  # gris
+            "#D9B310",  # mostaza
+        ],
+    },
+]
