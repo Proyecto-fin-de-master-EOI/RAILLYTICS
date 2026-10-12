@@ -57,6 +57,10 @@ VIAJEROS_COLUMNS = (
     "linea_id", "linea_nombre", "tipo_tren", "origen", "destino",
     "operador_id", "operador_nombre", "operador_empresa", "operador_segmento",
     "viajeros", "temperatura_media", "precipitacion_mm", "condicion_meteo", "es_festivo", "festivo_nombre",
+    # Marca de calidad que pide el plan: True cuando la meteo de ese día y provincia NO viene de
+    # AEMET y se ha simulado. Pasa en Zaragoza y Tarragona, que no tienen estación propia dada de
+    # alta, y en las fechas que AEMET no publicó.
+    "meteo_imputada",
 )
 PUNTUALIDAD_COLUMNS = (
     "fecha", "servicio_id", "linea_id", "operador_id", "estacion_id", "hora_prevista", "hora_real", "retraso_min", "estado",
@@ -66,6 +70,15 @@ PUNTUALIDAD_COLUMNS = (
 CORREDOR = "AVE-MAD-BCN"  # la única línea del ejemplo
 TIPOS_TREN = ("AVE",)
 CONDICIONES_METEO = ("despejado", "nuboso", "lluvia", "tormenta")
+
+# Qué provincia del corredor cubre cada estación de AEMET dada de alta. Zaragoza y Tarragona no
+# están: no se les asigna la meteo de otra ciudad —Zaragoza tiene un clima continental muy distinto
+# del de Madrid— sino que se quedan con la simulada y marcadas como imputadas.
+PROVINCIA_POR_CIUDAD_AEMET = {"MAD": "Madrid", "BCN": "Barcelona"}
+# Con la climatología diaria de AEMET (temperatura y precipitación) no se puede saber si estuvo
+# nublado, así que «nuboso» no aparece en los días reales. Los umbrales son los mismos que usa la
+# simulación para distinguir tormenta de lluvia.
+MM_TORMENTA = 15.0
 ESTADOS = ("realizado", "cancelado")
 
 
@@ -236,18 +249,30 @@ def _domingo_de_pascua(year: int) -> date:
     return date(year, month, day + 1)
 
 
-def generate_silver_sample(start: date, end: date, seed: int = 42) -> SilverSample:
-    """Genera las dos tablas Silver para el rango [start, end] (ambos inclusive)."""
+def generate_silver_sample(start: date, end: date, seed: int = 42, *,
+                           festivos_reales: dict[date, str] | None = None,
+                           meteo_real: pd.DataFrame | None = None) -> SilverSample:
+    """Genera las dos tablas Silver para el rango [start, end] (ambos inclusive).
+
+    `festivos_reales` y `meteo_real` son el enriquecimiento de verdad, y es lo que pide el plan
+    cuando habla de «cruzar los viajeros con meteorología y festivos». Si no se pasan, se simulan y
+    la función sigue siendo pura: es lo que permite probarla sin lago y sin red.
+
+    Lo que aporta pasarlos:
+    - los festivos del BOE traen también los de Madrid y Cataluña, no solo los diez nacionales que
+      genera la regla; para un corredor que une las dos ciudades eso cambia qué días son festivos;
+    - la meteo de AEMET es la observada, frente a un seno con ruido.
+    """
     if end < start:
         raise ValueError(f"el rango está invertido: {start} > {end}")
     rng = np.random.default_rng(seed)
     fechas = pd.date_range(start, end, freq="D")
-    festivos = {
+    festivos = festivos_reales if festivos_reales is not None else {
         dia: nombre
         for year in range(start.year, end.year + 1)
         for dia, nombre in festivos_nacionales(year).items()
     }
-    meteo = _meteo(rng, fechas)
+    meteo = _con_meteo_real(_meteo(rng, fechas), meteo_real)
     return SilverSample(
         viajeros=_viajeros(rng, fechas, meteo, festivos),
         puntualidad=_puntualidad(rng, fechas, meteo, festivos),
@@ -334,6 +359,36 @@ def _meteo(rng: np.random.Generator, fechas: pd.DatetimeIndex) -> pd.DataFrame:
             "condicion_meteo": condicion,
         }
     )
+
+
+def _con_meteo_real(simulada: pd.DataFrame, real: pd.DataFrame | None) -> pd.DataFrame:
+    """Sustituye la meteo simulada por la de AEMET donde la haya, y marca el resto como imputada.
+
+    No se rellena una provincia con la estación de otra: Zaragoza no tiene el clima de Madrid. Lo que
+    no cubre AEMET se queda simulado y marcado, que es la diferencia entre un hueco declarado y un
+    dato inventado que parece medido.
+    """
+    salida = simulada.copy()
+    salida["meteo_imputada"] = True
+    if real is None or real.empty:
+        return salida
+
+    r = real.copy()
+    r["provincia"] = r["ciudad"].map(PROVINCIA_POR_CIUDAD_AEMET)
+    r = r.dropna(subset=["provincia", "temperatura_media"])
+    r["fecha"] = pd.to_datetime(r["fecha"])
+    r = r[["fecha", "provincia", "temperatura_media", "precipitacion_mm"]]
+
+    unido = salida.merge(r, on=["fecha", "provincia"], how="left", suffixes=("", "_real"))
+    hay = unido["temperatura_media_real"].notna()
+    unido.loc[hay, "temperatura_media"] = unido.loc[hay, "temperatura_media_real"].round(1)
+    mm_real = unido.loc[hay, "precipitacion_mm_real"].fillna(0.0)
+    unido.loc[hay, "precipitacion_mm"] = mm_real.round(1)
+    unido.loc[hay, "condicion_meteo"] = np.select(
+        [mm_real >= MM_TORMENTA, mm_real > 0], ["tormenta", "lluvia"], default="despejado"
+    )
+    unido.loc[hay, "meteo_imputada"] = False
+    return unido.drop(columns=["temperatura_media_real", "precipitacion_mm_real"])
 
 
 def _viajeros(
@@ -447,6 +502,35 @@ def _puntualidad(
     return df[list(PUNTUALIDAD_COLUMNS)].sort_values(["fecha", "hora_prevista", "linea_id", "operador_id"], ignore_index=True)
 
 
+def _enriquecimiento_real(layout: LakeLayout, s3: "S3Settings | None"):
+    """Lee de Silver los festivos del BOE y la meteo de AEMET, si están.
+
+    Son tablas de referencia que construyen `make festivos` y `make meteo`. Si no están —en un clon
+    recién hecho, por ejemplo— se avisa y se sigue simulando: el generador tiene que poder correr
+    solo, que para eso existe.
+    """
+    con = connect(s3)
+    festivos = meteo = None
+    try:
+        filas = con.execute(
+            f"SELECT fecha, nombre FROM read_parquet('{layout.silver_glob('festivos')}')"
+        ).fetchall()
+        festivos = {f: n for f, n in filas}
+        logger.info("festivos del BOE: %d días", len(festivos))
+    except Exception:
+        logger.warning("no hay tabla de festivos en Silver: se simulan (lanza `make festivos`)")
+    try:
+        meteo = con.execute(
+            f"SELECT fecha, ciudad, temperatura_media, precipitacion_mm "
+            f"FROM read_parquet('{layout.silver_glob('meteo')}')"
+        ).df()
+        logger.info("meteo de AEMET: %d observaciones de %d ciudades",
+                    len(meteo), meteo["ciudad"].nunique())
+    except Exception:
+        logger.warning("no hay tabla de meteo en Silver: se simula (lanza `make meteo`)")
+    return festivos, meteo
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m raillytics.procesamiento.silver_sample",
@@ -455,13 +539,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--start", type=date.fromisoformat, help="primer día (AAAA-MM-DD); por defecto, 365 días antes de --end")
     parser.add_argument("--end", type=date.fromisoformat, help="último día (AAAA-MM-DD); por defecto, ayer")
     parser.add_argument("--seed", type=int, default=42, help="semilla: mismas fechas y semilla producen los mismos datos")
+    parser.add_argument("--sin-enriquecimiento-real", action="store_true",
+                        help="simula también los festivos y la meteo en vez de leerlos de Silver "
+                             "(para generar la muestra sin lago)")
     args = parser.parse_args(argv)
     end = args.end or date.today() - timedelta(days=1)
     start = args.start or end - timedelta(days=364)
 
+    parser_sin_real = args.sin_enriquecimiento_real
+
     layout = LakeLayout.from_env()
     s3 = S3Settings.from_env() if layout.uses_s3 else None
-    sample = generate_silver_sample(start, end, args.seed)
+    festivos_reales = meteo_real = None
+    if not parser_sin_real:
+        festivos_reales, meteo_real = _enriquecimiento_real(layout, s3)
+    sample = generate_silver_sample(start, end, args.seed,
+                                    festivos_reales=festivos_reales, meteo_real=meteo_real)
     written = write_silver_sample(connect(s3), layout, sample)
 
     print(f"Silver sintético {start} .. {end} (semilla {args.seed}) -> {layout.silver_root}")

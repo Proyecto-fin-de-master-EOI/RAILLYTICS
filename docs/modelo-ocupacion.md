@@ -212,7 +212,7 @@ muestra y **se quedan en 1,000 clavado**: medir una diferencia no da derecho a a
 | con perfil mensual | **10,1 %** | 10,3 % | **gana** por 0,2 pp |
 
 **Lo que esto demuestra y lo que no.** No demuestra que el modelo haya aprendido algo del mundo: la
-variable `mes` predice mejor porque metimos un perfil mensual en las reglas que generan el objetivo,
+variable `mes` predice mejor porque el perfil mensual está en las reglas que generan el objetivo,
 así que el modelo está redescubriendo una regla nuestra. Lo que sí demuestra es que **el cuello de
 botella está en el reparto, no en el modelado**, y que el reparto se puede mejorar con dato medido en
 vez de con hipótesis. El reparto diario de la DTC es hoy más creíble que ayer, y eso vale
@@ -305,7 +305,7 @@ De hecho, **domingo alto y viernes bajo es exactamente lo que predice la hipóte
 —planificar el domingo, viajar el viernes—, así que el dato no contradice a las reglas: es compatible
 con ellas y con su contrario, y por eso no decide.
 
-**Una lección metodológica que costó encontrar.** El contraste de cada día **no se puede anclar en un
+**Una precaución metodológica.** El contraste de cada día **no se puede anclar en un
 día concreto**. Al principio se medía la significación contra el martes y salía que ningún día se
 distingue de nada: resulta que un pico de noticias del 20 de enero de 2026 cayó en martes, infló su
 error y contaminó las siete comparaciones. Comparando cada día contra los otros seis juntos aparece el
@@ -322,7 +322,7 @@ esto no sería reproducible y rompería la trazabilidad del lago. Queda como exp
 
 Juntando lo medido se puede estimar el perfil semanal sin partir de ninguna hipótesis. La idea: **la
 oferta es una señal revelada de la demanda** —el operador pone capacidad donde espera gente, y sabe
-más que nosotras— pero no la sigue perfectamente, porque no puede partir trenes y prefiere ir más
+más que cualquier regla escrita a mano— pero no la sigue perfectamente, porque no puede partir trenes y prefiere ir más
 lleno un día punta que añadir servicio. Así que la demanda es la oferta atenuada hacia la media:
 
 ```
@@ -352,7 +352,7 @@ viaje se reparten entre varios días previos y esa convolución solo puede aplan
 | sáb | 0,85 | 0,68 | 0,68 | 0,80 | 0,93 |
 | dom | 0,89 | 0,76 | 0,76 | 1,00 | 1,11 |
 
-Dos avisos sobre cómo leer esa tabla, y los dos se me pasaron la primera vez:
+Dos avisos sobre cómo leer esa tabla:
 
 - **Las columnas α no son medidas independientes de la oferta**: son la oferta elevada a α, o sea la
   misma señal comprimida hacia la media. Hay **un** perfil medido, no tres.
