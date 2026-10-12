@@ -1,5 +1,6 @@
 dashboard_title: Demanda ferroviaria · AVE Madrid–Barcelona
-description: 'Viajeros del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN): por operador y estación, evolución temporal, por día de la semana, impacto de festivos y meteorología. Fuente: capa Gold (DuckDB sobre MinIO).'
+description: 'Viajeros del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN): por operador y estación, evolución temporal,
+  por día de la semana, impacto de festivos y meteorología. Fuente: capa Gold (DuckDB sobre MinIO).'
 css: ''
 slug: demanda-ferroviaria
 uuid: 3acb9fbe-1091-55f4-9d83-80e6e697cc4d
@@ -21,6 +22,7 @@ position:
     - ROW-demanda-3
     - ROW-demanda-4
     - ROW-demanda-5
+    - ROW-atribucion
     parents:
     - ROOT_ID
   HEADER_ID:
@@ -301,6 +303,43 @@ position:
       chartId: 11
       uuid: 7bee4138-f499-57d8-90a5-674000b57bbe
       sliceName: Viajeros por comunidad autónoma
+  MARKDOWN-atribucion:
+    type: MARKDOWN
+    id: MARKDOWN-atribucion
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-atribucion
+    meta:
+      width: 12
+      height: 44
+      code: '## Origen de los datos y atribución
+
+
+        - ⚠ Parte de lo que se muestra aquí son **datos sintéticos**, no mediciones. Qué parte exactamente, en `docs/gobierno-datos.md`
+        del repositorio.
+
+        - **Origen de los datos: Comisión Nacional de los Mercados y la Competencia** — [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.es),
+        que obliga a citar la fuente y a distribuir las obras derivadas bajo la misma licencia.
+
+        - **Festivos:** resoluciones de la Dirección General de Trabajo publicadas en el BOE (BOE-A-2024-21316 para 2025,
+        BOE-A-2025-21667 para 2026).
+
+        - **Datos meteorológicos: © AEMET** (Agencia Estatal de Meteorología).
+
+
+        Glosario, linaje y qué no se puede concluir de cada concepto: `docs/gobierno-datos.md`. Licencias completas: `NOTICE`.'
+  ROW-atribucion:
+    type: ROW
+    id: ROW-atribucion
+    children:
+    - MARKDOWN-atribucion
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
 metadata:
   color_scheme: supersetColors
   refresh_frequency: 0

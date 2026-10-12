@@ -1078,29 +1078,61 @@ Para descargar o levantar el entorno:
    ```
 ---
 
-## Origen de los datos y licencias
+## Licencia
 
-Este proyecto reutiliza datos abiertos de terceros. Algunas de sus licencias imponen condiciones
-que hay que cumplir al publicar, y el detalle de cada una está en
-[`docs/licencias.md`](docs/licencias.md).
+En este repositorio conviven dos cosas con licencias distintas, y conviene no mezclarlas:
 
-**Atribución obligatoria:**
+| qué | licencia | dónde |
+| --- | --- | --- |
+| **el código** (Python, Scala, SQL, configuración, documentación propia) | **MIT** | [`LICENSE`](LICENSE) |
+| **los datos y las tablas construidas desde ellos** | la de cada fuente; la más exigente es **CC BY-SA 4.0** | [`NOTICE`](NOTICE) y [`docs/licencias.md`](docs/licencias.md) |
+
+El código es obra propia y **no deriva** de los datos de terceros, así que puede llevar una licencia
+permisiva. Las tablas que se construyen **desde** esos datos sí son obra derivada y heredan sus
+condiciones.
+
+### Atribución obligatoria
+
+Dos fuentes exigen un texto literal. Hay que reproducirlo al publicar cualquier cifra, tabla o
+gráfico que salga de ellas:
 
 > Origen de los datos: Comisión Nacional de los Mercados y la Competencia
 
-Los datos de la CNMC están bajo **Creative Commons Reconocimiento-CompartirIgual 4.0 Internacional
-([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.es))**, que obliga a citar la
-fuente y a distribuir las obras derivadas bajo la misma licencia. En este proyecto son obra derivada
-las tablas de Silver y Gold construidas desde sus CSV y los gráficos que las muestran.
+> Elaboración propia con datos extraídos del sitio web del INE: www.ine.es
 
-Otras fuentes:
+- **CNMC** — [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.es). Obliga a citar
+  la fuente **y a compartir igual**: las obras derivadas se distribuyen bajo la misma licencia. Aquí
+  son derivadas las tablas de Silver y Gold construidas desde sus CSV, la ocupación diaria (usa sus
+  plazas·km como denominador) y los gráficos que las muestran.
+- **INE** — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.es). Cuidado con el matiz:
+  el pie de su web dice CC BY-SA, pero su aviso legal es explícito en que la **información
+  estadística** es CC BY, que **no** obliga a compartir igual.
+
+Las otras tres no exigen fórmula, pero se citan igualmente:
 
 - **Datos meteorológicos:** © AEMET (Agencia Estatal de Meteorología). La reutilización está
   autorizada citando a AEMET como autor.
 - **Festivos:** resoluciones de la Dirección General de Trabajo publicadas en el BOE. Son
   disposiciones oficiales y no están sujetas a derecho de autor (art. 13 TRLPI).
 - **Horarios:** Punto de Acceso Nacional de Transporte Multimodal (Ministerio de Transportes).
+  Sus condiciones de uso están **pendientes de confirmar**: la página de aviso legal devuelve 404.
 
-> **Pendiente:** el repositorio todavía no tiene fichero `LICENSE`. Hace falta decidir bajo qué
-> licencia se publica el código, que es obra propia y no deriva de los datos de la CNMC. Los datos
-> derivados sí van obligatoriamente bajo CC BY-SA 4.0. Ver [`docs/licencias.md`](docs/licencias.md).
+### Lo que las licencias prohíben, y aquí importa
+
+Las dos licencias CC prohíben **desnaturalizar** el sentido de la información. Hay dos casos
+concretos en este proyecto, y están documentados en
+[`docs/gobierno-datos.md`](docs/gobierno-datos.md):
+
+- la serie de turismo del INE cuenta viajes en **todos** los medios de transporte y solo los que
+  implican pernoctación: presentarla como viajeros de tren sería desnaturalizarla. Se usa su forma
+  (el peso de cada mes), nunca su nivel;
+- «viajeros por plaza ofertada» de la CNMC **no es ocupación** y pasa del 100 % legítimamente,
+  porque un asiento se vende por tramos.
+
+### Datos sintéticos
+
+Dos tablas de Silver no vienen de ninguna fuente: las genera
+`python/raillytics/procesamiento/silver_sample.py`. `viajeros_enriquecidos` tiene el detalle por
+estación y línea inventado (la cuota de cada operador sí sale de la CNMC) y
+`puntualidad_enriquecida` es inventada entera. No tienen licencia de tercero porque no vienen de
+ninguno, pero **tampoco se pueden presentar como medición**.

@@ -116,24 +116,41 @@ condiciones.
 
 ---
 
-## Qué falta hacer en el repositorio
+## Cómo queda resuelto en el repositorio
 
-**1. Un fichero `LICENSE`.** El repositorio es público y no tiene ninguno, lo que en términos de
-derecho de autor significa «todos los derechos reservados»: nadie puede reutilizar legalmente el
-código. Hace falta decidir bajo qué licencia se publica.
+**1. El código, bajo MIT** — [`LICENSE`](../LICENSE). El repositorio es público y hasta el 12 de
+octubre de 2026 no tenía ninguna licencia, lo que en términos de derecho de autor significa «todos
+los derechos reservados»: nadie podía reutilizar legalmente el código.
 
 Son dos cosas distintas y conviene no mezclarlas:
 
-- **El código** (Python, Scala, configuración) es obra propia y no deriva de los datos de la CNMC,
-  así que puede llevar la licencia que el equipo decida: MIT y Apache 2.0 son las habituales en un
-  proyecto académico.
-- **Los datos derivados** (las tablas de Silver y Gold que salen de la CNMC, y lo que se publique
-  del dashboard) **tienen que ir bajo CC BY-SA 4.0**, porque la licencia de origen lo impone.
+- **El código** (Python, Scala, SQL, configuración) es obra propia y **no deriva** de los datos de la
+  CNMC, así que puede llevar una licencia permisiva. Se elige **MIT** por ser la más simple y la
+  habitual en un proyecto académico.
+- **Los datos derivados** (las tablas de Silver y Gold que salen de la CNMC, la ocupación diaria y lo
+  que muestre el cuadro de mandos) **van bajo CC BY-SA 4.0**, porque la licencia de origen lo impone.
 
-Lo normal es declarar las dos en el `LICENSE` o en un `NOTICE` aparte.
+El `LICENSE` es el texto MIT **literal y nada más**, a propósito: GitHub detecta la licencia con un
+comparador de texto, y cualquier añadido —aunque sea un párrafo aclaratorio— hace que la deje de
+reconocer. Por eso las condiciones de los datos van en [`NOTICE`](../NOTICE), que es el sitio
+convencional para esto.
 
-**2. La atribución visible.** Hoy la licencia de la CNMC solo aparece en un comentario de
-`config/data_sources.yml`. Debería estar en el README y en el cuadro de mandos de Superset, que es
-donde alguien ve los datos sin mirar el código.
+**2. La atribución, visible en tres sitios.** Antes solo estaba en un comentario de
+`config/data_sources.yml`, que no lo lee nadie que no mire el código. Ahora está en:
 
-**3. Confirmar las condiciones del NAP.**
+- el [`NOTICE`](../NOTICE), con el texto literal de cada fuente y qué obliga cada licencia;
+- la sección «Licencia» del README, que es lo primero que ve quien entra al repositorio;
+- el **cuadro de mandos**, en un bloque de texto al pie de los dashboards que muestran datos de la
+  CNMC o del INE, que es donde alguien ve las cifras sin pasar por el repositorio.
+
+**3. Qué sigue pendiente: las condiciones del NAP.** Su página de aviso legal devuelve 404 y no se ha
+localizado otra. Es lo único abierto de este apartado, y conviene cerrarlo antes de entregar porque
+la serie de oferta diaria se construye desde ahí y es una pieza central del trabajo. Mientras, se
+cita la fuente igualmente y queda dicho que las condiciones no están confirmadas.
+
+## Una nota sobre quién es el titular
+
+El `LICENSE` pone el copyright a nombre del proyecto y sus contribuidores —no de una persona—, porque
+el repositorio tiene trabajo de varias. **Elegir la licencia del código es una decisión del equipo**,
+no de quien escribe el fichero: afecta a la obra de todos. Si alguien prefiere otra (Apache 2.0 añade
+una concesión expresa de patentes, por ejemplo), es cambiar un fichero.

@@ -1,7 +1,7 @@
 dashboard_title: Mercado del corredor · AVE Madrid–Barcelona
-description: 'Mercado del corredor AVE Madrid–Barcelona según la CNMC: viajeros, cuota, oferta, ingresos, precio y backtest de la regla
-  de nivel de la predicción. Datos reales (no sintéticos). Avlo va dentro de Renfe en la demanda y por separado en el precio; «viajeros
-  por plaza ofertada» no es ocupación.'
+description: 'Mercado del corredor AVE Madrid–Barcelona según la CNMC: viajeros, cuota, oferta, ingresos, precio y backtest
+  de la regla de nivel de la predicción. Datos reales (no sintéticos). Avlo va dentro de Renfe en la demanda y por separado
+  en el precio; «viajeros por plaza ofertada» no es ocupación.'
 css: ''
 slug: mercado-corredor
 uuid: ff3dd104-e8a3-5e9c-b027-23a1a5088ad0
@@ -22,6 +22,7 @@ position:
     - ROW-mercado-4
     - ROW-mercado-5
     - ROW-mercado-6
+    - ROW-atribucion
     parents:
     - ROOT_ID
   HEADER_ID:
@@ -293,6 +294,35 @@ position:
       chartId: 214
       uuid: 875e7749-4f58-55d5-9c42-d9d615e6cf2e
       sliceName: Resumen de los últimos 4 trimestres
+  MARKDOWN-atribucion:
+    type: MARKDOWN
+    id: MARKDOWN-atribucion
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-atribucion
+    meta:
+      width: 12
+      height: 26
+      code: '## Origen de los datos y atribución
+
+
+        - **Origen de los datos: Comisión Nacional de los Mercados y la Competencia** — [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.es),
+        que obliga a citar la fuente y a distribuir las obras derivadas bajo la misma licencia.
+
+
+        Glosario, linaje y qué no se puede concluir de cada concepto: `docs/gobierno-datos.md`. Licencias completas: `NOTICE`.'
+  ROW-atribucion:
+    type: ROW
+    id: ROW-atribucion
+    children:
+    - MARKDOWN-atribucion
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
 metadata:
   color_scheme: supersetColors
   refresh_frequency: 0

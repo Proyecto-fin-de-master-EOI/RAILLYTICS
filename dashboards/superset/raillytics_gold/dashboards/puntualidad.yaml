@@ -1,5 +1,6 @@
 dashboard_title: Puntualidad · AVE Madrid–Barcelona
-description: 'Puntualidad del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN): retrasos por operador, estación de llegada, franja horaria y tipo de día, impacto de la meteorología y estaciones críticas. Fuente: capa Gold (DuckDB sobre MinIO).'
+description: 'Puntualidad del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN): retrasos por operador, estación de llegada,
+  franja horaria y tipo de día, impacto de la meteorología y estaciones críticas. Fuente: capa Gold (DuckDB sobre MinIO).'
 css: ''
 slug: puntualidad
 uuid: 68ac736c-7245-51f8-9308-c394a5125a22
@@ -21,6 +22,7 @@ position:
     - ROW-puntualidad-3
     - ROW-puntualidad-4
     - ROW-puntualidad-5
+    - ROW-atribucion
     parents:
     - ROOT_ID
   HEADER_ID:
@@ -286,6 +288,35 @@ position:
       chartId: 22
       uuid: 46167dd0-4b55-5da4-8cc0-7d6d60e59770
       sliceName: 'Estaciones críticas: retraso medio en llegada'
+  MARKDOWN-atribucion:
+    type: MARKDOWN
+    id: MARKDOWN-atribucion
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-atribucion
+    meta:
+      width: 12
+      height: 26
+      code: '## Origen de los datos y atribución
+
+
+        - ⚠ Parte de lo que se muestra aquí son **datos sintéticos**, no mediciones. Qué parte exactamente, en `docs/gobierno-datos.md`
+        del repositorio.
+
+
+        Glosario, linaje y qué no se puede concluir de cada concepto: `docs/gobierno-datos.md`. Licencias completas: `NOTICE`.'
+  ROW-atribucion:
+    type: ROW
+    id: ROW-atribucion
+    children:
+    - MARKDOWN-atribucion
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
 metadata:
   color_scheme: supersetColors
   refresh_frequency: 0

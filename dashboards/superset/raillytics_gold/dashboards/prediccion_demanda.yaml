@@ -1,6 +1,7 @@
 dashboard_title: Predicción de demanda · AVE Madrid–Barcelona
-description: 'Predicción diaria de demanda del corredor AVE Madrid–Barcelona con un LLM (raillytics.prediccion): curva diaria, comparación
-  entre versiones del prompt o del modelo, coherencia del reparto y calendario con el motivo de cada día. Fuente: s3://raillytics-gold/fact_prediccion_demanda/.'
+description: 'Predicción diaria de demanda del corredor AVE Madrid–Barcelona con un LLM (raillytics.prediccion): curva diaria,
+  comparación entre versiones del prompt o del modelo, coherencia del reparto y calendario con el motivo de cada día. Fuente:
+  s3://raillytics-gold/fact_prediccion_demanda/.'
 css: ''
 slug: prediccion-demanda
 uuid: e2978d8b-5d74-517c-b6f4-ecc2e154ff38
@@ -21,6 +22,7 @@ position:
     - ROW-pred-6
     - ROW-pred-4
     - ROW-pred-5
+    - ROW-atribucion
     parents:
     - ROOT_ID
   HEADER_ID:
@@ -232,6 +234,42 @@ position:
       chartId: 209
       uuid: a9d31db6-2a49-5f53-a14d-f78bcd174352
       sliceName: Ejecuciones publicadas
+  MARKDOWN-atribucion:
+    type: MARKDOWN
+    id: MARKDOWN-atribucion
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-atribucion
+    meta:
+      width: 12
+      height: 44
+      code: '## Origen de los datos y atribución
+
+
+        - **Origen de los datos: Comisión Nacional de los Mercados y la Competencia** — [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.es),
+        que obliga a citar la fuente y a distribuir las obras derivadas bajo la misma licencia.
+
+        - **Elaboración propia con datos extraídos del sitio web del INE: www.ine.es** — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.es).
+
+        - **Festivos:** resoluciones de la Dirección General de Trabajo publicadas en el BOE (BOE-A-2024-21316 para 2025,
+        BOE-A-2025-21667 para 2026).
+
+        - **Datos meteorológicos: © AEMET** (Agencia Estatal de Meteorología).
+
+
+        Glosario, linaje y qué no se puede concluir de cada concepto: `docs/gobierno-datos.md`. Licencias completas: `NOTICE`.'
+  ROW-atribucion:
+    type: ROW
+    id: ROW-atribucion
+    children:
+    - MARKDOWN-atribucion
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
 metadata:
   color_scheme: supersetColors
   refresh_frequency: 0
