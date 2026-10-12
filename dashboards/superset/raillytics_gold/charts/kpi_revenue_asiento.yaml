@@ -1,0 +1,42 @@
+slice_name: Ingreso por asiento ofertado (€)
+description: 'KPI de negocio del plan del Sprint 2. Dato real de la CNMC: los ingresos vienen en la fila TOTAL del corredor
+  y las plazas en las de cada operador, así que se suman ambas por trimestre. No es el precio del billete: es cuánto ingresa
+  el corredor por cada asiento que pone a la venta, se venda o no.'
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha_inicio
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_ultimo_trimestre
+  metric:
+    expressionType: SQL
+    sqlExpression: SUM(ingresos_eur) / NULLIF(SUM(plazas_ofertadas), 0)
+    label: €/asiento
+    hasCustomLabel: true
+    optionName: metric_29344399
+    aggregate: null
+    column: null
+    datasourceWarning: false
+  header_font_size: 0.4
+  subheader: último trimestre publicado · ingresos ÷ plazas ofertadas
+  subheader_font_size: 0.15
+  y_axis_format: ',.2f'
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 7d1fd534-263e-58ee-843b-1d9dc7e9b41b
+version: 1.0.0
+dataset_uuid: a6f87572-5c8e-5db1-90ea-ec45e618a779
+is_managed_externally: false
+external_url: null

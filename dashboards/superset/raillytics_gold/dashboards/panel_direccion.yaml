@@ -47,6 +47,7 @@ position:
     id: GRID_ID
     children:
     - ROW-dir-kpis
+    - ROW-dir-negocio
     - ROW-dir-paneles
     - ROW-dir-alertas
     - ROW-dir-atribucion
@@ -219,6 +220,60 @@ position:
     id: ROW-dir-atribucion
     children:
     - MARKDOWN-atribucion
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-kpi_ocupacion_vs_umbral:
+    type: CHART
+    id: CHART-kpi_ocupacion_vs_umbral
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-negocio
+    meta:
+      width: 4
+      height: 50
+      chartId: 930
+      uuid: fe263780-44f3-5610-89be-08ab71e02a80
+      sliceName: Factor de ocupación
+  CHART-kpi_revenue_asiento:
+    type: CHART
+    id: CHART-kpi_revenue_asiento
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-negocio
+    meta:
+      width: 4
+      height: 50
+      chartId: 931
+      uuid: 7d1fd534-263e-58ee-843b-1d9dc7e9b41b
+      sliceName: Ingreso por asiento ofertado (€)
+  CHART-revenue_asiento_evolucion:
+    type: CHART
+    id: CHART-revenue_asiento_evolucion
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-negocio
+    meta:
+      width: 4
+      height: 50
+      chartId: 932
+      uuid: c954325e-57d1-57e9-88c7-b15fc35995ed
+      sliceName: Ingreso por asiento ofertado, por trimestre
+  ROW-dir-negocio:
+    type: ROW
+    id: ROW-dir-negocio
+    children:
+    - CHART-kpi_ocupacion_vs_umbral
+    - CHART-kpi_revenue_asiento
+    - CHART-revenue_asiento_evolucion
     parents:
     - ROOT_ID
     - GRID_ID
