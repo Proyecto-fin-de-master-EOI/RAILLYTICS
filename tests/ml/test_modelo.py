@@ -145,3 +145,39 @@ def test_cargar_falla_claro_si_la_tabla_no_existe():
 
     with pytest.raises(ValueError, match="raillytics.ml.dataset"):
         modelo.cargar(ConVacio(), LayoutFalso())
+
+
+# --- intervalo por regresión cuantílica ---
+
+def test_la_banda_cuantilica_encierra_a_la_prediccion_central():
+    df = _tabla(120)
+    bajo, alto = modelo.entrenar_banda(df)
+    X = modelo.variables(df)
+
+    lo, hi = bajo.predict(X), alto.predict(X)
+
+    # No se exige que se cumpla en TODOS los días (son dos modelos independientes y pueden cruzarse
+    # en casos raros), pero sí que la banda tenga sentido en conjunto.
+    assert (hi >= lo).mean() > 0.95
+    assert (hi - lo).mean() > 0
+
+
+def test_una_banda_mas_ancha_cubre_mas():
+    df = _tabla(120)
+
+    estrecha = modelo.cobertura_banda(df, tramos=3, confianza=0.50)
+    ancha = modelo.cobertura_banda(df, tramos=3, confianza=0.95)
+
+    assert ancha["amplitud_media"] > estrecha["amplitud_media"]
+    assert ancha["cobertura"] >= estrecha["cobertura"]
+
+
+def test_la_cobertura_se_mide_en_el_futuro_y_no_sobre_lo_entrenado():
+    # Si se midiera sobre los mismos días del entrenamiento saldría inflada: el modelo cuantílico
+    # ajusta sus cuantiles sobre ellos. La validación temporal es lo que lo evita.
+    df = _tabla(120)
+
+    r = modelo.cobertura_banda(df, tramos=4)
+
+    assert 0.0 <= r["cobertura"] <= 1.0
+    assert r["dias"] < len(df), "no se puede evaluar sobre todos los días: los primeros solo entrenan"

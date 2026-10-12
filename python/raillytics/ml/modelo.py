@@ -158,6 +158,59 @@ def validar(df: pd.DataFrame, tramos: int = TRAMOS_VALIDACION) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 
+CONFIANZA = 0.90
+
+
+def entrenar_banda(train: pd.DataFrame, confianza: float = CONFIANZA):
+    """Dos modelos cuantílicos que acotan la predicción por abajo y por arriba.
+
+    `HistGradientBoostingRegressor` admite `loss="quantile"`, así que el intervalo no necesita
+    suponer nada sobre la distribución del error: cada modelo aprende directamente su cuantil. Son
+    los mismos datos y las mismas variables que el modelo central; lo único que cambia es la pérdida.
+
+    La alternativa era la predicción conforme (banda de ancho fijo a partir de los residuos de un
+    tramo de calibración). Se eligió la cuantílica porque da una banda que se ESTRECHA o se ENSANCHA
+    según el día: en un martes corriente el modelo está más seguro que en una víspera de puente, y
+    una banda de ancho fijo no lo recoge.
+    """
+    margen = (1 - confianza) / 2
+    X, y = variables(train), train["ocupacion"]
+    bajo = HistGradientBoostingRegressor(loss="quantile", quantile=margen, random_state=SEMILLA).fit(X, y)
+    alto = HistGradientBoostingRegressor(loss="quantile", quantile=1 - margen, random_state=SEMILLA).fit(X, y)
+    return bajo, alto
+
+
+def cobertura_banda(df: pd.DataFrame, tramos: int = TRAMOS_VALIDACION,
+                    confianza: float = CONFIANZA) -> dict:
+    """Qué parte de los días reales cae dentro de su banda, medido con validación temporal.
+
+    Es LA comprobación del intervalo: uno que dice 90 % y cubre el 65 % está mintiendo. Se mide
+    igual que el error del modelo —entrenando con el pasado y evaluando en el futuro— porque medirla
+    sobre los mismos días con los que se entrenó daría una cobertura inflada.
+
+    Devuelve también la amplitud media: una banda puede cubrir el 90 % simplemente por ser enorme, y
+    entonces no dice nada. Las dos cifras hay que leerlas juntas.
+    """
+    partidor = TimeSeriesSplit(n_splits=tramos)
+    orden = df.sort_values("fecha").reset_index(drop=True)
+    dentro, total, amplitudes = 0, 0, []
+    for i_train, i_test in partidor.split(orden):
+        train, test = orden.iloc[i_train], orden.iloc[i_test]
+        bajo, alto = entrenar_banda(train, confianza)
+        X_test = variables(test).reindex(columns=variables(train).columns, fill_value=0)
+        lo, hi = bajo.predict(X_test), alto.predict(X_test)
+        real = test["ocupacion"].to_numpy()
+        dentro += int(((real >= lo) & (real <= hi)).sum())
+        total += len(real)
+        amplitudes.extend((hi - lo).tolist())
+    return {
+        "confianza": confianza,
+        "cobertura": dentro / total if total else float("nan"),
+        "amplitud_media": float(np.mean(amplitudes)) if amplitudes else float("nan"),
+        "dias": total,
+    }
+
+
 GOLD_TABLA = "fact_metricas_modelo"
 
 
@@ -197,6 +250,11 @@ def publicar_metricas(con, layout: LakeLayout, metricas: dict) -> str:
         "vt_r2": vt.get("r2_medio"),
         "vt_tramos_en_que_gana": vt.get("tramos_en_que_gana"),
         # Positivo = el modelo bate a predecir la media de lo ya visto. Es LA cifra honesta.
+        # Intervalo por regresión cuantílica, con su cobertura MEDIDA al lado: una banda que dice
+        # 90 % y cubre 65 % miente, y una que cubre el 90 % por ser enorme tampoco dice nada.
+        "ic_confianza": metricas.get("banda", {}).get("confianza"),
+        "ic_cobertura": metricas.get("banda", {}).get("cobertura"),
+        "ic_amplitud_media": metricas.get("banda", {}).get("amplitud_media"),
         "mejora_sobre_referencia": (
             None if vt.get("mape_base_medio") is None or vt.get("mape_medio") is None
             else vt["mape_base_medio"] - vt["mape_medio"]
@@ -273,8 +331,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     logger.info("métricas en %s", args.destino / "metricas.json")
 
+    banda = cobertura_banda(df)
+    logger.info("intervalo del %.0f%% por regresión cuantílica: cubre el %.0f%% de los días, "
+                "amplitud media %.1f puntos de ocupación",
+                banda["confianza"] * 100, banda["cobertura"] * 100, banda["amplitud_media"] * 100)
+    if banda["cobertura"] < banda["confianza"] - 0.05:
+        logger.warning(
+            "el intervalo dice %.0f%% y cubre el %.0f%%: es optimista. Con %d días de evaluación la "
+            "banda se estima con pocos datos; hay que decirlo al presentarla.",
+            banda["confianza"] * 100, banda["cobertura"] * 100, banda["dias"],
+        )
+
     completas = {**metricas, "variables": int(variables(train).shape[1]),
-                 "dias_entrenamiento": int(len(train))}
+                 "dias_entrenamiento": int(len(train)), "banda": banda}
     destino_gold = publicar_metricas(conexion(layout, os.environ), layout, completas)
     logger.info("métricas en Gold: %s", destino_gold)
 
