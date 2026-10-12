@@ -7,57 +7,29 @@ offset: 0
 cache_timeout: null
 schema: null
 catalog: null
-sql: |-
-  -- Predicción diaria de demanda del corredor AVE Madrid–Barcelona (raillytics.prediccion): una fila por día y ejecución.
-  -- La publica cada ejecución de `make 07_prediccion` en s3://raillytics-gold/fact_prediccion_demanda/<run_id>.parquet.
-  -- generado_en se guarda en UTC; aquí se muestra en hora de Madrid. es_ultima marca la ejecución más reciente de cada trimestre.
-  -- vispera, puente, regreso, junto_a_evento y exceso solo existen en las ejecuciones publicadas desde que se añadieron: la
-  -- SELECT vacía del UNION ALL BY NAME declara esas columnas para que la consulta funcione aunque todos los Parquet sean anteriores.
-  WITH base AS (
-      SELECT
-          run_id,
-          timezone('Europe/Madrid', timezone('UTC', generado_en)) AS generado_en,
-          trimestre, corredor, modelo, version_prompt,
-          datos_sinteticos, total_esperado, fecha, dia_semana, festivo, eventos,
-          viajeros_previstos, indice, motivo,
-          vispera, puente, regreso, junto_a_evento, exceso
-      FROM (
-          SELECT * FROM read_parquet('s3://raillytics-gold/fact_prediccion_demanda/*.parquet', union_by_name = true)
-          UNION ALL BY NAME
-          SELECT NULL::BOOLEAN AS vispera, NULL::BOOLEAN AS puente, NULL::BOOLEAN AS regreso,
-                 NULL::BOOLEAN AS junto_a_evento, NULL::DOUBLE AS exceso
-          WHERE false
-      )
-  )
-  SELECT
-      run_id,
-      version_prompt || ' · ' || modelo || ' · ' || strftime(generado_en, '%d/%m %H:%M') AS ejecucion,
-      generado_en,
-      trimestre,
-      corredor,
-      modelo,
-      version_prompt,
-      CASE WHEN datos_sinteticos THEN 'Sintéticos' ELSE 'Reales' END AS datos,
-      generado_en = MAX(generado_en) OVER (PARTITION BY trimestre) AS es_ultima,
-      total_esperado,
-      fecha,
-      dia_semana,
-      CAST(isodow(fecha) AS VARCHAR) || ' · ' || dia_semana AS dia_semana_etiqueta,
-      festivo,
-      eventos,
-      CASE WHEN festivo IS NOT NULL THEN 'Festivo'
-           WHEN eventos IS NOT NULL THEN 'Evento'
-           WHEN isodow(fecha) >= 6 THEN 'Fin de semana'
-           ELSE 'Laborable' END AS tipo_dia,
-      viajeros_previstos,
-      indice,
-      motivo,
-      vispera,
-      puente,
-      regreso,
-      junto_a_evento,
-      exceso
-  FROM base
+sql: "-- Predicción diaria de demanda del corredor AVE Madrid–Barcelona (raillytics.prediccion): una fila por día y ejecución.\n\
+  -- La publica cada ejecución de `make 07_prediccion` en s3://raillytics-gold/fact_prediccion_demanda/<run_id>.parquet.\n\
+  -- generado_en se guarda en UTC; aquí se muestra en hora de Madrid. es_ultima marca la ejecución más reciente de cada trimestre.\n\
+  -- vispera, puente, regreso, junto_a_evento y exceso solo existen en las ejecuciones publicadas desde que se añadieron:\
+  \ la\n-- SELECT vacía del UNION ALL BY NAME declara esas columnas para que la consulta funcione aunque todos los Parquet\
+  \ sean anteriores.\nWITH base AS (\n    SELECT\n        run_id,\n        timezone('Europe/Madrid', timezone('UTC', generado_en))\
+  \ AS generado_en,\n        trimestre, corredor, modelo, version_prompt,\n        datos_sinteticos, total_esperado, fecha,\
+  \ dia_semana, festivo, eventos,\n        viajeros_previstos, indice, motivo,\n        vispera, puente, regreso, junto_a_evento,\
+  \ exceso,\n        viajeros_min, viajeros_max, ic_confianza, ic_cobertura\n    FROM (\n        SELECT * FROM read_parquet('s3://raillytics-gold/fact_prediccion_demanda/*.parquet',\
+  \ union_by_name = true)\n        UNION ALL BY NAME\n        SELECT NULL::BOOLEAN AS vispera, NULL::BOOLEAN AS puente, NULL::BOOLEAN\
+  \ AS regreso,\n               NULL::BOOLEAN AS junto_a_evento, NULL::DOUBLE AS exceso,\n               -- La banda de confianza\
+  \ llego despues: las ejecuciones anteriores no la traen.\n               NULL::DOUBLE AS viajeros_min, NULL::DOUBLE AS viajeros_max,\n\
+  \               NULL::DOUBLE AS ic_confianza, NULL::DOUBLE AS ic_cobertura\n        WHERE false\n    )\n)\nSELECT\n    run_id,\n\
+  \    version_prompt || ' · ' || modelo || ' · ' || strftime(generado_en, '%d/%m %H:%M') AS ejecucion,\n    generado_en,\n\
+  \    trimestre,\n    corredor,\n    modelo,\n    version_prompt,\n    CASE WHEN datos_sinteticos THEN 'Sintéticos' ELSE\
+  \ 'Reales' END AS datos,\n    generado_en = MAX(generado_en) OVER (PARTITION BY trimestre) AS es_ultima,\n    total_esperado,\n\
+  \    fecha,\n    dia_semana,\n    CAST(isodow(fecha) AS VARCHAR) || ' · ' || dia_semana AS dia_semana_etiqueta,\n    festivo,\n\
+  \    eventos,\n    CASE WHEN festivo IS NOT NULL THEN 'Festivo'\n         WHEN eventos IS NOT NULL THEN 'Evento'\n     \
+  \    WHEN isodow(fecha) >= 6 THEN 'Fin de semana'\n         ELSE 'Laborable' END AS tipo_dia,\n    viajeros_previstos,\n\
+  \    indice,\n    motivo,\n    vispera,\n    puente,\n    regreso,\n    junto_a_evento,\n    exceso,\n    viajeros_min,\n\
+  \    viajeros_max,\n    ic_confianza,\n    ic_cobertura,\n    -- Amplitud de la banda en proporcion al valor central: lo\
+  \ que se lee de un vistazo.\n    CASE WHEN viajeros_previstos > 0 AND viajeros_max IS NOT NULL\n         THEN (viajeros_max\
+  \ - viajeros_min) * 1.0 / viajeros_previstos END AS ic_amplitud\nFROM base"
 params: null
 template_params: null
 filter_select_enabled: true
@@ -433,7 +405,69 @@ columns:
   groupby: false
   filterable: true
   expression: null
-  description: Índice menos el medio de los días corrientes con el mismo día de la semana en esa ejecución (vacío en festivos entre semana).
+  description: Índice menos el medio de los días corrientes con el mismo día de la semana en esa ejecución (vacío en festivos
+    entre semana).
+  python_date_format: null
+  extra: null
+- column_name: viajeros_min
+  verbose_name: Viajeros (mínimo del IC)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: viajeros_max
+  verbose_name: Viajeros (máximo del IC)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ic_confianza
+  verbose_name: Confianza del intervalo
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Nivel NOMINAL (0,90 = 90 %).
+  python_date_format: null
+  extra: null
+- column_name: ic_cobertura
+  verbose_name: Cobertura medida del intervalo
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Qué parte de los trimestres del backtest habría caído dentro de su propia banda, dejando cada uno fuera al
+    estimarla. Si es bastante menor que la confianza nominal, el intervalo es optimista y hay que decirlo.
+  python_date_format: null
+  extra: null
+- column_name: ic_amplitud
+  verbose_name: Amplitud del IC (proporción del central)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
   python_date_format: null
   extra: null
 version: 1.0.0
