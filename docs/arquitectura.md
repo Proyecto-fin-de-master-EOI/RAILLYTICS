@@ -260,7 +260,14 @@ make 00_ingest              # descarga las 13 fuentes
 make 01_raw-uploader        # ⚠ se queda abierto
 make 02_parquet-converter   # ⚠ se queda abierto
 make 04_silver              # ⚠ se queda abierto
+make nap-oferta             # Silver que no hace Spark: la oferta del NAP, desde el histórico de GTFS
+make ml-dataset             # Silver derivado: la tabla de entrenamiento
 make 05_gold
+make cobertura-ingesta      # Gold que escribe Python: los KPI de calidad...
+make completitud-silver
+make ml-modelo              # ...las métricas del modelo...
+make ml-franja              # ...la ocupación por franja...
+make precio-recomendado     # ...y el precio, que necesita la franja
 make 06_superset-import
 make 07_prediccion TRIMESTRE=2026-T4
 ```
@@ -276,12 +283,15 @@ mitad de un lote deja ficheros movidos sin su fila de trazabilidad.
 make carga-e2e
 ```
 
-Hace los siete pasos seguidos y resuelve lo de las cintas: las lanza una a una, mira si queda trabajo
+Hace los ocho pasos seguidos y resuelve lo de las cintas: las lanza una a una, mira si queda trabajo
 pendiente, espera a que los checkpoints de Spark estén asentados y las para en el punto correcto.
+También lanza lo que no es Spark, que es fácil de olvidar a mano: las dos tablas Silver de lote al
+final del paso `silver`, y en el paso `metricas` las cinco tablas Gold que escribe Python.
 
 ```bash
 make carga-e2e E2E_ARGS="--sin-prediccion"   # sin el LLM, no necesita Ollama
 make carga-e2e E2E_ARGS="--desde silver"     # reanudar desde una fase
+make carga-e2e E2E_ARGS="--desde metricas"   # solo los KPI, sin repetir Silver ni Gold (21 s)
 make carga-e2e TRIMESTRE=2026-T4             # qué trimestre predecir
 ```
 

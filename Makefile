@@ -90,7 +90,7 @@ help:
 	@echo "  llm-down              Para y elimina los contenedores de Ollama (los modelos se conservan en su volumen)"
 	@echo "  quality-gates      Evalúa config/quality_gates.yml sobre Silver y Gold del lake (app Spark; falla si hay gates bloqueantes)"
 	@echo "                     (make quality-gates QG_ARGS=silver | gold | <tabla> para acotar)"
-	@echo "  carga-e2e          Carga end-to-end: sube el stack, descarga, L1, L2, Silver, Gold y predicción, parando cada stream al acabar"
+	@echo "  carga-e2e          Carga end-to-end: sube el stack, descarga, L1, L2, Silver, Gold, métricas y predicción, parando cada stream al acabar"
 	@echo "                     (TRIMESTRE=2026-T4 fija el trimestre a predecir; E2E_ARGS=\"--sin-prediccion\" o \"--desde silver\" para acotar)"
 	@echo "  cargas             Muestra las últimas cargas registradas (trazabilidad del lake)"
 	@echo "  calidad            Muestra los últimos resultados de quality gates registrados"

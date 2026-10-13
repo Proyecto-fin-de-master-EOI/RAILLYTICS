@@ -1,4 +1,4 @@
-"""Carga end-to-end de Raillytics: descarga -> Bronze L1 -> L2 -> Silver -> Gold -> predicción de demanda.
+"""Carga end-to-end de Raillytics: descarga -> Bronze L1 -> L2 -> Silver -> Gold -> métricas -> predicción de demanda.
 
 Lo lanza `make carga-e2e`. Las apps de streaming (01_raw-uploader, 02_parquet-converter y 04_silver) no terminan solas, así
 que este script las arranca una a una como subprocesos, espera a que se queden sin trabajo pendiente y las para:
@@ -14,6 +14,12 @@ empezar se salta entera (no se paga el arranque de sbt).
 
 La predicción va al final y no con el flag `predecir` del DAG: necesita Silver (silver/cnmc_trimestral), que aún no existe
 cuando acaba la descarga.
+
+No todo lo que construye el lake es Spark. El paso `metricas` lanza las tablas Gold que escribe Python —los dos KPI de
+calidad, las métricas del modelo, la ocupación por franja y el precio recomendado— y el paso `silver` acaba con las dos
+tablas Silver que tampoco salen de la app de streaming (la oferta del NAP y la tabla de entrenamiento). Antes había que
+acordarse de lanzarlas a mano, y hasta que alguien se acordaba el cuadro de mandos mostraba los números de la carga
+anterior sin decir que eran viejos.
 
 Uso:  python scripts/carga_e2e.py [--make make] [--compose "docker compose ..."] [--trimestre 2026-T4]
                                   [--desde PASO] [--sin-prediccion]
@@ -37,7 +43,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 DAG_ID = "ingesta_data_sources"
 SERVICIO_AIRFLOW = "airflow-scheduler"
-PASOS = ("infra", "descarga", "l1", "l2", "silver", "gold", "prediccion")
+PASOS = ("infra", "descarga", "l1", "l2", "silver", "gold", "metricas", "prediccion")
 
 # Estados finales de una tarea de Airflow que cuentan como fallo (la ejecución del DAG puede salir «success» igualmente:
 # su hoja, `predecir`, usa trigger_rule=all_done).
@@ -349,6 +355,16 @@ def paso_silver(ctx: Contexto) -> None:
                              "(¿su fuente no llegó a L2? Mira data/bronze_rejected y el log de L2)") from e
         raise
 
+    # Dos tablas Silver que NO construye la app de streaming, y por eso van aquí detrás:
+    #   oferta_diaria / oferta_franja  los GTFS del NAP son un ZIP por snapshot y hay que cruzar
+    #                                  calendar, trips y stop_times de cada uno: no es una proyección
+    #                                  de la fuente, es un recuento por día. Lee data/historico/nap,
+    #                                  que llena `make nap-historico` (una descarga aparte, de una vez).
+    #   ml_ocupacion_diaria            tabla DERIVADA: cruza la oferta con la demanda de la CNMC, los
+    #                                  festivos y la meteo.
+    make(ctx, "nap-oferta")
+    make(ctx, "ml-dataset")
+
 
 # ----------------------------------------------------------------------------------------------------- pasos batch
 
@@ -356,6 +372,23 @@ def paso_gold(ctx: Contexto) -> None:
     # El Gold necesita el detalle diario SINTÉTICO (viajeros_enriquecidos / puntualidad_enriquecida): no existe como dato abierto.
     make(ctx, "03_silver-sample")
     make(ctx, "05_gold")
+
+
+def paso_metricas(ctx: Contexto) -> None:
+    """Las tablas Gold que escribe Python y no Spark: KPI de calidad, modelo, franja y precio.
+
+    Van en un paso propio y no dentro de `gold` para poder reanudarlas solas: si algo falla aquí no
+    hace falta repetir Silver ni la app de Gold (`make carga-e2e E2E_ARGS="--desde metricas"`).
+
+    El orden no es alfabético. Primero los dos KPI de calidad, que solo dependen de Silver y del
+    registro de cargas y por tanto ya tienen todo lo que necesitan; después el modelo y lo que cuelga
+    de él. Así un fallo entrenando no se lleva por delante las métricas de la carga que sí funcionó.
+    """
+    make(ctx, "cobertura-ingesta")       # fuentes descargadas OK sobre las obligatorias del registro
+    make(ctx, "completitud-silver")      # filas sin ningún nulo no controlado, por tabla
+    make(ctx, "ml-modelo")               # MAPE, R2 y cobertura del intervalo
+    make(ctx, "ml-franja")               # ocupación en hora punta y en hora valle
+    make(ctx, "precio-recomendado")      # va detrás de la franja: reparte el precio con su ocupación
 
 
 def paso_prediccion(ctx: Contexto) -> None:
@@ -406,6 +439,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ("l2", lambda: paso_l2(ctx)),
         ("silver", lambda: paso_silver(ctx)),
         ("gold", lambda: paso_gold(ctx)),
+        ("metricas", lambda: paso_metricas(ctx)),
     ]
     if not args.sin_prediccion:
         pasos.append(("prediccion", lambda: paso_prediccion(ctx)))
