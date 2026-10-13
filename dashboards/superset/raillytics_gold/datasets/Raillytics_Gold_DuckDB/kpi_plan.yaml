@@ -39,23 +39,32 @@ sql: "SELECT\n    orden, kpi, familia, valor, objetivo, comparador, unidad, nota
   \    -- Desviacion entre lo repartido entre los dias y el total del trimestre, en la ultima ejecucion.\n    SELECT abs(sum(viajeros_previstos)\
   \ - max(total_esperado)) * 1.0 / nullif(max(total_esperado), 0) AS v\n    FROM read_parquet('s3://raillytics-gold/fact_prediccion_demanda/*.parquet',\
   \ union_by_name = true)\n    WHERE run_id = (SELECT max(run_id) FROM read_parquet('s3://raillytics-gold/fact_prediccion_demanda/*.parquet',\
-  \ union_by_name = true))\n), externas AS (\n    SELECT mejora_variables_externas_pp AS v\n    FROM read_parquet('s3://raillytics-gold/fact_metricas_modelo/*.parquet',\
-  \ union_by_name = true)\n    WHERE mejora_variables_externas_pp IS NOT NULL\n    ORDER BY generado_en DESC LIMIT 1\n)\n\
-  SELECT * FROM (\n    SELECT 1 AS orden, 'Factor de ocupación medio' AS kpi, 'negocio' AS familia,\n           (SELECT v\
-  \ FROM ocupacion) AS valor, 0.80 AS objetivo, '>=' AS comparador, 'porcentaje' AS unidad,\n           'El plan decía 85\
-  \ %; se recalibró a 80 % al fijar la fórmula por kilómetros' AS nota\n    UNION ALL SELECT 2, 'Ingreso por asiento ofertado',\
-  \ 'negocio',\n           (SELECT v FROM revenue), NULL, 'seguimiento', 'euros',\n           'Sin umbral en el plan: es una\
-  \ línea base para comparar'\n    UNION ALL SELECT 3, 'Cobertura de ingesta', 'pipeline',\n           (SELECT v FROM cobertura),\
-  \ 1.00, '>=', 'porcentaje',\n           'Sobre las 9 entradas obligatorias del registro, no sobre las 13'\n    UNION ALL\
-  \ SELECT 4, 'Completitud de Silver', 'pipeline',\n           (SELECT v FROM completitud), 0.98, '>=', 'porcentaje',\n  \
-  \         'Filas sin ningún nulo NO controlado. Los huecos vienen de días que AEMET no publicó'\n    UNION ALL SELECT 5,\
-  \ 'Latencia del pipeline', 'pipeline',\n           (SELECT v FROM latencia), 4.0, '<=', 'horas',\n           'Suma de las\
-  \ cinco fases en el último día con recorrido completo. Es tiempo de proceso registrado; el reloj del orquestador es mayor\
-  \ porque espera a que el streaming se asiente'\n    UNION ALL SELECT 6, 'Error de recalibración de la DTC', 'pipeline',\n\
-  \           (SELECT v FROM dtc), 0.001, '<=', 'proporcion',\n           'Sale 0 exacto: el reparto usa fracciones y mayor\
-  \ resto, no coma flotante'\n    UNION ALL SELECT 7, 'Mejora de MAPE por variables externas', 'modelo',\n           (SELECT\
-  \ v FROM externas), 1.5, '>=', 'puntos',\n           'Negativo: festivos, eventos y meteo EMPEORAN el modelo. La ocupación\
-  \ es demanda entre oferta y los efectos se cancelan'\n) k\nWHERE valor IS NOT NULL) base\nORDER BY orden"
+  \ union_by_name = true))\n), franja AS (\n    SELECT avg(CASE WHEN es_punta THEN ocupacion END) AS punta,\n           avg(CASE\
+  \ WHEN NOT es_punta THEN ocupacion END) AS valle,\n           avg(CASE WHEN es_punta THEN plazas_vacias END) AS vacias\n\
+  \    FROM read_parquet('s3://raillytics-gold/fact_ocupacion_franja/*.parquet') WHERE plausible\n), externas AS (\n    SELECT\
+  \ mejora_variables_externas_pp AS v\n    FROM read_parquet('s3://raillytics-gold/fact_metricas_modelo/*.parquet', union_by_name\
+  \ = true)\n    WHERE mejora_variables_externas_pp IS NOT NULL\n    ORDER BY generado_en DESC LIMIT 1\n)\nSELECT * FROM (\n\
+  \    SELECT 1 AS orden, 'Factor de ocupación medio' AS kpi, 'negocio' AS familia,\n           (SELECT v FROM ocupacion)\
+  \ AS valor, 0.80 AS objetivo, '>=' AS comparador, 'porcentaje' AS unidad,\n           'El plan decía 85 %; se recalibró\
+  \ a 80 % al fijar la fórmula por kilómetros' AS nota\n    UNION ALL SELECT 2, 'Ingreso por asiento ofertado', 'negocio',\n\
+  \           (SELECT v FROM revenue), NULL, 'seguimiento', 'euros',\n           'Sin umbral en el plan: es una línea base\
+  \ para comparar'\n    UNION ALL SELECT 3, 'Cobertura de ingesta', 'pipeline',\n           (SELECT v FROM cobertura), 1.00,\
+  \ '>=', 'porcentaje',\n           'Sobre las 9 entradas obligatorias del registro, no sobre las 13'\n    UNION ALL SELECT\
+  \ 4, 'Completitud de Silver', 'pipeline',\n           (SELECT v FROM completitud), 0.98, '>=', 'porcentaje',\n         \
+  \  'Filas sin ningún nulo NO controlado. Los huecos vienen de días que AEMET no publicó'\n    UNION ALL SELECT 5, 'Latencia\
+  \ del pipeline', 'pipeline',\n           (SELECT v FROM latencia), 4.0, '<=', 'horas',\n           'Suma de las cinco fases\
+  \ en el último día con recorrido completo. Es tiempo de proceso registrado; el reloj del orquestador es mayor porque espera\
+  \ a que el streaming se asiente'\n    UNION ALL SELECT 6, 'Error de recalibración de la DTC', 'pipeline',\n           (SELECT\
+  \ v FROM dtc), 0.001, '<=', 'proporcion',\n           'Sale 0 exacto: el reparto usa fracciones y mayor resto, no coma flotante'\n\
+  \    UNION ALL SELECT 7, 'Ocupación en hora punta', 'negocio',\n           (SELECT punta FROM franja), NULL, 'seguimiento',\
+  \ 'porcentaje',\n           'Mañana (6-9) y tarde (15-19). Los trenes por franja son dato medido; el reparto de la demanda\
+  \ entre franjas es hipótesis'\n    UNION ALL SELECT 8, 'Ocupación en hora valle', 'negocio',\n           (SELECT valle FROM\
+  \ franja), NULL, 'seguimiento', 'porcentaje',\n           'Madrugada, media mañana, mediodía y noche'\n    UNION ALL SELECT\
+  \ 9, 'Plazas vacías en hora punta', 'negocio',\n           (SELECT vacias FROM franja), NULL, 'seguimiento', 'porcentaje',\n\
+  \           'Base del KPI de reducción de plazas vacías: hace falta una serie histórica para medir la reducción'\n    UNION\
+  \ ALL SELECT 10, 'Mejora de MAPE por variables externas', 'modelo',\n           (SELECT v FROM externas), 1.5, '>=', 'puntos',\n\
+  \           'Negativo: festivos, eventos y meteo EMPEORAN el modelo. La ocupación es demanda entre oferta y los efectos\
+  \ se cancelan'\n) k\nWHERE valor IS NOT NULL) base\nORDER BY orden"
 params: null
 template_params: null
 filter_select_enabled: true

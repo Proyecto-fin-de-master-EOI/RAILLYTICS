@@ -128,3 +128,40 @@ base_mes:
   oct: 1.016
   nov: 1.000
   dic: 1.000
+
+# PERFIL POR FRANJA HORARIA (2026-10-13). Multiplica la ocupación esperada de cada franja respecto a
+# una franja corriente, y con él se reparte la demanda del día entre las seis franjas:
+#
+#     demanda_franja  ∝  trenes_franja  ×  base_franja[franja]
+#
+# QUÉ ES DATO Y QUÉ ES HIPÓTESIS, porque aquí la mezcla es fácil de pasar por alto:
+#
+#   - Los TRENES por franja son dato MEDIDO: salen de `stop_times.txt` del GTFS del NAP, tomando la
+#     hora de salida del origen de cada tren. El perfil real del corredor es tarde 29,2 %, mañana
+#     22,5 %, mediodía 20,8 %, media mañana 13,6 %, noche 10,8 % y madrugada 3,1 %.
+#   - Estos coeficientes son HIPÓTESIS. No hay forma de medirlos con las fuentes del proyecto.
+#
+# POR QUÉ NO SE PUEDEN MEDIR, y conviene que quede escrito porque se intentó: con el día de la semana
+# funcionó modelar la demanda como la oferta atenuada (`demanda = oferta ** alfa`), porque el operador
+# no puede añadir trenes el domingo sin límite y la ocupación absorbe la diferencia. Dentro del día no
+# aplica: el operador SÍ elige libremente a qué hora pone cada tren, así que la oferta sigue a la
+# demanda de cerca y el modelo daría ocupación plana en todas las franjas. Peor aún, con alfa < 1
+# daría la MADRUGADA como la franja más llena, que es absurdo: de noche hay pocos trenes porque hay
+# poca gente, no porque el operador no pueda poner más.
+#
+# DE DÓNDE SALE LA DIRECCIÓN: en un corredor de negocio el viajero de ida y vuelta en el día se
+# concentra en la primera hora y en la vuelta de la tarde, y esos trenes van más llenos que los de
+# mediodía. La madrugada va floja incluso con pocos trenes. Las magnitudes son moderadas a propósito:
+# un ±10 % sobre la franja corriente, no un ±50 %.
+#
+# CÓMO SE COMPROBARÍA: hace falta ocupación observada por franja, que no publica nadie. Mientras no la
+# haya, esto es una hipótesis declarada y los KPI de ocupación en punta y en valle que salen de aquí
+# heredan esa condición. Está dicho así en el cuadro de mandos.
+base_franja:
+  madrugada: 0.85
+  mañana: 1.10
+  media mañana: 0.95
+  mediodía: 0.95
+  tarde: 1.10
+  noche: 0.90
+  sin hora: 1.00    # trenes cuyo GTFS no trae hora: ni se penalizan ni se premian

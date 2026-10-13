@@ -10,8 +10,11 @@ import zipfile
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from raillytics.ingesta.nap_oferta import (
     _limpiar_ceros_espurios,
+    franja_de,
     coherente,
     construir,
     elegir_snapshots,
@@ -23,6 +26,11 @@ MADRID = "60000"
 BARCELONA = "71801"
 TODOS_LOS_DIAS = {d: "1" for d in
                   ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")}
+
+
+def _cuentas(conteo: dict) -> dict:
+    """Las dos cuentas del conteo, sin el desglose por franja (que tiene su propio test)."""
+    return {k: v for k, v in conteo.items() if k != "por_franja"}
 
 
 def _csv(cabecera: list[str], filas: list[dict]) -> str:
@@ -39,16 +47,20 @@ def _gtfs(
     rutas: list[dict],
     calendario: list[dict],
     excepciones: list[dict] | None = None,
+    horas: dict[str, list[str]] | None = None,
 ) -> Path:
     """Escribe un GTFS mínimo pero válido: lo justo que mira `trenes_por_dias`."""
+    horas = horas or {}
     stop_times = [
-        {"trip_id": trip_id, "stop_id": stop_id, "stop_sequence": i}
+        {"trip_id": trip_id, "stop_id": stop_id, "stop_sequence": i,
+         "departure_time": horas.get(trip_id, [""] * len(stops))[i] if trip_id in horas else ""}
         for trip_id, stops in paradas.items()
         for i, stop_id in enumerate(stops)
     ]
     with zipfile.ZipFile(destino, "w") as zf:
         zf.writestr("trips.txt", _csv(["trip_id", "service_id", "route_id"], trips))
-        zf.writestr("stop_times.txt", _csv(["trip_id", "stop_id", "stop_sequence"], stop_times))
+        zf.writestr("stop_times.txt",
+                    _csv(["trip_id", "stop_id", "stop_sequence", "departure_time"], stop_times))
         zf.writestr("routes.txt", _csv(["route_id", "route_short_name"], rutas))
         zf.writestr(
             "calendar.txt",
@@ -84,7 +96,7 @@ def test_cuenta_alta_velocidad_aparte_del_total(tmp_path):
 
     # ALVIA circula por vía convencional y CNMC lo clasifica fuera de «LD AV»: cuenta en el total
     # pero no en alta velocidad, que es la cifra comparable con la demanda de CNMC.
-    assert conteo == {"alta_velocidad": 1, "todos": 2}
+    assert _cuentas(conteo) == {"alta_velocidad": 1, "todos": 2}
 
 
 def test_no_cuenta_un_tren_que_no_toca_las_dos_cabeceras(tmp_path):
@@ -98,8 +110,8 @@ def test_no_cuenta_un_tren_que_no_toca_las_dos_cabeceras(tmp_path):
 
     conteo = trenes_por_dias(z, [date(2026, 3, 10)])[date(2026, 3, 10)]
 
-    assert conteo["Madrid-Barcelona"] == {"alta_velocidad": 0, "todos": 0}
-    assert conteo["Madrid-Sevilla"] == {"alta_velocidad": 1, "todos": 1}
+    assert _cuentas(conteo["Madrid-Barcelona"]) == {"alta_velocidad": 0, "todos": 0}
+    assert _cuentas(conteo["Madrid-Sevilla"]) == {"alta_velocidad": 1, "todos": 1}
 
 
 def test_normaliza_el_prefijo_uic_que_usa_ouigo(tmp_path):
@@ -118,7 +130,7 @@ def test_no_cuenta_un_dia_fuera_del_calendario_del_servicio(tmp_path):
 
     conteo = trenes_por_dias(z, [date(2026, 3, 10)])[date(2026, 3, 10)]["Madrid-Barcelona"]
 
-    assert conteo == {"alta_velocidad": 0, "todos": 0}
+    assert _cuentas(conteo) == {"alta_velocidad": 0, "todos": 0}
 
 
 def test_una_excepcion_de_calendar_dates_manda_sobre_el_calendario(tmp_path):
@@ -290,8 +302,8 @@ def test_no_cuenta_un_tren_que_solo_pasa_por_madrid_camino_de_otro_sitio(tmp_pat
 
     conteo = trenes_por_dias(z, [date(2026, 3, 10)])[date(2026, 3, 10)]
 
-    assert conteo["Madrid-Barcelona"] == {"alta_velocidad": 0, "todos": 0}
-    assert conteo["Madrid-Sevilla"] == {"alta_velocidad": 0, "todos": 0}
+    assert _cuentas(conteo["Madrid-Barcelona"]) == {"alta_velocidad": 0, "todos": 0}
+    assert _cuentas(conteo["Madrid-Sevilla"]) == {"alta_velocidad": 0, "todos": 0}
 
 
 def test_cuenta_un_tren_que_sale_de_madrid_y_sigue_mas_alla_de_barcelona(tmp_path):
@@ -341,9 +353,57 @@ def test_marca_los_dias_a_los_que_les_falta_un_operador(tmp_path):
             calendario=[{"service_id": "s1", "start_date": dias[0], "end_date": dias[1], **TODOS_LOS_DIAS}],
         )
 
-    df = construir(tmp_path, date(2026, 3, 10), date(2026, 3, 11))
+    df, _ = construir(tmp_path, date(2026, 3, 10), date(2026, 3, 11))
     mb = df[df["corredor"] == "Madrid-Barcelona"]
 
     # El 10 lo publican los dos; el 11 solo renfe, porque el calendario de ouigo no llega.
     assert set(mb[mb["fecha"] == date(2026, 3, 10)]["cobertura_completa"]) == {True}
     assert set(mb[mb["fecha"] == date(2026, 3, 11)]["cobertura_completa"]) == {False}
+
+
+# --- franja horaria de salida ---
+
+@pytest.mark.parametrize(
+    ("hora", "franja", "punta"),
+    [
+        ("07:25:00", "mañana", True),
+        ("06:00:00", "mañana", True),      # el límite entra en la franja que empieza
+        ("09:00:00", "media mañana", False),
+        ("17:57:00", "tarde", True),
+        ("23:59:00", "noche", False),
+        ("03:10:00", "madrugada", False),
+        # El GTFS pasa de 24 para los servicios que cruzan la medianoche: «25:10» es la 1:10.
+        ("25:10:00", "madrugada", False),
+        ("", "sin hora", False),
+        ("no es una hora", "sin hora", False),
+    ],
+)
+def test_la_franja_sale_de_la_hora_de_salida(hora, franja, punta):
+    assert franja_de(hora) == (franja, punta)
+
+
+def test_la_franja_es_la_del_origen_y_no_la_de_cada_parada(tmp_path):
+    # Un tren que sale de Madrid a las 7:00 es de la punta de mañana aunque llegue a las 9:30: lo que
+    # define la franja es la salida del origen, no por dónde pasa después.
+    z = _gtfs(
+        tmp_path / "1.zip",
+        trips=[{"trip_id": "t_ave", "service_id": "s1", "route_id": "r_ave"}],
+        paradas={"t_ave": [MADRID, BARCELONA]},
+        horas={"t_ave": ["07:00:00", "09:30:00"]},
+        rutas=[{"route_id": "r_ave", "route_short_name": "AVE"}],
+        calendario=[{"service_id": "s1", "start_date": "20260101", "end_date": "20261231", **TODOS_LOS_DIAS}],
+    )
+
+    conteo = trenes_por_dias(z, [date(2026, 3, 10)])[date(2026, 3, 10)]["Madrid-Barcelona"]
+
+    assert conteo["por_franja"] == {"mañana": 1}
+
+
+def test_un_tren_sin_hora_en_el_gtfs_no_se_asigna_a_una_franja_cualquiera(tmp_path):
+    # Marcarlo como «sin hora» en vez de meterlo en una franja es lo que impide que un snapshot
+    # incompleto desplace el perfil horario sin que nadie lo vea.
+    z = _gtfs_simple(tmp_path / "1.zip", inicio="20260101", fin="20261231")
+
+    conteo = trenes_por_dias(z, [date(2026, 3, 10)])[date(2026, 3, 10)]["Madrid-Barcelona"]
+
+    assert conteo["por_franja"] == {"sin hora": 1}

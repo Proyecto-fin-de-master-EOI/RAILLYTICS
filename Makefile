@@ -77,6 +77,7 @@ help:
 	@echo "  contraste-trends      Contrasta el perfil semanal de las reglas con el interes de busqueda"
 	@echo "  ml-dataset            Construye la tabla de entrenamiento de ocupación diaria en Silver"
 	@echo "  ml-modelo             Entrena y valida el modelo de ocupación (ver docs/modelo-ocupacion.md)"
+	@echo "  ml-franja             Demanda y ocupación por franja horaria (punta y valle)"
 	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
 	@echo "  04_silver             Silver real en streaming: lee Bronze L2 y construye las tablas Silver con quality gates (primer plano; terminal aparte)"
 	@echo "  05_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold), con quality gates"
@@ -228,6 +229,12 @@ ml-dataset: $(VENV)/.deps-installed
 # conclusiones del experimento están en docs/modelo-ocupacion.md.
 ml-modelo: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.ml.modelo
+
+# Demanda y ocupacion por franja horaria. Los TRENES por franja son dato medido (la hora de salida
+# del GTFS del NAP); el reparto de la demanda entre franjas usa `base_franja` de reglas_demanda.yml,
+# que es una hipotesis declarada y no se puede medir con las fuentes del proyecto.
+ml-franja: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.ml.franja
 
 # Silver sintético: corre en el host con el python del venv (como test-python)
 # y habla con MinIO con las variables MINIO_* del .env.

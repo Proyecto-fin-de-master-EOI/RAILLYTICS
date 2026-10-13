@@ -48,6 +48,7 @@ position:
     id: GRID_ID
     children:
     - ROW-oc-kpis
+    - ROW-franja
     - ROW-oc-aviso
     - ROW-oc-oferta
     - ROW-oc-ocupacion
@@ -384,6 +385,75 @@ position:
     id: ROW-atribucion
     children:
     - MARKDOWN-atribucion
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-kpi_ocupacion_punta:
+    type: CHART
+    id: CHART-kpi_ocupacion_punta
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-franja
+    meta:
+      width: 3
+      height: 50
+      chartId: 970
+      uuid: b8a338b9-b18c-51c8-a81f-e7257875d05e
+      sliceName: Ocupación en hora punta
+  CHART-kpi_ocupacion_valle:
+    type: CHART
+    id: CHART-kpi_ocupacion_valle
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-franja
+    meta:
+      width: 3
+      height: 50
+      chartId: 971
+      uuid: 58c990e5-8962-5f20-8a5d-55694306453f
+      sliceName: Ocupación en hora valle
+  CHART-kpi_plazas_vacias:
+    type: CHART
+    id: CHART-kpi_plazas_vacias
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-franja
+    meta:
+      width: 3
+      height: 50
+      chartId: 972
+      uuid: 34c1f77d-1f33-5f66-a8b2-07afdbc276c9
+      sliceName: Plazas vacías en hora punta
+  CHART-franja_perfil_oferta:
+    type: CHART
+    id: CHART-franja_perfil_oferta
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-franja
+    meta:
+      width: 3
+      height: 50
+      chartId: 973
+      uuid: b191cc85-603a-5b7a-a13c-2d277a89599e
+      sliceName: Trenes por franja horaria
+  ROW-franja:
+    type: ROW
+    id: ROW-franja
+    children:
+    - CHART-kpi_ocupacion_punta
+    - CHART-kpi_ocupacion_valle
+    - CHART-kpi_plazas_vacias
+    - CHART-franja_perfil_oferta
     parents:
     - ROOT_ID
     - GRID_ID

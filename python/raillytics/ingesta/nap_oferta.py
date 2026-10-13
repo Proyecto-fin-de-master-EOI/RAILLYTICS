@@ -51,6 +51,39 @@ CORREDORES = {
     "Madrid-Málaga/Granada": {"54413", "05000"},  # María Zambrano, Granada
 }
 
+# Franjas horarias de salida. Son las seis que pide el contrato de Silver del plan, ajustadas a lo
+# que se ve en el GTFS del corredor: dos picos claros, uno de 6 a 9 y otro de 15 a 19.
+#
+# La franja es la del origen, no la de paso por cada estación: un tren que sale de Madrid a las 7:00
+# es de la punta de mañana aunque llegue a Barcelona a las 9:30.
+#
+# Ojo con un detalle del GTFS: la hora puede pasar de 24 («25:10:00» es la 1:10 del día siguiente,
+# del servicio del día anterior). Se normaliza con el módulo 24 para que caiga en su franja real.
+FRANJAS = (
+    (0, 6, "madrugada", False),
+    (6, 9, "mañana", True),
+    (9, 12, "media mañana", False),
+    (12, 15, "mediodía", False),
+    (15, 19, "tarde", True),
+    (19, 24, "noche", False),
+)
+FRANJA_DESCONOCIDA = "sin hora"
+
+
+def franja_de(hora_texto: str) -> tuple[str, bool]:
+    """La franja de una hora del GTFS («07:25:00») y si es punta. Sin hora, se dice y no se adivina."""
+    if not hora_texto:
+        return FRANJA_DESCONOCIDA, False
+    try:
+        hora = int(hora_texto.split(":")[0]) % 24
+    except (ValueError, IndexError):
+        return FRANJA_DESCONOCIDA, False
+    for desde, hasta, nombre, punta in FRANJAS:
+        if desde <= hora < hasta:
+            return nombre, punta
+    return FRANJA_DESCONOCIDA, False
+
+
 DIAS_SEMANA = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 # Productos de alta velocidad, para poder comparar con la demanda de CNMC: en estos corredores
@@ -172,11 +205,17 @@ def trenes_por_dias(zip_path: Path, dias: Sequence[date]) -> dict[date, dict[str
             orden = int(fila.get("stop_sequence") or 0)
         except ValueError:
             orden = 0
-        secuencia_por_trip[fila["trip_id"]].append((orden, _norm_stop(fila["stop_id"])))
-    paradas_por_trip = {t: {p for _, p in v} for t, v in secuencia_por_trip.items()}
+        # La hora de salida viaja con la parada: la del origen (menor stop_sequence) es la que da la
+        # franja del tren. `arrival_time` como respaldo porque algún snapshot deja vacía la salida.
+        secuencia_por_trip[fila["trip_id"]].append(
+            (orden, _norm_stop(fila["stop_id"]), fila.get("departure_time") or fila.get("arrival_time") or "")
+        )
+    paradas_por_trip = {t: {p for _, p, _ in v} for t, v in secuencia_por_trip.items()}
     extremos_por_trip = {
         t: (min(v)[1], max(v)[1]) for t, v in secuencia_por_trip.items() if v
     }
+    # La franja se resuelve una vez por trip: no depende del día en que circule.
+    franja_por_trip = {t: franja_de(min(v)[2]) for t, v in secuencia_por_trip.items() if v}
 
     servicio_por_trip = {t["trip_id"]: t["service_id"] for t in trips}
     # Snapshot corrupto: los dos ficheros usan esquemas de trip_id que no casan en ninguno. Sin
@@ -218,13 +257,16 @@ def trenes_por_dias(zip_path: Path, dias: Sequence[date]) -> dict[date, dict[str
         del_dia = {}
         for corredor, trip_ids in trips_por_corredor.items():
             av = todos = 0
+            por_franja: dict[str, int] = defaultdict(int)
             for trip_id in trip_ids:
                 if not circula(servicio_por_trip.get(trip_id, "")):
                     continue
                 todos += 1
                 if producto_por_trip.get(trip_id, "") in PRODUCTOS_ALTA_VELOCIDAD:
                     av += 1
-            del_dia[corredor] = {"alta_velocidad": av, "todos": todos}
+                    # La franja solo se cuenta en alta velocidad, que es la oferta del corredor.
+                    por_franja[franja_por_trip.get(trip_id, (FRANJA_DESCONOCIDA, False))[0]] += 1
+            del_dia[corredor] = {"alta_velocidad": av, "todos": todos, "por_franja": dict(por_franja)}
         resultado[dia] = del_dia
     return resultado
 
@@ -307,9 +349,10 @@ def _limpiar_ceros_espurios(registros: list[dict], ventana: int = VENTANA_CEROS)
     return limpios
 
 
-def construir(raiz: Path, desde: date, hasta: date) -> pd.DataFrame:
+def construir(raiz: Path, desde: date, hasta: date) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Serie diaria de oferta a partir de los ZIP que hay en `raiz/<operador>/*.zip`."""
     registros: list[dict] = []
+    franjas: list[dict] = []
     for carpeta in sorted(p for p in raiz.iterdir() if p.is_dir()):
         operador = carpeta.name
         zips = list(carpeta.glob("*.zip"))
@@ -343,13 +386,28 @@ def construir(raiz: Path, desde: date, hasta: date) -> pd.DataFrame:
                         "trenes_todos": n["todos"],
                         "snapshot": path.stem,
                     })
+                    # El desglose por franja sale de la MISMA pasada: abrir 572 ZIP otra vez para
+                    # esto costaria veinte minutos y no aportaria nada nuevo.
+                    for nombre_franja, trenes in n.get("por_franja", {}).items():
+                        franjas.append({
+                            "operador": operador,
+                            "corredor": corredor,
+                            "fecha": dia,
+                            "franja": nombre_franja,
+                            "trenes": trenes,
+                            "snapshot": path.stem,
+                        })
             if i % 100 == 0:
                 logger.info("  %s: %d/%d snapshots procesados", operador, i, len(por_zip))
 
+    # Las franjas se filtran con los mismos dias que la tabla diaria: un dia espurio lo es en las dos.
     registros = _limpiar_ceros_espurios(registros)
+    validos = {(r["operador"], r["corredor"], r["fecha"]) for r in registros}
+    franjas = [f for f in franjas if (f["operador"], f["corredor"], f["fecha"]) in validos]
     df = pd.DataFrame(registros, columns=["operador", "corredor", "fecha", "trenes", "trenes_todos", "snapshot"])
+    franjas_df = pd.DataFrame(franjas, columns=["operador", "corredor", "fecha", "franja", "trenes", "snapshot"])
     if df.empty:
-        return df.assign(cobertura_completa=pd.Series(dtype=bool))
+        return df.assign(cobertura_completa=pd.Series(dtype=bool)), franjas_df
     # Un día al que le falta un operador NO es un día de menos servicio: es un día sin dato
     # completo. Sumar los operadores sin mirar esto hace que un hueco de OUIGO parezca un recorte
     # de Renfe (pasó: el agujero de OUIGO de sept-dic 2025 fingía caídas de oferta).
@@ -360,7 +418,14 @@ def construir(raiz: Path, desde: date, hasta: date) -> pd.DataFrame:
     if incompletos:
         logger.warning("%d filas en días sin los %d operadores: marcadas cobertura_completa=False",
                        incompletos, esperados)
-    return df.sort_values(["operador", "corredor", "fecha"], ignore_index=True)
+    # La cobertura viaja también a las franjas: filtrar por ella es lo que evita leer un día
+    # incompleto como un recorte de servicio.
+    if not franjas_df.empty:
+        franjas_df = franjas_df.merge(
+            df[["operador", "corredor", "fecha", "cobertura_completa"]],
+            on=["operador", "corredor", "fecha"], how="left",
+        ).sort_values(["operador", "corredor", "fecha", "franja"], ignore_index=True)
+    return (df.sort_values(["operador", "corredor", "fecha"], ignore_index=True), franjas_df)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -376,7 +441,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("no hay histórico en %s: lanza antes `make nap-historico`", args.origen)
         return 1
 
-    df = construir(args.origen, args.desde, args.hasta)
+    df, franjas = construir(args.origen, args.desde, args.hasta)
     if df.empty:
         logger.error("no se ha podido construir ningún registro")
         return 1
@@ -385,6 +450,19 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     logger.info("serie de oferta: %d registros en %s", len(df), destino)
+    if not franjas.empty:
+        destino_franjas = referencia.escribir(
+            "oferta_franja", franjas, {"desde": str(args.desde), "hasta": str(args.hasta)},
+            os.environ, __name__
+        )
+        logger.info("oferta por franja: %d registros en %s", len(franjas), destino_franjas)
+        reparto = (franjas[franjas["corredor"] == "Madrid-Barcelona"]
+                   .groupby("franja")["trenes"].sum())
+        total = reparto.sum() or 1
+        for nombre in [f[2] for f in FRANJAS] + [FRANJA_DESCONOCIDA]:
+            if nombre in reparto:
+                logger.info("  %-14s %6d trenes (%.1f %%)", nombre, reparto[nombre],
+                            100 * reparto[nombre] / total)
     corredor = df[df["corredor"] == "Madrid-Barcelona"]
     for operador, grupo in corredor.groupby("operador"):
         logger.info(

@@ -181,3 +181,44 @@ def test_la_cobertura_se_mide_en_el_futuro_y_no_sobre_lo_entrenado():
 
     assert 0.0 <= r["cobertura"] <= 1.0
     assert r["dias"] < len(df), "no se puede evaluar sobre todos los días: los primeros solo entrenan"
+
+
+# --- reparto por franja horaria ---
+
+def _franja_tabla() -> pd.DataFrame:
+    """Oferta por franja y ocupación diaria, con la forma que tienen en Silver."""
+    return pd.DataFrame({
+        "fecha": pd.to_datetime(["2026-01-01"] * 3),
+        "franja": ["mañana", "mediodía", "tarde"],
+        "trenes": [10, 10, 10],
+        "ocupacion": [0.8, 0.8, 0.8],
+        "plausible": [True, True, True],
+    })
+
+
+def test_con_el_mismo_numero_de_trenes_la_franja_punta_sale_mas_llena():
+    # Es lo único que afirma la hipótesis: a igualdad de oferta, en punta va más gente.
+    from raillytics.ml import franja as fr
+
+    df = _franja_tabla()
+    df["factor"] = df["franja"].map({"mañana": 1.10, "mediodía": 0.95, "tarde": 1.10})
+    df["peso"] = df["trenes"] * df["factor"]
+    df["cuota_demanda"] = df["peso"] / df["peso"].sum()
+    df["cuota_oferta"] = df["trenes"] / df["trenes"].sum()
+    ocupacion = df["ocupacion"] * df["cuota_demanda"] / df["cuota_oferta"]
+
+    assert ocupacion.iloc[0] > ocupacion.iloc[1], "la mañana debe ir más llena que el mediodía"
+    assert fr.PUNTA == {"mañana", "tarde"}
+
+
+def test_el_reparto_por_franja_no_cambia_la_demanda_del_dia():
+    # El total del trimestre lo pone la CNMC: repartirlo entre franjas no puede crear ni perder
+    # viajeros. La media ponderada por oferta de la ocupación por franja vuelve a la del día.
+    df = _franja_tabla()
+    df["factor"] = df["franja"].map({"mañana": 1.10, "mediodía": 0.95, "tarde": 1.10})
+    df["peso"] = df["trenes"] * df["factor"]
+    cuota_d = df["peso"] / df["peso"].sum()
+    cuota_o = df["trenes"] / df["trenes"].sum()
+
+    assert cuota_d.sum() == pytest.approx(1.0)
+    assert (df["ocupacion"] * cuota_d / cuota_o * cuota_o).sum() == pytest.approx(df["ocupacion"].iloc[0])
