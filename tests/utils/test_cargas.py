@@ -1,10 +1,17 @@
 import json
 import logging
+from datetime import timedelta
 
 import duckdb
 import pytest
 
-from raillytics.utils.cargas import CARGAS_COLUMNS, lanzado_por_defecto, leer_cargas, registrar_carga
+from raillytics.utils.cargas import (
+    CARGAS_COLUMNS,
+    ahora,
+    lanzado_por_defecto,
+    leer_cargas,
+    registrar_carga,
+)
 from raillytics.utils.lake import LakeLayout, connect
 
 
@@ -110,3 +117,30 @@ def test_lanzado_por_se_deduce_del_entorno():
     assert lanzado_por_defecto({}) == "cli"
     assert lanzado_por_defecto({"MAKELEVEL": "1"}) == "make"
     assert lanzado_por_defecto({"AIRFLOW_CTX_DAG_ID": "ingesta_data_sources", "MAKELEVEL": "1"}) == "airflow:ingesta_data_sources"
+
+
+def test_un_paso_puede_declarar_cuando_empezo_a_trabajar(layout):
+    """Los pasos en los que lo caro es CALCULAR escriben en un segundo: el recuento de la oferta del
+    NAP son minutos de GTFS. Sin declarar el inicio, el registro diría que la fase dura un segundo y
+    el KPI de latencia del pipeline se quedaría corto."""
+    con = connect()
+    empezo = ahora() - timedelta(minutes=14)
+    with registrar_carga("referencia_oferta_diaria", "silver", layout, con) as ejecucion:
+        with ejecucion.tabla("oferta_diaria", inicio=empezo) as carga:
+            carga.filas = 1
+
+    # leer_cargas proyecta: ..., inicio, duracion_s, ...
+    _, _, _, _, _, inicio, duracion, *_ = leer_cargas(con, layout, limit=1)[0]
+    assert duracion >= 14 * 60
+    assert inicio == empezo
+
+
+def test_sin_declararlo_el_inicio_es_el_de_la_escritura(layout):
+    con = connect()
+    antes = ahora()
+    with registrar_carga("gold_build", "gold", layout, con) as ejecucion:
+        with ejecucion.tabla("dim_fecha") as carga:
+            carga.filas = 1
+
+    _, _, _, _, _, inicio, *_ = leer_cargas(con, layout, limit=1)[0]
+    assert inicio >= antes

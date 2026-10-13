@@ -37,6 +37,9 @@ import pandas as pd
 from dotenv import find_dotenv, load_dotenv
 
 from raillytics.ingesta import referencia
+from raillytics.utils.cargas import ahora
+from raillytics.ingesta.nap_cache import DIRECTORIO_POR_DEFECTO as CACHE_POR_DEFECTO
+from raillytics.ingesta.nap_cache import CacheSnapshots, SinCache
 
 logger = logging.getLogger(__name__)
 
@@ -271,15 +274,21 @@ def trenes_por_dias(zip_path: Path, dias: Sequence[date]) -> dict[date, dict[str
     return resultado
 
 
-def elegir_snapshots(zips: Iterable[Path], desde: date, hasta: date) -> dict[date, Path]:
+def elegir_snapshots(zips: Iterable[Path], desde: date, hasta: date,
+                     cache: CacheSnapshots | SinCache | None = None) -> dict[date, Path]:
     """Para cada fecha, el snapshot vigente más reciente que no esté corrupto.
 
     El nombre del fichero es `AAAA-MM-DD_<id>.zip`, así que la fecha de publicación sale del nombre
     sin necesidad de abrirlo.
+
+    La `cache` solo evita repetir `vigencia` y `coherente`, que son propiedades del fichero. La
+    ELECCIÓN no se cachea: depende de todos los ZIP que haya, así que un snapshot nuevo puede
+    cambiar a qué día va otro.
     """
+    cache = cache or SinCache()
     vigencias = []  # (publicacion AAAAMMDD, inicio, fin, path)
     for z in sorted(zips):
-        v = vigencia(z)
+        v = cache.recordar(z, "vigencia", (), lambda z=z: vigencia(z))
         if v:
             vigencias.append((z.stem.split("_")[0].replace("-", ""), v[0], v[1], z))
     vigencias.sort()
@@ -289,7 +298,7 @@ def elegir_snapshots(zips: Iterable[Path], desde: date, hasta: date) -> dict[dat
 
     def valido(path: Path) -> bool:
         if path not in veredicto:
-            veredicto[path] = coherente(path)
+            veredicto[path] = bool(cache.recordar(path, "coherente", (), lambda: coherente(path)))
             if not veredicto[path]:
                 logger.warning("  snapshot corrupto, se descarta: %s", path.stem)
         return veredicto[path]
@@ -349,8 +358,23 @@ def _limpiar_ceros_espurios(registros: list[dict], ventana: int = VENTANA_CEROS)
     return limpios
 
 
-def construir(raiz: Path, desde: date, hasta: date) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _conteos_a_json(conteos: dict[date, dict[str, dict]] | None) -> object:
+    """Las claves de la caché son JSON, y las de `trenes_por_dias` son fechas."""
+    if conteos is None:
+        return None
+    return {dia.isoformat(): por_corredor for dia, por_corredor in conteos.items()}
+
+
+def _conteos_de_json(guardado: object) -> dict[date, dict[str, dict]] | None:
+    if guardado is None:
+        return None
+    return {date.fromisoformat(dia): por_corredor for dia, por_corredor in guardado.items()}  # type: ignore[union-attr]
+
+
+def construir(raiz: Path, desde: date, hasta: date,
+              cache: CacheSnapshots | SinCache | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Serie diaria de oferta a partir de los ZIP que hay en `raiz/<operador>/*.zip`."""
+    cache = cache or SinCache()
     registros: list[dict] = []
     franjas: list[dict] = []
     for carpeta in sorted(p for p in raiz.iterdir() if p.is_dir()):
@@ -359,7 +383,7 @@ def construir(raiz: Path, desde: date, hasta: date) -> tuple[pd.DataFrame, pd.Da
         if not zips:
             continue
         logger.info("%s: leyendo vigencias de %d snapshots", operador, len(zips))
-        elegido = elegir_snapshots(zips, desde, hasta)
+        elegido = elegir_snapshots(zips, desde, hasta, cache)
 
         # Agrupar por snapshot para abrir y parsear cada ZIP una sola vez.
         por_zip: dict[Path, list[date]] = defaultdict(list)
@@ -368,8 +392,14 @@ def construir(raiz: Path, desde: date, hasta: date) -> tuple[pd.DataFrame, pd.Da
         logger.info("  %s: %d días cubiertos por %d snapshots", operador, len(elegido), len(por_zip))
 
         for i, (path, dias) in enumerate(sorted(por_zip.items()), 1):
+            # Los días entran en la clave: un snapshot al que se le piden otros días es otro
+            # cálculo. En la práctica solo le pasa al último de la serie, que es el que crece.
+            claves = [d.isoformat() for d in sorted(dias)]
             try:
-                conteos = trenes_por_dias(path, sorted(dias))
+                conteos = _conteos_de_json(cache.recordar(
+                    path, "conteos", claves,
+                    lambda path=path, dias=dias: _conteos_a_json(trenes_por_dias(path, sorted(dias))),
+                ))
             except ERRORES_LECTURA as exc:
                 logger.warning("  %s %s: ilegible (%s), se omite", operador, path.stem, exc)
                 continue
@@ -435,25 +465,35 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--desde", type=date.fromisoformat, default=date(2025, 6, 1))
     p.add_argument("--hasta", type=date.fromisoformat, default=date.today())
     p.add_argument("--origen", type=Path, default=Path("data/historico/nap"))
+    p.add_argument("--cache", type=Path, default=CACHE_POR_DEFECTO,
+                   help="directorio de la caché de snapshots (ver raillytics.ingesta.nap_cache)")
+    p.add_argument("--sin-cache", action="store_true",
+                   help="reparsea todos los ZIP, sin leer ni escribir la caché (unos 14 min)")
     args = p.parse_args(argv)
 
     if not args.origen.exists():
         logger.error("no hay histórico en %s: lanza antes `make nap-historico`", args.origen)
         return 1
 
-    df, franjas = construir(args.origen, args.desde, args.hasta)
+    # Antes de parsear: aqui lo que tarda es leer los GTFS, no escribir, y el KPI de latencia
+    # suma lo que dice el registro de cargas.
+    inicio = ahora()
+    cache = SinCache() if args.sin_cache else CacheSnapshots(args.cache)
+    df, franjas = construir(args.origen, args.desde, args.hasta, cache)
+    logger.info("%s", cache.resumen())
     if df.empty:
         logger.error("no se ha podido construir ningún registro")
         return 1
     destino = referencia.escribir(
-        "oferta_diaria", df, {"desde": str(args.desde), "hasta": str(args.hasta)}, os.environ, __name__
+        "oferta_diaria", df, {"desde": str(args.desde), "hasta": str(args.hasta)}, os.environ, __name__,
+        inicio=inicio,
     )
 
     logger.info("serie de oferta: %d registros en %s", len(df), destino)
     if not franjas.empty:
         destino_franjas = referencia.escribir(
             "oferta_franja", franjas, {"desde": str(args.desde), "hasta": str(args.hasta)},
-            os.environ, __name__
+            os.environ, __name__, inicio=inicio
         )
         logger.info("oferta por franja: %d registros en %s", len(franjas), destino_franjas)
         reparto = (franjas[franjas["corredor"] == "Madrid-Barcelona"]

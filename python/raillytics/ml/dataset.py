@@ -42,6 +42,7 @@ import pandas as pd
 from dotenv import find_dotenv, load_dotenv
 
 from raillytics.ingesta.referencia import conexion, escribir
+from raillytics.utils.cargas import ahora
 from raillytics.prediccion.calendario import construir_calendario, tipos_de_dia
 from raillytics.prediccion.calibracion import CORREDOR, oferta_diaria, ocupacion_implicada
 from raillytics.prediccion.reglas import RUTA_POR_DEFECTO as RUTA_REGLAS
@@ -156,9 +157,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--hasta", type=date.fromisoformat, default=date.today())
     args = p.parse_args(argv)
 
+    # Antes de calcular: lo que tarda este paso es el cálculo, y el registro tiene que verlo.
+    inicio = ahora()
     tabla = construir(args.desde, args.hasta)
     destino = escribir(TABLA, tabla, {"desde": str(args.desde), "hasta": str(args.hasta)},
-                       os.environ, __name__)
+                       os.environ, __name__, inicio=inicio)
 
     logger.info("tabla de entrenamiento: %d filas, %d variables -> %s",
                 len(tabla), len(tabla.columns) - 2, destino)

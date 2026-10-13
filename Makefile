@@ -162,8 +162,11 @@ nap-historico: $(VENV)/.deps-installed
 # Serie diaria de oferta a partir del histórico ya descargado: trenes al día por operador y
 # corredor. Es la variable diaria que la demanda trimestral de CNMC no tiene, así que es con lo
 # que se comprueba si el reparto diario de la DTC se parece a la oferta real.
+# La cache de data/cache/nap_oferta evita reparsear los ZIP que no han cambiado: 14 min la primera
+# pasada y segundos las siguientes. OFERTA_ARGS="--sin-cache" fuerza la pasada completa.
+OFERTA_ARGS ?=
 nap-oferta: $(VENV)/.deps-installed
-	$(VENV_PY) -m raillytics.ingesta.nap_oferta --desde $(DESDE)
+	$(VENV_PY) -m raillytics.ingesta.nap_oferta --desde $(DESDE) $(OFERTA_ARGS)
 
 # Festivos del corredor: descarga las fuentes boe_* del registro y parsea la tabla de fiestas
 # laborales. Son los festivos en Madrid o en Cataluña, porque el corredor une las dos. Hay que

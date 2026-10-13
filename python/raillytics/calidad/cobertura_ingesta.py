@@ -37,7 +37,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -45,7 +45,7 @@ from dotenv import find_dotenv, load_dotenv
 
 from raillytics.ingesta.referencia import conexion
 from raillytics.ingesta.sources import load_sources
-from raillytics.utils.cargas import registrar_carga
+from raillytics.utils.cargas import ahora, registrar_carga
 from raillytics.utils.lake import LakeLayout, ensure_parent_dir
 
 logger = logging.getLogger(__name__)
@@ -120,12 +120,16 @@ def faltantes(con, layout: LakeLayout, fuentes_registro: set[str], fecha) -> lis
     return sorted(fuentes_registro - ok)
 
 
-def publicar(con, layout: LakeLayout, df: pd.DataFrame) -> str:
-    """Deja la tabla en Gold. Se sobrescribe entera: es un recuento, no un histórico incremental."""
+def publicar(con, layout: LakeLayout, df: pd.DataFrame, inicio: datetime | None = None) -> str:
+    """Deja la tabla en Gold. Se sobrescribe entera: es un recuento, no un histórico incremental.
+
+    `inicio` es cuándo empezó el paso: lo que cuesta aquí es calcular y no escribir, y el KPI de
+    latencia del pipeline suma lo que diga el registro (ver `Ejecucion.tabla`).
+    """
     destino = f"{layout.gold_root}/{GOLD_TABLA}/{GOLD_TABLA}.parquet"
     with registrar_carga("calidad_cobertura_ingesta", "gold", layout, con,
                          parametros={"umbral": UMBRAL, "fuentes": int(df["fuentes_esperadas"].max())}) as ejecucion:
-        with ejecucion.tabla(GOLD_TABLA, origen="_trazabilidad/cargas", destino=destino) as carga:
+        with ejecucion.tabla(GOLD_TABLA, origen="_trazabilidad/cargas", destino=destino, inicio=inicio) as carga:
             ensure_parent_dir(destino)
             con.register("cobertura_frame", df)
             try:
@@ -144,6 +148,8 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Cobertura de ingesta: fuentes obligatorias descargadas OK.")
     p.add_argument("--registro", type=Path, default=Path("config/data_sources.yml"))
     args = p.parse_args(argv)
+    # Antes de calcular: lo que tarda este paso es el cálculo, y el registro tiene que verlo.
+    inicio = ahora()
 
     todas = load_sources(args.registro)
     fuentes = {s.id for s in todas if s.obligatoria}
@@ -173,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
         for fuente in faltantes(con, layout, fuentes, ultima["fecha"]):
             print(f"     - {fuente}")
 
-    destino = publicar(con, layout, df)
+    destino = publicar(con, layout, df, inicio)
     logger.info("%s: %d días -> %s", GOLD_TABLA, len(df), destino)
     return 0
 

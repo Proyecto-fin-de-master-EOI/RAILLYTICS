@@ -46,9 +46,23 @@ sql: "SELECT\n    orden, kpi, familia, valor, objetivo, comparador, unidad, nota
   \ union_by_name = true)\n    WHERE run_id = (SELECT max(run_id) FROM read_parquet('s3://raillytics-gold/fact_prediccion_demanda/*.parquet',\
   \ union_by_name = true))\n), franja AS (\n    SELECT avg(CASE WHEN es_punta THEN ocupacion END) AS punta,\n           avg(CASE\
   \ WHEN NOT es_punta THEN ocupacion END) AS valle,\n           avg(CASE WHEN es_punta THEN plazas_vacias END) AS vacias\n\
-  \    FROM read_parquet('s3://raillytics-gold/fact_ocupacion_franja/*.parquet') WHERE plausible\n), precio AS (\n    SELECT\
-  \ avg(CASE WHEN plausible THEN precio_recomendado_eur END)              AS recomendado,\n           avg(CASE WHEN plausible\
-  \ THEN cast(en_rango_observado AS INT) END)     AS en_rango\n    FROM read_parquet('s3://raillytics-gold/fact_precio_recomendado/*.parquet')\n\
+  \    FROM read_parquet('s3://raillytics-gold/fact_ocupacion_franja/*.parquet') WHERE plausible\n), fases_carga AS (\n  \
+  \  -- Las CATORCE fases que lanza `make carga-e2e`: las cinco de Spark y Airflow mas las nueve que\n    -- escribe Python\
+  \ (la oferta del NAP, la tabla de entrenamiento, el Silver sintetico y las cinco\n    -- tablas Gold de KPI, modelo, franja\
+  \ y precio).\n    --\n    -- Que cada fase diga lo que de verdad tarda no era gratis: los pasos de Python escriben en un\n\
+  \    -- segundo y lo que les cuesta es CALCULAR (parsear los GTFS del NAP son minutos). Ahora declaran\n    -- su inicio\
+  \ real al registrar la carga (ver `Ejecucion.tabla`), asi que esta suma mide el\n    -- recorrido y no solo las escrituras.\n\
+  \    SELECT cast(inicio AS DATE) AS dia, proceso,\n           date_diff('second', min(inicio), max(fin)) AS seg\n    FROM\
+  \ read_parquet('s3://raillytics-gold/_trazabilidad/cargas/*.parquet', union_by_name = true)\n    WHERE proceso IN ('bronze_download',\
+  \ 'bronze_l1_raw_uploader', 'bronze_l2_parquet_converter',\n                      'silver_builder', 'referencia_oferta_diaria',\
+  \ 'referencia_oferta_franja',\n                      'referencia_ml_ocupacion_diaria', 'silver_sample', 'gold_build',\n\
+  \                      'calidad_cobertura_ingesta', 'calidad_completitud_silver', 'ml_metricas',\n                     \
+  \ 'ml_ocupacion_franja', 'precio_recomendado')\n    GROUP BY 1, 2\n), carga_completa AS (\n    -- Solo los dias con las\
+  \ CATORCE: un dia al que le falta una fase no mide el recorrido. Queda\n    -- vacio hasta que se corra un `make carga-e2e`\
+  \ entero, y entonces el KPI aparece.\n    SELECT dia, sum(seg) / 3600.0 AS v FROM fases_carga GROUP BY dia HAVING count(*)\
+  \ = 14\n), latencia_carga AS (\n    SELECT v FROM carga_completa ORDER BY dia DESC LIMIT 1\n), precio AS (\n    SELECT avg(CASE\
+  \ WHEN plausible THEN precio_recomendado_eur END)              AS recomendado,\n           avg(CASE WHEN plausible THEN\
+  \ cast(en_rango_observado AS INT) END)     AS en_rango\n    FROM read_parquet('s3://raillytics-gold/fact_precio_recomendado/*.parquet')\n\
   ), externas AS (\n    SELECT mejora_variables_externas_pp AS v\n    FROM read_parquet('s3://raillytics-gold/fact_metricas_modelo/*.parquet',\
   \ union_by_name = true)\n    WHERE mejora_variables_externas_pp IS NOT NULL\n    ORDER BY generado_en DESC LIMIT 1\n)\n\
   SELECT * FROM (\n    SELECT 1 AS orden, 'Factor de ocupación medio' AS kpi, 'negocio' AS familia,\n           (SELECT v\
@@ -59,9 +73,9 @@ sql: "SELECT\n    orden, kpi, familia, valor, objetivo, comparador, unidad, nota
   \ 1.00, '>=', 'porcentaje',\n           'Sobre las 9 entradas obligatorias del registro, no sobre las 13'\n    UNION ALL\
   \ SELECT 4, 'Completitud de Silver', 'pipeline',\n           (SELECT v FROM completitud), 0.98, '>=', 'porcentaje',\n  \
   \         'Filas sin ningún nulo NO controlado. Los huecos vienen de días que AEMET no publicó'\n    UNION ALL SELECT 5,\
-  \ 'Latencia del pipeline', 'pipeline',\n           (SELECT v FROM latencia), 4.0, '<=', 'horas',\n           'Suma de las\
-  \ cinco fases en el último día con recorrido completo. Es tiempo de proceso registrado; el reloj del orquestador es mayor\
-  \ porque espera a que el streaming se asiente'\n    UNION ALL SELECT 6, 'Error de recalibración de la DTC', 'pipeline',\n\
+  \ 'Latencia del pipeline', 'pipeline',\n           (SELECT v FROM latencia), 4.0, '<=', 'horas',\n           'Las cinco\
+  \ fases de Spark y Airflow (descarga, L1, L2, Silver y Gold) en el ultimo dia que las tiene todas. No incluye los pasos\
+  \ que escribe Python: esos van en el KPI 13'\n    UNION ALL SELECT 6, 'Error de recalibración de la DTC', 'pipeline',\n\
   \           (SELECT v FROM dtc), 0.001, '<=', 'proporcion',\n           'Sale 0 exacto: el reparto usa fracciones y mayor\
   \ resto, no coma flotante'\n    UNION ALL SELECT 7, 'Ocupación en hora punta', 'negocio',\n           (SELECT punta FROM\
   \ franja), NULL, 'seguimiento', 'porcentaje',\n           'Mañana (6-9) y tarde (15-19). Los trenes por franja son dato\
@@ -76,7 +90,10 @@ sql: "SELECT\n    orden, kpi, familia, valor, objetivo, comparador, unidad, nota
   \ medido; la elasticidad que lo mueve es hipotesis declarada en reglas_demanda.yml'\n    UNION ALL SELECT 12, 'Recomendaciones\
   \ en el rango real', 'negocio',\n           (SELECT en_rango FROM precio), 0.80, '>=', 'porcentaje',\n           'Ocupa\
   \ el hueco del ratio de aceptacion: contrasta la recomendacion contra el recorrido de precios que ese operador ha puesto\
-  \ de verdad, no contra una decision humana que no existe'\n) k\nWHERE valor IS NOT NULL) base\nORDER BY orden"
+  \ de verdad, no contra una decision humana que no existe'\n    UNION ALL SELECT 13, 'Latencia de la carga completa', 'pipeline',\n\
+  \           (SELECT v FROM latencia_carga), 4.0, '<=', 'horas',\n           'Las catorce fases de `make carga-e2e`, no solo\
+  \ las cinco de Spark del KPI 5. Sale en blanco hasta que se corra una carga entera: un dia al que le falta una fase no mide\
+  \ el recorrido'\n) k\nWHERE valor IS NOT NULL) base\nORDER BY orden"
 params: null
 template_params: null
 filter_select_enabled: true

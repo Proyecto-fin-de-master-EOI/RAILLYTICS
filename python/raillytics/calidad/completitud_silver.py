@@ -31,12 +31,13 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+from datetime import datetime
 
 import pandas as pd
 from dotenv import find_dotenv, load_dotenv
 
 from raillytics.ingesta.referencia import conexion
-from raillytics.utils.cargas import registrar_carga
+from raillytics.utils.cargas import ahora, registrar_carga
 from raillytics.utils.lake import LakeLayout, ensure_parent_dir
 
 logger = logging.getLogger(__name__)
@@ -117,12 +118,16 @@ def completitud(con, layout: LakeLayout, tablas=TABLAS) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 
-def publicar(con, layout: LakeLayout, df: pd.DataFrame) -> str:
-    """Deja la tabla en Gold. Se sobrescribe entera: es una foto del estado actual de Silver."""
+def publicar(con, layout: LakeLayout, df: pd.DataFrame, inicio: datetime | None = None) -> str:
+    """Deja la tabla en Gold. Se sobrescribe entera: es una foto del estado actual de Silver.
+
+    `inicio` es cuándo empezó el paso: lo que cuesta aquí es calcular y no escribir, y el KPI de
+    latencia del pipeline suma lo que diga el registro (ver `Ejecucion.tabla`).
+    """
     destino = f"{layout.gold_root}/{GOLD_TABLA}/{GOLD_TABLA}.parquet"
     with registrar_carga("calidad_completitud_silver", "gold", layout, con,
                          parametros={"umbral": UMBRAL, "tablas": len(df)}) as ejecucion:
-        with ejecucion.tabla(GOLD_TABLA, origen="silver", destino=destino) as carga:
+        with ejecucion.tabla(GOLD_TABLA, origen="silver", destino=destino, inicio=inicio) as carga:
             ensure_parent_dir(destino)
             con.register("completitud_silver_frame", df)
             try:
@@ -136,6 +141,8 @@ def publicar(con, layout: LakeLayout, df: pd.DataFrame) -> str:
 def main(argv: list[str] | None = None) -> int:
     load_dotenv(find_dotenv(usecwd=True))
     argparse.ArgumentParser(description="Completitud de Silver: filas sin nulos no controlados.").parse_args(argv)
+    # Antes de calcular: lo que tarda este paso es el cálculo, y el registro tiene que verlo.
+    inicio = ahora()
 
     layout = LakeLayout.from_env(os.environ)
     con = conexion(layout, os.environ)
@@ -154,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"   conjunta: {conjunta:.1%}   umbral del plan {UMBRAL:.0%}   "
           f"tablas por debajo: {int((~df['cumple_umbral']).sum())} de {len(df)}")
 
-    logger.info("%s -> %s", GOLD_TABLA, publicar(con, layout, df))
+    logger.info("%s -> %s", GOLD_TABLA, publicar(con, layout, df, inicio))
     return 0
 
 

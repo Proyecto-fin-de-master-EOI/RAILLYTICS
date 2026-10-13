@@ -49,7 +49,7 @@ from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error,
 
 from raillytics.ingesta.referencia import conexion
 from raillytics.ml.dataset import SEMANA, TABLA
-from raillytics.utils.cargas import registrar_carga
+from raillytics.utils.cargas import ahora, registrar_carga
 from raillytics.utils.lake import LakeLayout, ensure_parent_dir
 
 logger = logging.getLogger(__name__)
@@ -261,7 +261,7 @@ def mejora_por_variables_externas(df: pd.DataFrame, tramos: int = TRAMOS_VALIDAC
 GOLD_TABLA = "fact_metricas_modelo"
 
 
-def publicar_metricas(con, layout: LakeLayout, metricas: dict) -> str:
+def publicar_metricas(con, layout: LakeLayout, metricas: dict, inicio: datetime | None = None) -> str:
     """Deja las métricas del entrenamiento en Gold, una fila por ejecución.
 
     Por qué en Gold y no solo en `resultados/modelo/metricas.json`: el plan del Sprint 2 pide MAPE y
@@ -271,13 +271,17 @@ def publicar_metricas(con, layout: LakeLayout, metricas: dict) -> str:
 
     El `run_id` da nombre al fichero, así que relanzar el mismo entrenamiento sobrescribe su fila en
     vez de duplicarla.
+
+    `inicio` es cuándo empezó el paso: lo que cuesta aquí es calcular y no escribir, y el KPI de
+    latencia del pipeline suma lo que diga el registro (ver `Ejecucion.tabla`).
     """
     vt = metricas.get("validacion_temporal", {})
-    ahora = datetime.now(timezone.utc)
-    run_id = ahora.strftime("%Y%m%dT%H%M%S") + "-ml_ocupacion"
+    # No se llama `ahora` para no tapar el `ahora()` del registro de cargas, que es otra cosa.
+    generado = datetime.now(timezone.utc)
+    run_id = generado.strftime("%Y%m%dT%H%M%S") + "-ml_ocupacion"
     fila = {
         "run_id": run_id,
-        "generado_en": ahora.replace(tzinfo=None),
+        "generado_en": generado.replace(tzinfo=None),
         "corredor": CORREDOR,
         "modelo": "HistGradientBoostingRegressor",
         "objetivo": "coeficiente de ocupacion diaria (viajeros.km / plazas.km)",
@@ -313,7 +317,7 @@ def publicar_metricas(con, layout: LakeLayout, metricas: dict) -> str:
     destino = f"{layout.gold_root}/{GOLD_TABLA}/{run_id}.parquet"
     with registrar_carga("ml_metricas", "gold", layout, con,
                          parametros={"modelo": fila["modelo"]}) as ejecucion:
-        with ejecucion.tabla(GOLD_TABLA, origen="silver/ml_ocupacion_diaria", destino=destino) as carga:
+        with ejecucion.tabla(GOLD_TABLA, origen="silver/ml_ocupacion_diaria", destino=destino, inicio=inicio) as carga:
             ensure_parent_dir(destino)
             con.register("metricas_modelo", pd.DataFrame([fila]))
             try:
@@ -335,6 +339,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="entrena también con los días de ocupación >100% (no recomendado)")
     p.add_argument("--destino", type=Path, default=Path("resultados/modelo"))
     args = p.parse_args(argv)
+    # Antes de calcular: lo que tarda este paso es el cálculo, y el registro tiene que verlo.
+    inicio = ahora()
 
     layout = LakeLayout.from_env(os.environ)
     df = cargar(conexion(layout, os.environ), layout, solo_plausibles=not args.incluir_imposibles)
@@ -400,7 +406,7 @@ def main(argv: list[str] | None = None) -> int:
 
     completas = {**metricas, "variables": int(variables(train).shape[1]),
                  "dias_entrenamiento": int(len(train)), "banda": banda, "externas": externas}
-    destino_gold = publicar_metricas(conexion(layout, os.environ), layout, completas)
+    destino_gold = publicar_metricas(conexion(layout, os.environ), layout, completas, inicio)
     logger.info("métricas en Gold: %s", destino_gold)
 
     if metricas["mape"] < 0.05:

@@ -237,13 +237,22 @@ No van en el pipeline diario: son datos históricos que se traen una vez. Las cu
 
 ```bash
 make nap-historico    # ~20 min · 572 ficheros, 420 MB
-make nap-oferta       # ~10 min · abre esos ZIP y cuenta trenes por día
+make nap-oferta       # ~14 min la primera vez, segundos las siguientes (ver la caché, más abajo)
 make festivos         # segundos · el calendario laboral del BOE
 make meteo            # ~5 min · AEMET solo sirve 15 días por petición
 make turismo          # segundos · la serie mensual del INE
 ```
 
 Sin `festivos` y `meteo`, `make 07_prediccion` falla diciendo qué origen no encuentra.
+
+**La caché de `nap-oferta`** es lo que hace que ese paso quepa en una carga diaria. Parsear un
+snapshot de Renfe tarda 1,45 s y el histórico tiene 485, así que una pasada completa son unos 14 min
+—y antes se repetían enteros cada día para añadir un fichero—. Lo que se guarda en
+`data/cache/nap_oferta/` son **funciones puras del contenido de cada ZIP** (su vigencia, si es
+coherente y los trenes por día), no la serie: la elección de qué snapshot va a cada día se recalcula
+siempre, porque depende de todos los ficheros. Por eso la serie con caché es la misma que sin ella, y
+hay un test que lo comprueba comparando las dos. Una pasada diaria cuesta **cuatro cálculos, lo mismo
+da cuánto histórico haya**. Con `make nap-oferta OFERTA_ARGS="--sin-cache"` se fuerza la pasada completa.
 
 Las dos calibraciones no escriben nada, solo informan de qué coeficientes propone el dato medido:
 

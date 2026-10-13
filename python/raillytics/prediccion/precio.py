@@ -39,6 +39,7 @@ import hashlib
 import json
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -47,7 +48,7 @@ from dotenv import find_dotenv, load_dotenv
 
 from raillytics.ingesta.referencia import conexion
 from raillytics.prediccion.reglas import RUTA_POR_DEFECTO as RUTA_REGLAS
-from raillytics.utils.cargas import registrar_carga
+from raillytics.utils.cargas import ahora, registrar_carga
 from raillytics.utils.lake import LakeLayout, ensure_parent_dir
 
 logger = logging.getLogger(__name__)
@@ -187,7 +188,9 @@ def construir(con, layout: LakeLayout, regla: Regla) -> pd.DataFrame:
     ]].sort_values(["fecha", "franja", "operador_id"], ignore_index=True)
 
 
-def publicar(con, layout: LakeLayout, df: pd.DataFrame) -> str:
+def publicar(con, layout: LakeLayout, df: pd.DataFrame, inicio: datetime | None = None) -> str:
+    """Publica la tabla. `inicio` es cuándo empezó el paso: lo que cuesta aquí es calcular,
+    no escribir, y el KPI de latencia suma lo registrado (ver `Ejecucion.tabla`)."""
     destino = f"{layout.gold_root}/{GOLD_TABLA}/{GOLD_TABLA}.parquet"
     parametros = {
         "trayecto": TRAYECTO,
@@ -197,7 +200,7 @@ def publicar(con, layout: LakeLayout, df: pd.DataFrame) -> str:
         "operadores": int(df["operador_id"].nunique()),
     }
     with registrar_carga("precio_recomendado", "gold", layout, con, parametros=parametros) as ejecucion:
-        with ejecucion.tabla(GOLD_TABLA, origen="gold/fact_ocupacion_franja", destino=destino) as carga:
+        with ejecucion.tabla(GOLD_TABLA, origen="gold/fact_ocupacion_franja", destino=destino, inicio=inicio) as carga:
             ensure_parent_dir(destino)
             con.register("precio_frame", df)
             try:
@@ -216,6 +219,8 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Precio recomendado por día, franja y operador.")
     p.add_argument("--reglas", type=Path, default=RUTA_REGLAS)
     args = p.parse_args(argv)
+    # Antes de calcular: lo que tarda este paso es el cálculo, y el registro tiene que verlo.
+    inicio = ahora()
 
     layout = LakeLayout.from_env(os.environ)
     con = conexion(layout, os.environ)
@@ -245,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"   recomendaciones: {len(df)}   días: {df['fecha'].nunique()}   "
           f"no plausibles: {int((~df['plausible']).sum())}")
 
-    logger.info("%s -> %s", GOLD_TABLA, publicar(con, layout, df))
+    logger.info("%s -> %s", GOLD_TABLA, publicar(con, layout, df, inicio))
     return 0
 
 
