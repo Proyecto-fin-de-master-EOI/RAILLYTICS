@@ -1,0 +1,24 @@
+slice_name: KPI del plan que se cumplen
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters: []
+  metric: kpis_que_cumplen
+  header_font_size: 0.4
+  subheader: de los medibles con objetivo
+  subheader_font_size: 0.15
+  y_axis_format: ',d'
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 5873cb61-a252-52d3-bf46-346fa6f40d10
+version: 1.0.0
+dataset_uuid: c50d6240-cdc7-546b-8ed1-574d2289af0e
+is_managed_externally: false
+external_url: null

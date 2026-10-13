@@ -6,7 +6,7 @@ tres, con el procedimiento y la cifra, para que cualquiera pueda rehacerlas.
 | | hipótesis | umbral | resultado | |
 | --- | --- | --- | --- | --- |
 | **H2** | el error de recalibración de la DTC es despreciable | < 0,001 | **0,0** | **se cumple** |
-| **H3** | las variables externas mejoran la predicción | ≥ 1,5 pp | **+0,0 pp** | **no se cumple** |
+| **H3** | las variables externas mejoran la predicción | ≥ 1,5 pp | **−0,76 pp** | **no se cumple** |
 | **H4** | la carga completa cabe en una ventana operativa | < 4 h | **31,6 min** | **se cumple** |
 
 Dos de tres. Y la que falla es la más interesante, porque falla **por una razón estructural que se
@@ -65,8 +65,21 @@ solo el día de la semana     10,8 %
 | **eventos** | 7 | 10,1 % | **+0,0 pp** | **no aporta** |
 | **meteo** | 4 | 9,3 % | **−0,8 pp** | **estorba** |
 
-**Veredicto: la hipótesis no se cumple.** Ninguna variable externa llega a 1,5 pp; la mayoría da
-exactamente cero y la meteorología **empeora** el modelo.
+**Y el A/B con la definición literal del plan** —modelo base con solo las variables de calendario
+frente al enriquecido con festivos, vísperas, eventos y meteo, medido con validación temporal—:
+
+```
+solo calendario   9,3 %
+enriquecido      10,1 %
+mejora          −0,76 pp     (el plan pide >= +1,5)
+```
+
+**Veredicto: la hipótesis no se cumple.** No es que las variables externas no aporten: **empeoran**
+el modelo en 0,76 puntos. La ablación por grupos dice lo mismo desde otro ángulo: ninguna llega a
+1,5 pp, la mayoría da exactamente cero y la meteorología resta.
+
+El número se publica en `fact_metricas_modelo` con cada entrenamiento, así que no hay que rehacer el
+experimento para consultarlo.
 
 **Por qué, y está medido.** No es un fallo de implementación: es consecuencia de cómo se construye el
 objetivo. La ocupación es `demanda ÷ oferta`. La demanda la reparten reglas que miran el calendario, y

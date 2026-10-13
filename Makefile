@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo turismo calibrar perfil-mensual cuotas-operador contraste-trends ml-dataset ml-modelo 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo turismo calibrar perfil-mensual cuotas-operador contraste-trends cobertura-ingesta ml-dataset ml-modelo 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -73,6 +73,7 @@ help:
 	@echo "  calibrar              Contrasta las reglas de reparto diario contra la oferta real del NAP"
 	@echo "  perfil-mensual        Calibra el peso de cada mes del trimestre con el turismo del INE"
 	@echo "  cuotas-operador       Mide la cuota de viajeros de cada operador con los datos de CNMC"
+	@echo "  cobertura-ingesta           KPI de completitud de la ingesta: fuentes OK sobre las del registro"
 	@echo "  contraste-trends      Contrasta el perfil semanal de las reglas con el interes de busqueda"
 	@echo "  ml-dataset            Construye la tabla de entrenamiento de ocupación diaria en Silver"
 	@echo "  ml-modelo             Entrena y valida el modelo de ocupación (ver docs/modelo-ocupacion.md)"
@@ -197,6 +198,18 @@ perfil-mensual: $(VENV)/.deps-installed
 # Silver (`make 04_silver`).
 cuotas-operador: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.procesamiento.cuotas_operador
+
+# Completitud de la ingesta, el KPI que pide el plan: fuentes del registro descargadas OK sobre el
+# total del registro. Pilla las dos averias que importan: una fuente que fallo y una que ni se
+# intento, que es la que no sale en ningun log de error. Lee la trazabilidad y publica a Gold.
+cobertura-ingesta: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.calidad.cobertura_ingesta
+
+# Completitud de Silver, el otro KPI de calidad del plan: que parte de las filas no tiene ningun nulo
+# NO CONTROLADO. Un nulo controlado es un estado legitimo (un dia que no es festivo no tiene nombre de
+# festivo); un hueco es una ausencia que prefeririamos no tener (dias que AEMET no publico).
+completitud-silver: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.calidad.completitud_silver
 
 # Contraste del perfil semanal de las reglas con el interes de busqueda de Google Trends. Es un
 # EXPERIMENTO, no parte del pipeline: Trends no esta en el registro de fuentes a proposito (endpoint

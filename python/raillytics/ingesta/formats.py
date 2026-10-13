@@ -14,7 +14,11 @@ SUPPORTED_FORMATS = {"csv", "json", "xml", "zip"}
 # Claves permitidas de cada fuente en config/data_sources.yml. Deben coincidir con
 # DataSourceConfig.scala (src/main/scala/raillytics/ingesta/config/): una clave
 # desconocida es un error en los dos lados (un error tipográfico no se ignora en silencio).
-CLAVES_FUENTE = {"id", "name", "url", "format", "options", "checks", "silver", "downloader", "auth"}
+CLAVES_FUENTE = {"id", "name", "url", "format", "options", "checks", "silver", "downloader", "auth",
+                 "obligatoria"}
+# `obligatoria`: la fuente sostiene algún entregable del corredor, así que su ausencia es un
+# fallo y no una fuente de ejemplo que no se usa. Es el denominador del KPI de cobertura de
+# ingesta que pide el plan (raillytics.calidad.completitud). Por defecto, false.
 # `options`: cómo se lee el fichero (Python al validarlo, L2 con Spark). Cada formato admite las
 # suyas y solo las suyas: un `delimiter` en una fuente xml, o un `rowTag` en un csv, no significan
 # nada y son un error de configuración, no una opción que se ignore en silencio.

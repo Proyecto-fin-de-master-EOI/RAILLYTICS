@@ -1,0 +1,33 @@
+slice_name: Fuentes del registro que faltan
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  metric: fuentes_que_faltan_ultima
+  header_font_size: 0.4
+  subheader: en la última ingesta
+  subheader_font_size: 0.15
+  y_axis_format: ',d'
+  time_format: smart_date
+  force_timestamp_formatting: false
+  conditional_formatting:
+  - operator: '>'
+    targetValue: 0
+    colorScheme: '#EFA1AA'
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 08ce77a2-1d7c-5965-9816-d6f78b8da0e6
+version: 1.0.0
+dataset_uuid: 63a444f7-eb8b-5bb5-9fb6-fb608f1c6c49
+is_managed_externally: false
+external_url: null

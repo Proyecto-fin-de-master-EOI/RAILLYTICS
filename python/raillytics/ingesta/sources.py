@@ -38,6 +38,7 @@ class DataSource:
     options: dict[str, str] = field(default_factory=dict)  # cómo se lee el fichero: delimiter y encoding en csv, rowTag en xml
     checks: dict[str, Any] = field(default_factory=dict)   # reglas de la descarga: min_bytes, min_filas, columnas (solo csv)
     silver: tuple[SilverTabla, ...] = ()                   # tablas Silver que se construyen desde esta fuente
+    obligatoria: bool = False                              # su ausencia rompe un entregable del corredor
     downloader: str = "http"                               # quién trae la fuente (ver downloaders.py); http = GET directo de `url`
     auth: dict[str, str] = field(default_factory=dict)     # {env: NOMBRE_VARIABLE, header: ...}; nunca el secreto
 
@@ -105,6 +106,7 @@ def _parsear(entry: dict[str, Any]) -> DataSource:
         options={k: str(v) for k, v in options.items()},
         checks=checks,
         silver=tuple(_silver(fuente, entry.get("silver"))),
+        obligatoria=bool(entry.get("obligatoria", False)),
         downloader=downloader,
         auth={k: str(v) for k, v in auth.items()},
     )

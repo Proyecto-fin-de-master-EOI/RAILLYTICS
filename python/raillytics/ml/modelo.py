@@ -211,6 +211,53 @@ def cobertura_banda(df: pd.DataFrame, tramos: int = TRAMOS_VALIDACION,
     }
 
 
+# Variables que el plan llama «series temporales»: lo que se sabe del día sin mirar al mundo. El
+# modelo BASE solo usa estas; el enriquecido añade festivos, vísperas, eventos y meteo.
+VARIABLES_CALENDARIO = ("mes",)
+PREFIJOS_CALENDARIO = ("dia_",)
+
+
+def _solo_calendario(X: pd.DataFrame) -> pd.DataFrame:
+    columnas = [c for c in X.columns
+                if c in VARIABLES_CALENDARIO or c.startswith(PREFIJOS_CALENDARIO)]
+    return X[columnas]
+
+
+def mejora_por_variables_externas(df: pd.DataFrame, tramos: int = TRAMOS_VALIDACION) -> dict:
+    """Cuánto mejora el MAPE al añadir festivos, eventos y meteo al modelo de calendario.
+
+    Es el A/B que pide la hipótesis H3 del plan, con umbral de 1,5 puntos porcentuales. Se mide con
+    validación temporal y no con una partición única: con un solo corte la diferencia la decide qué
+    semanas tocaron.
+
+    Positivo = las variables externas aportan. Sale ~0, y la razón está en docs/modelo-ocupacion.md:
+    la ocupación es demanda entre oferta, y los festivos suben el numerador y bajan el denominador a
+    la vez, así que se cancelan.
+    """
+    partidor = TimeSeriesSplit(n_splits=tramos)
+    orden = df.sort_values("fecha").reset_index(drop=True)
+    con_todo, solo_calendario = [], []
+    for i_train, i_test in partidor.split(orden):
+        train, test = orden.iloc[i_train], orden.iloc[i_test]
+        X_train, X_test = variables(train), variables(test).reindex(columns=variables(train).columns, fill_value=0)
+        y_train, y_test = train["ocupacion"], test["ocupacion"]
+
+        completo = HistGradientBoostingRegressor(random_state=SEMILLA).fit(X_train, y_train)
+        con_todo.append(mean_absolute_percentage_error(y_test, completo.predict(X_test)))
+
+        base = HistGradientBoostingRegressor(random_state=SEMILLA).fit(_solo_calendario(X_train), y_train)
+        solo_calendario.append(mean_absolute_percentage_error(y_test, base.predict(_solo_calendario(X_test))))
+
+    mape_base = float(np.mean(solo_calendario))
+    mape_enriquecido = float(np.mean(con_todo))
+    return {
+        "mape_solo_calendario": mape_base,
+        "mape_enriquecido": mape_enriquecido,
+        # En puntos porcentuales, que es como lo expresa el umbral del plan.
+        "mejora_pp": (mape_base - mape_enriquecido) * 100,
+    }
+
+
 GOLD_TABLA = "fact_metricas_modelo"
 
 
@@ -252,6 +299,9 @@ def publicar_metricas(con, layout: LakeLayout, metricas: dict) -> str:
         # Positivo = el modelo bate a predecir la media de lo ya visto. Es LA cifra honesta.
         # Intervalo por regresión cuantílica, con su cobertura MEDIDA al lado: una banda que dice
         # 90 % y cubre 65 % miente, y una que cubre el 90 % por ser enorme tampoco dice nada.
+        # H3 del plan: cuanto aporta enriquecer el calendario con festivos, eventos y meteo.
+        "mape_solo_calendario": metricas.get("externas", {}).get("mape_solo_calendario"),
+        "mejora_variables_externas_pp": metricas.get("externas", {}).get("mejora_pp"),
         "ic_confianza": metricas.get("banda", {}).get("confianza"),
         "ic_cobertura": metricas.get("banda", {}).get("cobertura"),
         "ic_amplitud_media": metricas.get("banda", {}).get("amplitud_media"),
@@ -331,6 +381,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     logger.info("métricas en %s", args.destino / "metricas.json")
 
+    externas = mejora_por_variables_externas(df)
+    logger.info("variables externas (H3): calendario solo %.1f%%, enriquecido %.1f%% -> mejora %+.2f pp "
+                "(el plan pide >= 1,5)",
+                externas["mape_solo_calendario"] * 100, externas["mape_enriquecido"] * 100,
+                externas["mejora_pp"])
+
     banda = cobertura_banda(df)
     logger.info("intervalo del %.0f%% por regresión cuantílica: cubre el %.0f%% de los días, "
                 "amplitud media %.1f puntos de ocupación",
@@ -343,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     completas = {**metricas, "variables": int(variables(train).shape[1]),
-                 "dias_entrenamiento": int(len(train)), "banda": banda}
+                 "dias_entrenamiento": int(len(train)), "banda": banda, "externas": externas}
     destino_gold = publicar_metricas(conexion(layout, os.environ), layout, completas)
     logger.info("métricas en Gold: %s", destino_gold)
 

@@ -44,6 +44,8 @@ position:
     type: GRID
     id: GRID_ID
     children:
+    - ROW-cobertura-ingesta
+    - ROW-completitud
     - ROW-cargas-1
     - ROW-cargas-2
     - ROW-cargas-3
@@ -331,6 +333,100 @@ position:
       chartId: 32
       uuid: c6248132-46a2-5cc5-8f8c-4af0f4c64b7c
       sliceName: Historial de cargas
+  CHART-kpi_completitud:
+    type: CHART
+    id: CHART-kpi_completitud
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-completitud
+    meta:
+      width: 3
+      height: 50
+      chartId: 950
+      uuid: 63c74773-5f38-54bc-82c6-14a6dc933817
+      sliceName: Completitud de la ingesta
+  CHART-kpi_fuentes_faltan:
+    type: CHART
+    id: CHART-kpi_fuentes_faltan
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-cobertura-ingesta
+    meta:
+      width: 3
+      height: 50
+      chartId: 951
+      uuid: 08ce77a2-1d7c-5965-9816-d6f78b8da0e6
+      sliceName: Fuentes del registro que faltan
+  CHART-completitud_evolucion:
+    type: CHART
+    id: CHART-completitud_evolucion
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-completitud
+    meta:
+      width: 6
+      height: 50
+      chartId: 952
+      uuid: ba1bb126-7154-5b30-b3f7-71ada60b387c
+      sliceName: Completitud de la ingesta por día
+  ROW-completitud:
+    type: ROW
+    id: ROW-completitud
+    children:
+    - CHART-kpi_completitud
+    - CHART-kpi_fuentes_faltan
+    - CHART-completitud_evolucion
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-kpi_cobertura_ingesta:
+    type: CHART
+    id: CHART-kpi_cobertura_ingesta
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-cobertura-ingesta
+    meta:
+      width: 3
+      height: 50
+      chartId: 950
+      uuid: 3e757784-9dba-5e98-ba74-8f3b132e4c17
+      sliceName: Cobertura de ingesta
+  CHART-cobertura_evolucion:
+    type: CHART
+    id: CHART-cobertura_evolucion
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-cobertura-ingesta
+    meta:
+      width: 6
+      height: 50
+      chartId: 952
+      uuid: 8128d948-dc98-5aac-8c64-0b218e667a33
+      sliceName: Cobertura de ingesta por día
+  ROW-cobertura-ingesta:
+    type: ROW
+    id: ROW-cobertura-ingesta
+    children:
+    - CHART-kpi_cobertura_ingesta
+    - CHART-kpi_fuentes_faltan
+    - CHART-cobertura_evolucion
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
 metadata:
   color_scheme: raillytics
   refresh_frequency: 0

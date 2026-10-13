@@ -46,6 +46,7 @@ position:
     type: GRID
     id: GRID_ID
     children:
+    - ROW-kpi-plan
     - ROW-dir-kpis
     - ROW-dir-negocio
     - ROW-dir-modelo
@@ -359,6 +360,45 @@ position:
     - GRID_ID
     meta:
       background: BACKGROUND_TRANSPARENT
+  CHART-kpi_plan_tabla:
+    type: CHART
+    id: CHART-kpi_plan_tabla
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-kpi-plan
+    meta:
+      width: 9
+      height: 54
+      chartId: 960
+      uuid: efd4ecad-5ec2-519f-ae49-39cdcbb1adca
+      sliceName: KPI del plan del Sprint 2
+  ROW-kpi-plan:
+    type: ROW
+    id: ROW-kpi-plan
+    children:
+    - CHART-kpi_plan_resumen
+    - CHART-kpi_plan_tabla
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-kpi_plan_resumen:
+    type: CHART
+    id: CHART-kpi_plan_resumen
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-kpi-plan
+    meta:
+      width: 3
+      height: 54
+      chartId: 961
+      uuid: 5873cb61-a252-52d3-bf46-346fa6f40d10
+      sliceName: KPI del plan que se cumplen
 metadata:
   show_native_filters: true
   color_scheme: raillytics
