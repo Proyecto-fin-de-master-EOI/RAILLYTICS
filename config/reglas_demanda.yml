@@ -165,3 +165,63 @@ base_franja:
   tarde: 1.10
   noche: 0.90
   sin hora: 1.00    # trenes cuyo GTFS no trae hora: ni se penalizan ni se premian
+
+# PRECIO RECOMENDADO (2026-10-13). El sprint pide un precio recomendado y un ratio de aceptación. El
+# precio sí se puede construir; el ratio de aceptación no, y por qué está en docs/hipotesis.md.
+#
+#     precio_recomendado = precio_base(operador, trimestre) × (ocupación_prevista / referencia) ** (1/|ε|)
+#
+# acotado al recorrido de precios REAL de ese operador en el trayecto.
+#
+# QUÉ ES DATO Y QUÉ ES HIPÓTESIS:
+#
+#   - El precio base es DATO MEDIDO: `precio_medio_eur` de silver/cnmc_precio_trimestral, el precio
+#     medio que la CNMC publica por trayecto, trimestre y operador. 73 observaciones en el corredor.
+#   - El recorrido al que se acota también es DATO MEDIDO: el mínimo y el máximo observados de ese
+#     operador. RENFE se mueve entre 0,89 y 1,38 veces su propia media; OUIGO entre 0,72 y 1,40;
+#     IRYO entre 0,64 y 1,57; AVLO entre 0,83 y 1,15. La recomendación nunca propone un precio que no
+#     se haya visto en el corredor. Es un tope conservador: lo publicado son medias trimestrales, así
+#     que el recorrido del billete concreto es bastante más ancho que éste.
+#   - La ELASTICIDAD es hipótesis. La ocupación prevista viene de `base_franja`, que también lo es.
+#
+# POR QUÉ LA ELASTICIDAD NO SE PUDO MEDIR, y queda escrito porque se intentó. Se estimó un panel de
+# 45 filas (3 operadores × 15 trimestres) con log(viajeros) contra log(precio), efectos fijos de
+# operador, trimestre del año y tendencia:
+#
+#     elasticidad = -0,299   error estándar 0,453   t = -0,66   R² 0,78
+#
+# El signo es el correcto pero no es significativa, y hay dos razones de fondo para no insistir:
+#
+#   1. Endogeneidad. El operador sube el precio precisamente cuando prevé demanda alta, así que el
+#      precio y los viajeros se mueven juntos y el coeficiente se va hacia cero.
+#   2. El corredor está topado por capacidad. De 2023-T1 a 2025-T4 el precio medio sube un 72 %
+#      (42,87 -> 73,61 €) y los viajeros se quedan en 3,3-3,9 M por trimestre. Esa serie no mide
+#      cuánta demanda hay, mide cuántas plazas se vendieron. No se puede estimar una curva de demanda
+#      con la oferta tocando el techo.
+#
+# DE DÓNDE SALE EL VALOR DECLARADO (-1,00):
+#
+#   - Está dentro del intervalo de confianza de la estimación propia: -0,299 ± 2,026 × 0,453 con 37
+#     grados de libertad da [-1,22 , 0,62], que contiene el -1,00.
+#   - Es el valor neutro y legible: con elasticidad unitaria el exponente vale 1 y la regla se queda
+#     en «un 10 % de ocupación por encima de la referencia, un 10 % de precio por encima». Cualquier
+#     otro valor metería una curvatura que no tenemos con qué justificar.
+#   - No se toma prestada una cifra de la literatura. Lo publicado para este corredor (Román 2008,
+#     Martín y Nombela 2008) son modelos logit anteriores a la liberalización, de un mercado con un
+#     solo operador ferroviario compitiendo contra el avión; no es trasladable al corredor de tres
+#     operadores de 2022 en adelante, y copiar el número daría una falsa precisión.
+#
+# REFERENCIA DE OCUPACIÓN: `medida` toma la ocupación media de los días plausibles de
+# gold/fact_ocupacion_franja. Con eso la regla es NEUTRA en promedio —la recomendación media coincide
+# con el precio real de la CNMC— y lo único que dice es qué días y qué franjas van por encima o por
+# debajo de la media. No afirma que el nivel de precios del corredor esté mal, porque eso no lo
+# sabemos: haría falta la elasticidad que no se pudo medir. Puede ponerse un número entre 0 y 1 para
+# fijar un objetivo distinto.
+#
+# CÓMO SE COMPROBARÍA la elasticidad: hacen falta precio y demanda a la misma frecuencia y una fuente
+# de variación del precio ajena a la demanda (un cambio regulatorio, un canon, una huelga del
+# competidor). Mientras no la haya, esto es una hipótesis declarada y el precio recomendado hereda esa
+# condición. Está dicho así en el cuadro de mandos.
+precio_recomendado:
+  elasticidad: -1.00
+  referencia_ocupacion: medida

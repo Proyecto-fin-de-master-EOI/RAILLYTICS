@@ -1,16 +1,19 @@
 # Hipótesis del Sprint 2: qué se afirmó, cómo se midió y qué salió
 
 El plan del sprint fija tres hipótesis con un umbral numérico cada una. Aquí está el veredicto de las
-tres, con el procedimiento y la cifra, para que cualquiera pueda rehacerlas.
+tres, con el procedimiento y la cifra, para que cualquiera pueda rehacerlas. Al final hay una cuarta
+(H5) que no venía en el plan: se contrastó al construir el precio recomendado y hace falta para
+entender de dónde sale el único coeficiente declarado de esa regla.
 
 | | hipótesis | umbral | resultado | |
 | --- | --- | --- | --- | --- |
 | **H2** | el error de recalibración de la DTC es despreciable | < 0,001 | **0,0** | **se cumple** |
 | **H3** | las variables externas mejoran la predicción | ≥ 1,5 pp | **−0,76 pp** | **no se cumple** |
 | **H4** | la carga completa cabe en una ventana operativa | < 4 h | **31,6 min** | **se cumple** |
+| **H5** | la elasticidad precio se puede estimar con la CNMC | significativa | **t = −0,66** | **no se cumple** |
 
 Dos de tres. Y la que falla es la más interesante, porque falla **por una razón estructural que se
-puede explicar**, no porque algo esté mal programado.
+puede explicar**, no porque algo esté mal programado. Lo mismo le pasa a H5.
 
 ---
 
@@ -128,7 +131,80 @@ un servidor.
 
 ---
 
-## Qué dejan estas tres medidas
+## H5 — la elasticidad precio de la demanda se puede estimar con los datos de la CNMC
+
+**No se cumple**, y el motivo es el mismo de H3: la fuente no contiene la variación que haría falta.
+Queda escrito porque de aquí sale el precio recomendado del Sprint 3, y conviene que se vea de dónde
+viene el único número declarado de esa regla.
+
+Lo que se hizo: un panel de 45 observaciones (3 operadores × 15 trimestres) del corredor
+Madrid–Barcelona, cruzando `precio_medio_eur` de `silver/cnmc_precio_trimestral` con los viajeros de
+`silver/cnmc_trimestral`. Regresión de log(viajeros) sobre log(precio) con efectos fijos de operador,
+trimestre del año y tendencia lineal.
+
+| término | coeficiente | error estándar | t |
+| --- | --- | --- | --- |
+| **log(precio)** | **−0,299** | **0,453** | **−0,66** |
+| tendencia | +0,015 | 0,016 | 0,95 |
+| operador = RENFE | +1,180 | 0,202 | 5,83 |
+| operador = OUIGO | −0,167 | 0,125 | −1,34 |
+
+R² 0,78 con 37 grados de libertad. El signo es el correcto —más precio, menos viajeros— pero no es
+significativo ni de lejos: el intervalo de confianza al 95 % va de −1,22 a +0,62, o sea que incluye el
+cero y también la posibilidad de que subir el precio aumente la demanda.
+
+**Las dos razones de fondo**, que no se arreglan con más trimestres:
+
+1. **Endogeneidad.** El operador sube el precio precisamente cuando prevé demanda alta. Precio y
+   viajeros se mueven juntos por una causa común, así que el coeficiente estimado mezcla la respuesta
+   del viajero al precio con la respuesta del operador a la demanda, y se va hacia cero.
+2. **El corredor está topado por capacidad.** Entre 2023-T1 y 2025-T4 el precio medio sube un 72 %
+   (42,87 → 73,61 €) y los viajeros se quedan entre 3,3 y 3,9 millones por trimestre. Esa serie no
+   mide cuánta demanda hay: mide **cuántas plazas se vendieron**. No se puede estimar una curva de
+   demanda con la oferta tocando el techo.
+
+**Cómo se comprobaría:** hace falta una fuente de variación del precio ajena a la demanda —un cambio
+de canon, una huelga del competidor, una entrada o salida de operador— y precio y demanda a la misma
+frecuencia. Con eso se identificaría por variables instrumentales.
+
+**Qué se hizo en su lugar:** declarar la elasticidad en `config/reglas_demanda.yml` con el valor
+−1,00, que está dentro del intervalo de confianza de la estimación propia y es el valor neutro (el
+exponente vale 1 y la regla se queda en «un 10 % de ocupación por encima de la referencia, un 10 % de
+precio por encima»). No se toma prestada una cifra de la literatura: lo publicado para este corredor
+es anterior a la liberalización, de un mercado con un solo operador ferroviario, y copiar el número
+daría una falsa precisión. El precio base y el rango al que se acota la recomendación **sí son dato
+medido** de la CNMC.
+
+---
+
+## El ratio de aceptación: el único KPI del plan que no se puede suplir
+
+El plan pide, junto al precio recomendado, un **ratio de aceptación**: qué parte de las
+recomendaciones adopta sin modificar el revenue manager. No está en el cuadro de mandos y no va a
+estarlo, y la razón merece quedar separada de las demás.
+
+El proyecto presupone datos que no tiene en varios sitios, y está bien justificado: el objetivo es una
+arquitectura de ingeniería de datos robusta, no un dato perfecto. Pero en todos esos sitios lo que se
+presupone es una **entrada** —una demanda diaria, un perfil por franja, un coeficiente—. El ratio de
+aceptación sería distinto en naturaleza: fabricaría la **validación de nuestra propia salida**. El KPI
+diría que el modelo acierta porque nosotros hemos escrito que acierta. Es el único sitio del proyecto
+donde el supuesto se autoevalúa, y por eso no se simula.
+
+Lo que sí se ha hecho son las dos cosas que quedan en pie:
+
+- **Montar el mecanismo.** `gold/fact_precio_recomendado` guarda cada recomendación con sus entradas,
+  la ocupación de referencia, la `version_regla` que la produjo y el `run_id` de la carga. El día que
+  hubiera un operador, el ratio se calcula sobre esa tabla sin tocar nada. Sin la firma de la regla no
+  sería atribuible: no se sabría qué se aceptó o se rechazó.
+- **Publicar en su hueco algo medible que prueba el modelo y no al humano**: el porcentaje de
+  recomendaciones que caen dentro del recorrido de precios que ese operador ha puesto de verdad en el
+  corredor. Sale **86,2 %**, y las que se salen son casi todas de RENFE por abajo, porque su suelo
+  observado (61,92 €) está cerca de su precio medio y la regla no tiene margen para proponer
+  descuento.
+
+---
+
+## Qué dejan estas medidas
 
 La parte de **ingeniería** responde: el reparto es exacto y el recorrido completo cabe de sobra en la
 ventana. Las dos hipótesis que dependían del pipeline se cumplen.

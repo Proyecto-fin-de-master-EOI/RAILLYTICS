@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo turismo calibrar perfil-mensual cuotas-operador contraste-trends cobertura-ingesta ml-dataset ml-modelo 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo turismo calibrar perfil-mensual cuotas-operador contraste-trends cobertura-ingesta ml-dataset ml-modelo ml-franja precio-recomendado 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -78,6 +78,7 @@ help:
 	@echo "  ml-dataset            Construye la tabla de entrenamiento de ocupación diaria en Silver"
 	@echo "  ml-modelo             Entrena y valida el modelo de ocupación (ver docs/modelo-ocupacion.md)"
 	@echo "  ml-franja             Demanda y ocupación por franja horaria (punta y valle)"
+	@echo "  precio-recomendado    Precio recomendado por día, franja y operador (ver reglas_demanda.yml)"
 	@echo "  03_silver-sample      Genera un Silver sintético en MinIO (sustituto de los jobs PySpark)"
 	@echo "  04_silver             Silver real en streaming: lee Bronze L2 y construye las tablas Silver con quality gates (primer plano; terminal aparte)"
 	@echo "  05_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold), con quality gates"
@@ -235,6 +236,12 @@ ml-modelo: $(VENV)/.deps-installed
 # que es una hipotesis declarada y no se puede medir con las fuentes del proyecto.
 ml-franja: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.ml.franja
+
+# Precio recomendado por dia, franja y operador. El precio base y el recorrido al que se acota la
+# recomendacion son dato medido de la CNMC; la elasticidad es una hipotesis declarada en
+# reglas_demanda.yml, donde esta tambien el intento de estimarla y por que no salio.
+precio-recomendado: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.prediccion.precio
 
 # Silver sintético: corre en el host con el python del venv (como test-python)
 # y habla con MinIO con las variables MINIO_* del .env.

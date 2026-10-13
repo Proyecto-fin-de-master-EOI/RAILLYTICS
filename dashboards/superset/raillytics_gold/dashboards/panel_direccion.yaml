@@ -49,6 +49,7 @@ position:
     - ROW-kpi-plan
     - ROW-dir-kpis
     - ROW-dir-negocio
+    - ROW-dir-precio
     - ROW-dir-modelo
     - ROW-dir-banda
     - ROW-dir-paneles
@@ -399,6 +400,75 @@ position:
       chartId: 961
       uuid: 5873cb61-a252-52d3-bf46-346fa6f40d10
       sliceName: KPI del plan que se cumplen
+  CHART-kpi_precio_recomendado:
+    type: CHART
+    id: CHART-kpi_precio_recomendado
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-precio
+    meta:
+      width: 3
+      height: 50
+      chartId: 980
+      uuid: a80cae6d-a1c5-5a65-ad70-c942c4232c45
+      sliceName: Precio recomendado
+  CHART-kpi_precio_punta_valle:
+    type: CHART
+    id: CHART-kpi_precio_punta_valle
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-precio
+    meta:
+      width: 3
+      height: 50
+      chartId: 981
+      uuid: 539f4acd-268d-5e51-80f1-7f9632eac9af
+      sliceName: Precio recomendado en punta
+  CHART-kpi_precio_en_rango:
+    type: CHART
+    id: CHART-kpi_precio_en_rango
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-precio
+    meta:
+      width: 3
+      height: 50
+      chartId: 982
+      uuid: 9f9c0836-227c-5f0e-95cc-6a15bad2d7f0
+      sliceName: Recomendaciones en el rango real
+  CHART-precio_por_operador:
+    type: CHART
+    id: CHART-precio_por_operador
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-dir-precio
+    meta:
+      width: 3
+      height: 50
+      chartId: 983
+      uuid: a5d146c9-4806-56c3-9e7d-6410cb9bf645
+      sliceName: Precio recomendado por operador y franja
+  ROW-dir-precio:
+    type: ROW
+    id: ROW-dir-precio
+    children:
+    - CHART-kpi_precio_recomendado
+    - CHART-kpi_precio_punta_valle
+    - CHART-kpi_precio_en_rango
+    - CHART-precio_por_operador
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
 metadata:
   show_native_filters: true
   color_scheme: raillytics
