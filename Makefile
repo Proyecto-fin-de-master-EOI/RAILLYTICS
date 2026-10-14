@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo turismo calibrar perfil-mensual cuotas-operador contraste-trends cobertura-ingesta ml-dataset ml-modelo ml-franja precio-recomendado 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo turismo calibrar perfil-mensual cuotas-operador contraste-trends cobertura-ingesta ml-dataset ml-modelo ml-franja precio-recomendado 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import superset-sync 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -83,6 +83,7 @@ help:
 	@echo "  04_silver             Silver real en streaming: lee Bronze L2 y construye las tablas Silver con quality gates (primer plano; terminal aparte)"
 	@echo "  05_gold               Construye la capa Gold con la app Spark (Silver -> Parquet en raillytics-gold), con quality gates"
 	@echo "  06_superset-import    Reimporta los dashboards de dashboards/superset/ en Superset"
+	@echo "  superset-sync         Manda a Superset el SQL y la descripción de los datasets que ya existen (el import no los toca)"
 	@echo "  07_prediccion         Predicción diaria de demanda AVE Madrid-Barcelona con un LLM (make 07_prediccion TRIMESTRE=2026-T4)"
 	@echo "                        (PRED_PROMPT=demanda_v2 elige la plantilla; PRED_ARGS=\"--solo-nivel\", \"--sin-cache\" o \"--total-esperado N\" pasan opciones)"
 	@echo "  prediccion-sample     Genera fuentes SINTETICAS de la prediccion (demanda trimestral, festivos, eventos y meteo) en Bronze L2"
@@ -265,6 +266,14 @@ precio-recomendado: $(VENV)/.deps-installed
 
 06_superset-import:
 	$(COMPOSE) exec superset bash /app/raillytics/docker/superset-import-dashboards.sh
+
+# `import-dashboards` identifica los activos por uuid y NO toca los que ya existen, asi que cambiar el
+# YAML de un dataset existente no tiene efecto: el repo decia una cosa y Superset mostraba otra sin
+# avisar. Esto manda por API el SQL y la descripcion de los que difieren. SYNC_ARGS="--dry-run" dice
+# que cambiaria sin cambiar nada.
+SYNC_ARGS ?=
+superset-sync: $(VENV)/.deps-installed
+	$(VENV_PY) scripts/superset_sync_datasets.py $(SYNC_ARGS)
 
 # Predicción diaria de demanda del corredor AVE Madrid-Barcelona: el código fija el total del
 # trimestre y un LLM de Ollama reparte ese total entre los días. Escribe un CSV en

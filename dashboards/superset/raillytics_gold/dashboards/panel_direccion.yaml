@@ -1,8 +1,8 @@
 dashboard_title: Panel de dirección · Corredor Madrid–Barcelona
-description: 'Vista ejecutiva del corredor: demanda prevista para el trimestre, días de demanda punta y las alertas de capacidad
-  con la causa que las explica. Es una PREVISIÓN, no una medición: el total del trimestre es real (CNMC) y el reparto entre
-  días lo hacen reglas, dos de ellas calibradas con dato medido. No incluye demanda por tren ni por franja horaria —nadie
-  las publica— ni precio recomendado: el KPI de precio es el observado de la CNMC. Glosario y linaje en docs/gobierno-datos.md.'
+description: 'Los indicadores del plan del Sprint 2 en la pestaña KPI del Sprint, con su objetivo al lado y en verde o en
+  rojo según se cumplan: un KPI lo es se cumpla o no. Los de seguimiento salen sin color porque el plan no les puso umbral.
+  En Detalle está la evidencia detrás de esos números —oferta, ocupación, franja horaria, precio, predicción y turismo—. Cuadro
+  del corredor AVE Madrid–Barcelona.'
 css: "/* ===== Raillytics — estilo de cuadro de mandos =====\n   El COLOR de marca no se pone aqui: va en THEME_DEFAULT de\
   \ superset_config.py, que son tokens de\n   Ant Design y tinen toda la interfaz. Esto solo da forma de TARJETA a las graficas,\
   \ que el tema no\n   cubre. Las reglas llevan !important y van prefijadas con body porque Superset genera su CSS con\n \
@@ -47,14 +47,7 @@ position:
     id: GRID_ID
     children:
     - ROW-kpi-plan
-    - ROW-dir-kpis
-    - ROW-dir-negocio
-    - ROW-dir-precio
-    - ROW-dir-modelo
-    - ROW-dir-banda
-    - ROW-dir-paneles
-    - ROW-dir-alertas
-    - ROW-dir-atribucion
+    - TABS-direccion
     parents:
     - ROOT_ID
   HEADER_ID:
@@ -62,146 +55,540 @@ position:
     type: HEADER
     meta:
       text: Panel de dirección · Corredor Madrid–Barcelona
-  CHART-kpi_demanda_prevista:
+  TABS-direccion:
+    type: TABS
+    id: TABS-direccion
+    children:
+    - TAB-kpi
+    - TAB-detalle
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta: {}
+  CHART-kpi-kpi_plan_resumen:
     type: CHART
-    id: CHART-kpi_demanda_prevista
+    id: CHART-kpi-kpi_plan_resumen
     children: []
     parents:
     - ROOT_ID
     - GRID_ID
-    - ROW-dir-kpis
+    - TABS-direccion
+    - TAB-kpi
+    - ROW-kpi-1
+    meta:
+      width: 3
+      height: 54
+      chartId: 961
+      uuid: 5873cb61-a252-52d3-bf46-346fa6f40d10
+      sliceName: KPI del plan que se cumplen
+  CHART-kpi-kpi_plan_tabla:
+    type: CHART
+    id: CHART-kpi-kpi_plan_tabla
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-kpi
+    - ROW-kpi-1
+    meta:
+      width: 9
+      height: 54
+      chartId: 960
+      uuid: efd4ecad-5ec2-519f-ae49-39cdcbb1adca
+      sliceName: KPI del plan del Sprint 2
+  ROW-kpi-1:
+    type: ROW
+    id: ROW-kpi-1
+    children:
+    - CHART-kpi-kpi_plan_resumen
+    - CHART-kpi-kpi_plan_tabla
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-kpi
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-kpi-kpi_ocupacion_vs_umbral:
+    type: CHART
+    id: CHART-kpi-kpi_ocupacion_vs_umbral
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-kpi
+    - ROW-kpi-2
+    meta:
+      width: 4
+      height: 50
+      chartId: 930
+      uuid: fe263780-44f3-5610-89be-08ab71e02a80
+      sliceName: Factor de ocupación
+  CHART-kpi-kpi_revenue_asiento:
+    type: CHART
+    id: CHART-kpi-kpi_revenue_asiento
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-kpi
+    - ROW-kpi-2
+    meta:
+      width: 4
+      height: 50
+      chartId: 931
+      uuid: 7d1fd534-263e-58ee-843b-1d9dc7e9b41b
+      sliceName: Ingreso por asiento ofertado (€)
+  CHART-kpi-kpi_precio_recomendado:
+    type: CHART
+    id: CHART-kpi-kpi_precio_recomendado
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-kpi
+    - ROW-kpi-2
+    meta:
+      width: 3
+      height: 50
+      chartId: 980
+      uuid: a80cae6d-a1c5-5a65-ad70-c942c4232c45
+      sliceName: Precio recomendado
+  CHART-kpi-kpi_precio_en_rango:
+    type: CHART
+    id: CHART-kpi-kpi_precio_en_rango
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-kpi
+    - ROW-kpi-2
+    meta:
+      width: 3
+      height: 50
+      chartId: 982
+      uuid: 9f9c0836-227c-5f0e-95cc-6a15bad2d7f0
+      sliceName: Recomendaciones en el rango real
+  ROW-kpi-2:
+    type: ROW
+    id: ROW-kpi-2
+    children:
+    - CHART-kpi-kpi_ocupacion_vs_umbral
+    - CHART-kpi-kpi_revenue_asiento
+    - CHART-kpi-kpi_precio_recomendado
+    - CHART-kpi-kpi_precio_en_rango
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-kpi
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-kpi-kpi_ocupacion_punta:
+    type: CHART
+    id: CHART-kpi-kpi_ocupacion_punta
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-kpi
+    - ROW-kpi-3
+    meta:
+      width: 3
+      height: 50
+      chartId: 970
+      uuid: b8a338b9-b18c-51c8-a81f-e7257875d05e
+      sliceName: Ocupación en hora punta
+  CHART-kpi-kpi_ocupacion_valle:
+    type: CHART
+    id: CHART-kpi-kpi_ocupacion_valle
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-kpi
+    - ROW-kpi-3
+    meta:
+      width: 3
+      height: 50
+      chartId: 971
+      uuid: 58c990e5-8962-5f20-8a5d-55694306453f
+      sliceName: Ocupación en hora valle
+  CHART-kpi-kpi_plazas_vacias:
+    type: CHART
+    id: CHART-kpi-kpi_plazas_vacias
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-kpi
+    - ROW-kpi-3
+    meta:
+      width: 3
+      height: 50
+      chartId: 972
+      uuid: 34c1f77d-1f33-5f66-a8b2-07afdbc276c9
+      sliceName: Plazas vacías en hora punta
+  ROW-kpi-3:
+    type: ROW
+    id: ROW-kpi-3
+    children:
+    - CHART-kpi-kpi_ocupacion_punta
+    - CHART-kpi-kpi_ocupacion_valle
+    - CHART-kpi-kpi_plazas_vacias
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-kpi
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  TAB-kpi:
+    type: TAB
+    id: TAB-kpi
+    children:
+    - ROW-kpi-1
+    - ROW-kpi-2
+    - ROW-kpi-3
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    meta:
+      text: KPI del Sprint
+  CHART-dir-kpi_demanda_prevista:
+    type: CHART
+    id: CHART-dir-kpi_demanda_prevista
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-kpis
     meta:
       width: 3
       height: 50
       chartId: 920
       uuid: 4756b622-9707-5e8a-97c7-75f7f2a6acfb
       sliceName: Demanda media prevista
-  CHART-kpi_dias_alerta:
+  CHART-dir-kpi_dias_alerta:
     type: CHART
-    id: CHART-kpi_dias_alerta
+    id: CHART-dir-kpi_dias_alerta
     children: []
     parents:
     - ROOT_ID
     - GRID_ID
-    - ROW-dir-kpis
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-kpis
     meta:
       width: 3
       height: 50
       chartId: 921
       uuid: 5312157a-d7d3-5313-987c-786aae26d1af
       sliceName: Días de demanda punta
-  CHART-kpi_mercado_precio:
+  CHART-dir-kpi_mercado_precio:
     type: CHART
-    id: CHART-kpi_mercado_precio
+    id: CHART-dir-kpi_mercado_precio
     children: []
     parents:
     - ROOT_ID
     - GRID_ID
-    - ROW-dir-kpis
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-kpis
     meta:
       width: 3
       height: 50
       chartId: 922
       uuid: 8d4f2733-1f2c-554d-9581-873c2f7dd2c9
       sliceName: Precio medio del corredor (€)
-  CHART-kpi_backtest_mape:
+  CHART-dir-kpi_backtest_mape:
     type: CHART
-    id: CHART-kpi_backtest_mape
+    id: CHART-dir-kpi_backtest_mape
     children: []
     parents:
     - ROOT_ID
     - GRID_ID
-    - ROW-dir-kpis
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-kpis
     meta:
       width: 3
       height: 50
       chartId: 923
       uuid: f3e892b8-26e3-596a-8517-48b8880ccf18
       sliceName: Error medio absoluto (últimos 8 trimestres)
-  ROW-dir-kpis:
+  ROW-dir-dir-kpis:
     type: ROW
-    id: ROW-dir-kpis
+    id: ROW-dir-dir-kpis
     children:
-    - CHART-kpi_demanda_prevista
-    - CHART-kpi_dias_alerta
-    - CHART-kpi_mercado_precio
-    - CHART-kpi_backtest_mape
+    - CHART-dir-kpi_demanda_prevista
+    - CHART-dir-kpi_dias_alerta
+    - CHART-dir-kpi_mercado_precio
+    - CHART-dir-kpi_backtest_mape
     parents:
     - ROOT_ID
     - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
     meta:
       background: BACKGROUND_TRANSPARENT
-  CHART-prediccion_demanda_diaria:
+  CHART-dir-revenue_asiento_evolucion:
     type: CHART
-    id: CHART-prediccion_demanda_diaria
+    id: CHART-dir-revenue_asiento_evolucion
     children: []
     parents:
     - ROOT_ID
     - GRID_ID
-    - ROW-dir-paneles
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-negocio
+    meta:
+      width: 4
+      height: 50
+      chartId: 932
+      uuid: c954325e-57d1-57e9-88c7-b15fc35995ed
+      sliceName: Ingreso por asiento ofertado, por trimestre
+  ROW-dir-dir-negocio:
+    type: ROW
+    id: ROW-dir-dir-negocio
+    children:
+    - CHART-dir-revenue_asiento_evolucion
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-dir-kpi_precio_punta_valle:
+    type: CHART
+    id: CHART-dir-kpi_precio_punta_valle
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-precio
+    meta:
+      width: 3
+      height: 50
+      chartId: 981
+      uuid: 539f4acd-268d-5e51-80f1-7f9632eac9af
+      sliceName: Precio recomendado en punta
+  CHART-dir-precio_por_operador:
+    type: CHART
+    id: CHART-dir-precio_por_operador
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-precio
+    meta:
+      width: 3
+      height: 50
+      chartId: 983
+      uuid: a5d146c9-4806-56c3-9e7d-6410cb9bf645
+      sliceName: Precio recomendado por operador y franja
+  ROW-dir-dir-precio:
+    type: ROW
+    id: ROW-dir-dir-precio
+    children:
+    - CHART-dir-kpi_precio_punta_valle
+    - CHART-dir-precio_por_operador
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-dir-kpi_modelo_mape:
+    type: CHART
+    id: CHART-dir-kpi_modelo_mape
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-modelo
+    meta:
+      width: 4
+      height: 50
+      chartId: 940
+      uuid: 22f65f5b-bd56-5e78-bb81-ef06090ef6df
+      sliceName: MAPE del modelo de ocupación
+  CHART-dir-kpi_modelo_r2:
+    type: CHART
+    id: CHART-dir-kpi_modelo_r2
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-modelo
+    meta:
+      width: 4
+      height: 50
+      chartId: 941
+      uuid: 0abd1547-bd9c-5388-b82a-dd9034cb95c9
+      sliceName: R² del modelo
+  CHART-dir-kpi_modelo_ic:
+    type: CHART
+    id: CHART-dir-kpi_modelo_ic
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-modelo
+    meta:
+      width: 4
+      height: 50
+      chartId: 942
+      uuid: 600b35f9-feb8-510b-84cc-ee2246c86658
+      sliceName: Cobertura del intervalo del 90 %
+  ROW-dir-dir-modelo:
+    type: ROW
+    id: ROW-dir-dir-modelo
+    children:
+    - CHART-dir-kpi_modelo_mape
+    - CHART-dir-kpi_modelo_r2
+    - CHART-dir-kpi_modelo_ic
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-dir-prediccion_con_banda:
+    type: CHART
+    id: CHART-dir-prediccion_con_banda
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-banda
+    meta:
+      width: 12
+      height: 60
+      chartId: 943
+      uuid: 106a4c59-b985-5cc1-a921-44916a0ffbc4
+      sliceName: Demanda diaria prevista, con su intervalo del 90 %
+  ROW-dir-dir-banda:
+    type: ROW
+    id: ROW-dir-dir-banda
+    children:
+    - CHART-dir-prediccion_con_banda
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-dir-prediccion_demanda_diaria:
+    type: CHART
+    id: CHART-dir-prediccion_demanda_diaria
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-paneles
     meta:
       width: 8
       height: 60
       chartId: 924
       uuid: 9af4da31-2e03-5754-8e01-fe3c5b734766
       sliceName: Demanda diaria prevista
-  CHART-top_dias_demanda:
+  CHART-dir-top_dias_demanda:
     type: CHART
-    id: CHART-top_dias_demanda
+    id: CHART-dir-top_dias_demanda
     children: []
     parents:
     - ROOT_ID
     - GRID_ID
-    - ROW-dir-paneles
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-paneles
     meta:
       width: 4
       height: 60
       chartId: 925
       uuid: 1119e651-5587-5204-926e-39c0e67b0f8f
       sliceName: Días con más demanda prevista
-  ROW-dir-paneles:
+  ROW-dir-dir-paneles:
     type: ROW
-    id: ROW-dir-paneles
+    id: ROW-dir-dir-paneles
     children:
-    - CHART-prediccion_demanda_diaria
-    - CHART-top_dias_demanda
+    - CHART-dir-prediccion_demanda_diaria
+    - CHART-dir-top_dias_demanda
     parents:
     - ROOT_ID
     - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
     meta:
       background: BACKGROUND_TRANSPARENT
-  CHART-alertas_capacidad:
+  CHART-dir-alertas_capacidad:
     type: CHART
-    id: CHART-alertas_capacidad
+    id: CHART-dir-alertas_capacidad
     children: []
     parents:
     - ROOT_ID
     - GRID_ID
-    - ROW-dir-alertas
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-alertas
     meta:
       width: 12
       height: 62
       chartId: 926
       uuid: d71a847a-1ee9-56dc-b3a5-d03d85f4503e
       sliceName: Próximas alertas de capacidad
-  ROW-dir-alertas:
+  ROW-dir-dir-alertas:
     type: ROW
-    id: ROW-dir-alertas
+    id: ROW-dir-dir-alertas
     children:
-    - CHART-alertas_capacidad
+    - CHART-dir-alertas_capacidad
     parents:
     - ROOT_ID
     - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
     meta:
       background: BACKGROUND_TRANSPARENT
-  MARKDOWN-atribucion:
+  MARKDOWN-dir-atribucion:
     type: MARKDOWN
-    id: MARKDOWN-atribucion
+    id: MARKDOWN-dir-atribucion
     children: []
     parents:
     - ROOT_ID
     - GRID_ID
-    - ROW-dir-atribucion
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-dir-dir-atribucion
     meta:
       width: 12
       height: 36
@@ -219,148 +606,456 @@ position:
 
 
         Glosario, linaje y qué no se puede concluir de cada concepto: `docs/gobierno-datos.md`. Licencias completas: `NOTICE`.'
-  ROW-dir-atribucion:
+  ROW-dir-dir-atribucion:
     type: ROW
-    id: ROW-dir-atribucion
+    id: ROW-dir-dir-atribucion
     children:
-    - MARKDOWN-atribucion
+    - MARKDOWN-dir-atribucion
     parents:
     - ROOT_ID
     - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
     meta:
       background: BACKGROUND_TRANSPARENT
-  CHART-kpi_ocupacion_vs_umbral:
+  CHART-of-kpi_cobertura_oferta:
     type: CHART
-    id: CHART-kpi_ocupacion_vs_umbral
+    id: CHART-of-kpi_cobertura_oferta
     children: []
     parents:
     - ROOT_ID
     - GRID_ID
-    - ROW-dir-negocio
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-of-oc-kpis
     meta:
       width: 4
       height: 50
-      chartId: 930
-      uuid: fe263780-44f3-5610-89be-08ab71e02a80
-      sliceName: Factor de ocupación
-  CHART-kpi_revenue_asiento:
+      chartId: 901
+      uuid: 34a0bbde-7225-5ec9-960e-c06181f827da
+      sliceName: Cobertura completa
+  CHART-of-kpi_ocupacion_media:
     type: CHART
-    id: CHART-kpi_revenue_asiento
+    id: CHART-of-kpi_ocupacion_media
     children: []
     parents:
     - ROOT_ID
     - GRID_ID
-    - ROW-dir-negocio
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-of-oc-kpis
     meta:
       width: 4
       height: 50
-      chartId: 931
-      uuid: 7d1fd534-263e-58ee-843b-1d9dc7e9b41b
-      sliceName: Ingreso por asiento ofertado (€)
-  CHART-revenue_asiento_evolucion:
+      chartId: 902
+      uuid: 41806438-af01-590e-95a5-a0a3fff49728
+      sliceName: Ocupación media
+  CHART-of-kpi_dias_imposibles:
     type: CHART
-    id: CHART-revenue_asiento_evolucion
+    id: CHART-of-kpi_dias_imposibles
     children: []
     parents:
     - ROOT_ID
     - GRID_ID
-    - ROW-dir-negocio
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-of-oc-kpis
     meta:
       width: 4
       height: 50
-      chartId: 932
-      uuid: c954325e-57d1-57e9-88c7-b15fc35995ed
-      sliceName: Ingreso por asiento ofertado, por trimestre
-  ROW-dir-negocio:
+      chartId: 903
+      uuid: fb293014-b4c7-55dd-962e-67ae87f06ea9
+      sliceName: Días con ocupación imposible
+  ROW-of-oc-kpis:
     type: ROW
-    id: ROW-dir-negocio
+    id: ROW-of-oc-kpis
     children:
-    - CHART-kpi_ocupacion_vs_umbral
-    - CHART-kpi_revenue_asiento
-    - CHART-revenue_asiento_evolucion
+    - CHART-of-kpi_cobertura_oferta
+    - CHART-of-kpi_ocupacion_media
+    - CHART-of-kpi_dias_imposibles
     parents:
     - ROOT_ID
     - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
     meta:
       background: BACKGROUND_TRANSPARENT
-  CHART-kpi_modelo_mape:
+  CHART-of-franja_perfil_oferta:
     type: CHART
-    id: CHART-kpi_modelo_mape
+    id: CHART-of-franja_perfil_oferta
     children: []
     parents:
     - ROOT_ID
     - GRID_ID
-    - ROW-dir-modelo
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-of-franja
     meta:
-      width: 4
+      width: 3
       height: 50
-      chartId: 940
-      uuid: 22f65f5b-bd56-5e78-bb81-ef06090ef6df
-      sliceName: MAPE del modelo de ocupación
-  CHART-kpi_modelo_r2:
-    type: CHART
-    id: CHART-kpi_modelo_r2
-    children: []
-    parents:
-    - ROOT_ID
-    - GRID_ID
-    - ROW-dir-modelo
-    meta:
-      width: 4
-      height: 50
-      chartId: 941
-      uuid: 0abd1547-bd9c-5388-b82a-dd9034cb95c9
-      sliceName: R² del modelo
-  CHART-kpi_modelo_ic:
-    type: CHART
-    id: CHART-kpi_modelo_ic
-    children: []
-    parents:
-    - ROOT_ID
-    - GRID_ID
-    - ROW-dir-modelo
-    meta:
-      width: 4
-      height: 50
-      chartId: 942
-      uuid: 600b35f9-feb8-510b-84cc-ee2246c86658
-      sliceName: Cobertura del intervalo del 90 %
-  ROW-dir-modelo:
+      chartId: 973
+      uuid: b191cc85-603a-5b7a-a13c-2d277a89599e
+      sliceName: Trenes por franja horaria
+  ROW-of-franja:
     type: ROW
-    id: ROW-dir-modelo
+    id: ROW-of-franja
     children:
-    - CHART-kpi_modelo_mape
-    - CHART-kpi_modelo_r2
-    - CHART-kpi_modelo_ic
+    - CHART-of-franja_perfil_oferta
     parents:
     - ROOT_ID
     - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
     meta:
       background: BACKGROUND_TRANSPARENT
-  CHART-prediccion_con_banda:
-    type: CHART
-    id: CHART-prediccion_con_banda
+  MARKDOWN-of-aviso:
+    type: MARKDOWN
+    id: MARKDOWN-of-aviso
     children: []
     parents:
     - ROOT_ID
     - GRID_ID
-    - ROW-dir-banda
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-of-oc-aviso
     meta:
       width: 12
       height: 60
-      chartId: 943
-      uuid: 106a4c59-b985-5cc1-a921-44916a0ffbc4
-      sliceName: Demanda diaria prevista, con su intervalo del 90 %
-  ROW-dir-banda:
+      code: "## Qué se puede concluir de este cuadro de mandos\n\n**La oferta es real y la ocupación es mitad real.** Los\
+        \ trenes al día salen de los horarios que\npublica el NAP. La ocupación es `viajeros·km / plazas·km`: el total del\
+        \ trimestre es de la CNMC,\npero **el reparto entre los días lo hacen reglas del proyecto**, así que la ocupación\
+        \ de un día\nconcreto no es una medición.\n\n**Dos avisos que cambian la lectura:**\n\n- **El NAP da trenes, no plazas.**\
+        \ Una composición doble cuenta como un tren, así que esto es\n  *servicio* y no *capacidad*. Y falta Iryo, que no\
+        \ publica horarios: la oferta cubre Renfe y OUIGO.\n- **No es «viajeros por plaza».** Un asiento se vende por tramos,\
+        \ así que ese ratio pasa del 100 %\n  legítimamente. Medido en km, el 100 % sí es un techo real.\n\nEl glosario completo,\
+        \ con el linaje y qué no se puede concluir de cada concepto, está en\n`docs/gobierno-datos.md` del repositorio."
+  ROW-of-oc-aviso:
     type: ROW
-    id: ROW-dir-banda
+    id: ROW-of-oc-aviso
     children:
-    - CHART-prediccion_con_banda
+    - MARKDOWN-of-aviso
     parents:
     - ROOT_ID
     - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
     meta:
       background: BACKGROUND_TRANSPARENT
+  CHART-of-oferta_evolucion_operador:
+    type: CHART
+    id: CHART-of-oferta_evolucion_operador
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-of-oc-oferta
+    meta:
+      width: 8
+      height: 60
+      chartId: 904
+      uuid: 2010e9ef-2316-5cef-8e87-70371bb76c2b
+      sliceName: Trenes al día por operador
+  CHART-of-oferta_perfil_semanal:
+    type: CHART
+    id: CHART-of-oferta_perfil_semanal
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-of-oc-oferta
+    meta:
+      width: 4
+      height: 60
+      chartId: 905
+      uuid: 6449951b-197a-5ea5-87d0-87c28d9c5a76
+      sliceName: Trenes al día por día de la semana
+  ROW-of-oc-oferta:
+    type: ROW
+    id: ROW-of-oc-oferta
+    children:
+    - CHART-of-oferta_evolucion_operador
+    - CHART-of-oferta_perfil_semanal
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-of-ocupacion_evolucion:
+    type: CHART
+    id: CHART-of-ocupacion_evolucion
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-of-oc-ocupacion
+    meta:
+      width: 8
+      height: 60
+      chartId: 906
+      uuid: 9f0e0edf-dadc-57e5-9ac4-0ded6f23b27f
+      sliceName: Ocupación diaria
+  CHART-of-ocupacion_perfil_semanal:
+    type: CHART
+    id: CHART-of-ocupacion_perfil_semanal
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-of-oc-ocupacion
+    meta:
+      width: 4
+      height: 60
+      chartId: 907
+      uuid: 423fc886-4404-57a4-84cd-e1da70834958
+      sliceName: Ocupación y días imposibles por día de la semana
+  ROW-of-oc-ocupacion:
+    type: ROW
+    id: ROW-of-oc-ocupacion
+    children:
+    - CHART-of-ocupacion_evolucion
+    - CHART-of-ocupacion_perfil_semanal
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  MARKDOWN-of-hallazgo:
+    type: MARKDOWN
+    id: MARKDOWN-of-hallazgo
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-of-oc-hallazgo
+    meta:
+      width: 12
+      height: 60
+      code: '## Por qué hay días con ocupación «imposible», y por qué no se borran
+
+
+        **21 de los 25 días que pasan del 100 % son sábados o domingos** (40 % y 42 % de todos los fines de
+
+        semana), frente al 0-8 % de los laborables. No es un fallo aleatorio de la fuente: es sistemático.
+
+
+        La causa más probable es el aviso de arriba. Las plazas por tren se calculan como una **constante
+
+        trimestral**, así que si el operador pone composiciones dobles los días de ocio —práctica habitual—
+
+        la capacidad del fin de semana sale corta y la ocupación sale alta. Haría falta un **1,26× en la
+
+        capacidad del domingo** para que ninguno pasara del 100 %: equivale a que una cuarta parte de los
+
+        trenes lleve doble composición.
+
+
+        **Consecuencia práctica:** la ocupación del fin de semana **no sirve** para decidir los coeficientes
+
+        de sábado y domingo del reparto. Bajarlos para que «cuadre» sería arreglar un error de medición de la
+
+        capacidad distorsionando un parámetro de demanda. Los días imposibles se marcan (`plausible`), no se
+
+        borran, para que esto se vea en vez de desaparecer.'
+  ROW-of-oc-hallazgo:
+    type: ROW
+    id: ROW-of-oc-hallazgo
+    children:
+    - MARKDOWN-of-hallazgo
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  MARKDOWN-of-perfil:
+    type: MARKDOWN
+    id: MARKDOWN-of-perfil
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-of-oc-perfil
+    meta:
+      width: 12
+      height: 52
+      code: '## El peso de cada mes: el único coeficiente del reparto que salió de un dato medido
+
+
+        La CNMC publica por trimestre, así que el reparto diario trataba enero y marzo como el mismo nivel.
+
+        El INE mide que no lo son: **marzo y julio concentran el 38,1 % de su trimestre y agosto el 29,1 %**,
+
+        frente al 33,3 % de un mes neutro, y es estable año a año.
+
+
+        Los meses cuyo efecto no se distingue del neutro con cinco años de muestra se dejan en **1,000
+
+        clavado** en `config/reglas_demanda.yml`: medir una diferencia no da derecho a afirmarla. La tabla de
+
+        aquí abajo muestra lo **medido**, así que para esos meses verás un valor cercano a 1 pero no exacto.
+
+
+        **Lo que esta serie no es:** turistas de tren. Son viajes en todos los medios de transporte y solo los
+
+        que implican pernoctación. Se usa su forma, no su nivel.'
+  ROW-of-oc-perfil:
+    type: ROW
+    id: ROW-of-oc-perfil
+    children:
+    - MARKDOWN-of-perfil
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-of-turismo_perfil_mensual:
+    type: CHART
+    id: CHART-of-turismo_perfil_mensual
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-of-oc-turismo
+    meta:
+      width: 5
+      height: 62
+      chartId: 908
+      uuid: c2859aec-ad16-51a8-8a83-0c2d37478789
+      sliceName: Peso de cada mes dentro de su trimestre
+  CHART-of-turismo_evolucion:
+    type: CHART
+    id: CHART-of-turismo_evolucion
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-of-oc-turismo
+    meta:
+      width: 7
+      height: 62
+      chartId: 909
+      uuid: 66d83127-7cff-56a7-97cd-837d401d7b71
+      sliceName: Turistas de Madrid a Barcelona
+  ROW-of-oc-turismo:
+    type: ROW
+    id: ROW-of-oc-turismo
+    children:
+    - CHART-of-turismo_perfil_mensual
+    - CHART-of-turismo_evolucion
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  MARKDOWN-of-atribucion:
+    type: MARKDOWN
+    id: MARKDOWN-of-atribucion
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    - ROW-of-atribucion
+    meta:
+      width: 12
+      height: 50
+      code: '## Origen de los datos y atribución
+
+
+        - **Origen de los datos: Comisión Nacional de los Mercados y la Competencia** — [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.es),
+        que obliga a citar la fuente y a distribuir las obras derivadas bajo la misma licencia.
+
+        - **Elaboración propia con datos extraídos del sitio web del INE: www.ine.es** — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.es).
+
+        - **Horarios: Punto de Acceso Nacional de Transporte Multimodal** (Ministerio de Transportes). Condiciones de uso
+        pendientes de confirmar.
+
+        - **Festivos:** resoluciones de la Dirección General de Trabajo publicadas en el BOE (BOE-A-2024-21316 para 2025,
+        BOE-A-2025-21667 para 2026).
+
+        - **Datos meteorológicos: © AEMET** (Agencia Estatal de Meteorología).
+
+
+        Glosario, linaje y qué no se puede concluir de cada concepto: `docs/gobierno-datos.md`. Licencias completas: `NOTICE`.'
+  ROW-of-atribucion:
+    type: ROW
+    id: ROW-of-atribucion
+    children:
+    - MARKDOWN-of-atribucion
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    - TAB-detalle
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  TAB-detalle:
+    type: TAB
+    id: TAB-detalle
+    children:
+    - ROW-dir-dir-kpis
+    - ROW-dir-dir-negocio
+    - ROW-dir-dir-precio
+    - ROW-dir-dir-modelo
+    - ROW-dir-dir-banda
+    - ROW-dir-dir-paneles
+    - ROW-dir-dir-alertas
+    - ROW-dir-dir-atribucion
+    - ROW-of-oc-kpis
+    - ROW-of-franja
+    - ROW-of-oc-aviso
+    - ROW-of-oc-oferta
+    - ROW-of-oc-ocupacion
+    - ROW-of-oc-hallazgo
+    - ROW-of-oc-perfil
+    - ROW-of-oc-turismo
+    - ROW-of-atribucion
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - TABS-direccion
+    meta:
+      text: Detalle
+  CHART-kpi_plan_resumen:
+    type: CHART
+    id: CHART-kpi_plan_resumen
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-kpi-plan
+    meta:
+      width: 3
+      height: 54
+      chartId: 961
+      uuid: 5873cb61-a252-52d3-bf46-346fa6f40d10
+      sliceName: KPI del plan que se cumplen
   CHART-kpi_plan_tabla:
     type: CHART
     id: CHART-kpi_plan_tabla
@@ -386,89 +1081,6 @@ position:
     - GRID_ID
     meta:
       background: BACKGROUND_TRANSPARENT
-  CHART-kpi_plan_resumen:
-    type: CHART
-    id: CHART-kpi_plan_resumen
-    children: []
-    parents:
-    - ROOT_ID
-    - GRID_ID
-    - ROW-kpi-plan
-    meta:
-      width: 3
-      height: 54
-      chartId: 961
-      uuid: 5873cb61-a252-52d3-bf46-346fa6f40d10
-      sliceName: KPI del plan que se cumplen
-  CHART-kpi_precio_recomendado:
-    type: CHART
-    id: CHART-kpi_precio_recomendado
-    children: []
-    parents:
-    - ROOT_ID
-    - GRID_ID
-    - ROW-dir-precio
-    meta:
-      width: 3
-      height: 50
-      chartId: 980
-      uuid: a80cae6d-a1c5-5a65-ad70-c942c4232c45
-      sliceName: Precio recomendado
-  CHART-kpi_precio_punta_valle:
-    type: CHART
-    id: CHART-kpi_precio_punta_valle
-    children: []
-    parents:
-    - ROOT_ID
-    - GRID_ID
-    - ROW-dir-precio
-    meta:
-      width: 3
-      height: 50
-      chartId: 981
-      uuid: 539f4acd-268d-5e51-80f1-7f9632eac9af
-      sliceName: Precio recomendado en punta
-  CHART-kpi_precio_en_rango:
-    type: CHART
-    id: CHART-kpi_precio_en_rango
-    children: []
-    parents:
-    - ROOT_ID
-    - GRID_ID
-    - ROW-dir-precio
-    meta:
-      width: 3
-      height: 50
-      chartId: 982
-      uuid: 9f9c0836-227c-5f0e-95cc-6a15bad2d7f0
-      sliceName: Recomendaciones en el rango real
-  CHART-precio_por_operador:
-    type: CHART
-    id: CHART-precio_por_operador
-    children: []
-    parents:
-    - ROOT_ID
-    - GRID_ID
-    - ROW-dir-precio
-    meta:
-      width: 3
-      height: 50
-      chartId: 983
-      uuid: a5d146c9-4806-56c3-9e7d-6410cb9bf645
-      sliceName: Precio recomendado por operador y franja
-  ROW-dir-precio:
-    type: ROW
-    id: ROW-dir-precio
-    children:
-    - CHART-kpi_precio_recomendado
-    - CHART-kpi_precio_punta_valle
-    - CHART-kpi_precio_en_rango
-    - CHART-precio_por_operador
-    parents:
-    - ROOT_ID
-    - GRID_ID
-    meta:
-      background: BACKGROUND_TRANSPARENT
 metadata:
   show_native_filters: true
   color_scheme: raillytics
@@ -485,4 +1097,5 @@ metadata:
       - ROOT_ID
       excluded: []
     chartsInScope: []
+  native_filter_configuration: []
 version: 1.0.0
