@@ -1,0 +1,61 @@
+slice_name: Próximas alertas de capacidad
+description: Días del horizonte con demanda prevista por encima del umbral. «Causa detectada» es el campo motivo, que dice
+  qué reglas se aplicaron a ese día.
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  adhoc_filters:
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_ultima
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: fecha >= current_date
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: indice >= 1.2
+  query_mode: raw
+  groupby: []
+  metrics: []
+  all_columns:
+  - fecha
+  - dia_semana_etiqueta
+  - tipo_dia
+  - viajeros_previstos
+  - indice
+  - exceso
+  - motivo
+  percent_metrics: []
+  order_by_cols:
+  - '["fecha", true]'
+  row_limit: 50
+  server_page_length: 10
+  include_search: true
+  show_totals: false
+  table_timestamp_format: '%Y-%m-%d'
+  show_cell_bars: true
+  color_pn: false
+  allow_render_html: false
+  column_config: {}
+  conditional_formatting:
+  - column: indice
+    operator: '>='
+    targetValue: 1.3
+    colorScheme: '#EFA1AA'
+  - column: indice
+    operator: '>='
+    targetValue: 1.2
+    colorScheme: '#FDE380'
+  temporal_columns_lookup: {}
+  time_grain_sqla: null
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: d71a847a-1ee9-56dc-b3a5-d03d85f4503e
+version: 1.0.0
+dataset_uuid: ce2482b5-226e-5980-80be-4ed2706e8696
+is_managed_externally: false
+external_url: null

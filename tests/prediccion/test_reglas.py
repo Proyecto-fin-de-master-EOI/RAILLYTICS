@@ -34,6 +34,9 @@ def _calendario(*eventos):
 def test_el_fichero_de_reglas_del_repo_se_carga():
     # Calibrados contra la oferta real del NAP el 2026-10-06 (ver la cabecera de reglas_demanda.yml
     # y `make calibrar`): con los anteriores el domingo implicaba un 99 % de ocupación.
+    # El viernes sigue en 1.15: se intentó bajarlo a 0.98 el 2026-10-11 y se devolvió, porque la
+    # única medida independiente es la oferta y arrastra el aviso de que el NAP da trenes y no plazas
+    # (ver el bloque EL VIERNES de reglas_demanda.yml).
     assert REGLAS.base_dia_semana == {"lun": 1.05, "mar": 1.00, "mié": 1.00, "jue": 1.05, "vie": 1.15, "sáb": 0.80, "dom": 1.00}
     assert (REGLAS.festivo_entre_semana, REGLAS.puente) == (0.70, 0.75)
     assert (REGLAS.vispera, REGLAS.regreso, REGLAS.junto_a_evento) == (0.20, 0.20, 0.05)

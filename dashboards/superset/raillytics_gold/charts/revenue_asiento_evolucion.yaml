@@ -1,0 +1,60 @@
+slice_name: Ingreso por asiento ofertado, por trimestre
+description: 'La estacionalidad es fuerte: el primer trimestre rinde bastante menos que el resto.'
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_bar
+params:
+  viz_type: echarts_timeseries_bar
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha_inicio
+  x_axis: fecha_inicio
+  time_grain_sqla: P3M
+  x_axis_sort_asc: true
+  x_axis_sort_series: name
+  x_axis_sort_series_ascending: true
+  metrics:
+  - expressionType: SQL
+    sqlExpression: SUM(ingresos_eur) / NULLIF(SUM(plazas_ofertadas), 0)
+    label: €/asiento
+    hasCustomLabel: true
+    optionName: metric_29344399
+    aggregate: null
+    column: null
+    datasourceWarning: false
+  groupby: []
+  order_desc: true
+  row_limit: 10000
+  truncate_metric: true
+  show_empty_columns: true
+  comparison_type: values
+  annotation_layers: []
+  forecastPeriods: 10
+  forecastInterval: 0.8
+  x_axis_title_margin: 15
+  y_axis_title_margin: 15
+  y_axis_title_position: Left
+  sort_series_type: sum
+  color_scheme: raillytics
+  only_total: true
+  show_legend: false
+  legendType: scroll
+  legendOrientation: top
+  x_axis_time_format: smart_date
+  y_axis_format: ',.2f'
+  truncateXAxis: true
+  y_axis_bounds:
+  - null
+  - null
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: c954325e-57d1-57e9-88c7-b15fc35995ed
+version: 1.0.0
+dataset_uuid: a6f87572-5c8e-5db1-90ea-ec45e618a779
+is_managed_externally: false
+external_url: null

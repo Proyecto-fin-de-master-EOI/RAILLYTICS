@@ -54,12 +54,13 @@ discontinuas hacia la trazabilidad indican que cada proceso registra sus cargas.
 
 ```mermaid
 flowchart LR
-    subgraph fuentes[Fuentes publicas - 12 en config/data_sources.yml]
+    subgraph fuentes[Fuentes publicas - 13 en config/data_sources.yml]
         F1["CNMC - indicadores y precios (3 csv)"]
         F2["AEMET - climatologia diaria (2 json)"]
         F3["NAP - GTFS de Renfe y OUIGO (2 zip)"]
         F4["BOE - calendario laboral (2 xml)"]
         F5["Renfe GTFS-RT (2 json) y CRTM (1 zip)"]
+        F6["INE - turismo Madrid-Barcelona mensual (1 json)"]
     end
     subgraph bronze[Bronze]
         STG["data/bronze/ - staging local"]
@@ -68,10 +69,10 @@ flowchart LR
     end
     subgraph silver[Silver]
         SLV[("MinIO raillytics-silver/ - Parquet")]
-        REF["festivos, meteo y oferta_diaria - make festivos / meteo / nap-oferta"]
+        REF["festivos, meteo, oferta_diaria y turismo_mensual - make festivos / meteo / nap-oferta / turismo"]
     end
     subgraph gold[Gold]
-        GLD[("MinIO raillytics-gold/ - dim y fact")]
+        GLD[("MinIO raillytics-gold/ - 4 dim y 8 fact")]
         TRZ[("raillytics-gold/_trazabilidad/cargas/")]
     end
     SUP["Superset - DuckDB en memoria"]
@@ -263,7 +264,8 @@ typo como `optons` no se ignora en silencio.
 | `checks` | no | reglas de la descarga sobre un `csv`: `min_bytes`, `min_filas` y `columnas` (la cabecera esperada) |
 | `silver` | no | tablas que construye `make 04_silver` desde la fuente: lista de `{tabla, modo}` con modo `snapshot` o `incremental` |
 
-`options`, `checks` y `silver` solo se admiten en fuentes `csv`, y una tabla Silver no puede declararla más de una fuente. Ejemplo
+Cada formato admite sus propias `options` (`delimiter` y `encoding` en csv, `rowTag` en xml), y declarar una que el formato no
+reconoce es un error. `checks` solo se evalúa en `csv`, y una tabla Silver no puede declararla más de una fuente. Ejemplo
 (la fuente de indicadores de la CNMC, CSV con `;` y BOM):
 
 ```yaml
@@ -470,7 +472,7 @@ separa); en los **precios** `RENFE` es Renfe-AVE y `AVLO` es Renfe-AVLO. «Viaje
 
 ### Superset
 
-- **Conexión**: la base de datos `Raillytics Gold (DuckDB)` es `duckdb:///:memory:` con la
+- **Conexión**: la base de datos `Raillytics Lake (DuckDB)` es `duckdb:///:memory:` con la
   extensión `httpfs` precargada. Al arrancar, el contenedor guarda las credenciales de MinIO del
   `.env` como *secret* persistente de DuckDB (`docker/superset/superset-run.sh` ejecuta
   `python -m raillytics.utils.lake persist-secret`), así el YAML versionado no contiene
@@ -1074,3 +1076,63 @@ Para descargar o levantar el entorno:
    ```bash
    docker compose -f docker/docker-compose.yml --env-file .env pull
    ```
+---
+
+## Licencia
+
+En este repositorio conviven dos cosas con licencias distintas, y conviene no mezclarlas:
+
+| qué | licencia | dónde |
+| --- | --- | --- |
+| **el código** (Python, Scala, SQL, configuración, documentación propia) | **MIT** | [`LICENSE`](LICENSE) |
+| **los datos y las tablas construidas desde ellos** | la de cada fuente; la más exigente es **CC BY-SA 4.0** | [`NOTICE`](NOTICE) y [`docs/licencias.md`](docs/licencias.md) |
+
+El código es obra propia y **no deriva** de los datos de terceros, así que puede llevar una licencia
+permisiva. Las tablas que se construyen **desde** esos datos sí son obra derivada y heredan sus
+condiciones.
+
+### Atribución obligatoria
+
+Dos fuentes exigen un texto literal. Hay que reproducirlo al publicar cualquier cifra, tabla o
+gráfico que salga de ellas:
+
+> Origen de los datos: Comisión Nacional de los Mercados y la Competencia
+
+> Elaboración propia con datos extraídos del sitio web del INE: www.ine.es
+
+- **CNMC** — [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.es). Obliga a citar
+  la fuente **y a compartir igual**: las obras derivadas se distribuyen bajo la misma licencia. Aquí
+  son derivadas las tablas de Silver y Gold construidas desde sus CSV, la ocupación diaria (usa sus
+  plazas·km como denominador) y los gráficos que las muestran.
+- **INE** — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.es). Cuidado con el matiz:
+  el pie de su web dice CC BY-SA, pero su aviso legal es explícito en que la **información
+  estadística** es CC BY, que **no** obliga a compartir igual.
+
+Las otras tres no exigen fórmula, pero se citan igualmente:
+
+- **Datos meteorológicos:** © AEMET (Agencia Estatal de Meteorología). La reutilización está
+  autorizada citando a AEMET como autor.
+- **Festivos:** resoluciones de la Dirección General de Trabajo publicadas en el BOE. Son
+  disposiciones oficiales y no están sujetas a derecho de autor (art. 13 TRLPI).
+- **Horarios:** Punto de Acceso Nacional de Transporte Multimodal (Ministerio de Transportes).
+  Sus condiciones de uso están **pendientes de confirmar**: la página de aviso legal devuelve 404.
+
+### Lo que las licencias prohíben, y aquí importa
+
+Las dos licencias CC prohíben **desnaturalizar** el sentido de la información. Hay dos casos
+concretos en este proyecto, y están documentados en
+[`docs/gobierno-datos.md`](docs/gobierno-datos.md):
+
+- la serie de turismo del INE cuenta viajes en **todos** los medios de transporte y solo los que
+  implican pernoctación: presentarla como viajeros de tren sería desnaturalizarla. Se usa su forma
+  (el peso de cada mes), nunca su nivel;
+- «viajeros por plaza ofertada» de la CNMC **no es ocupación** y pasa del 100 % legítimamente,
+  porque un asiento se vende por tramos.
+
+### Datos sintéticos
+
+Dos tablas de Silver no vienen de ninguna fuente: las genera
+`python/raillytics/procesamiento/silver_sample.py`. `viajeros_enriquecidos` tiene el detalle por
+estación y línea inventado (la cuota de cada operador sí sale de la CNMC) y
+`puntualidad_enriquecida` es inventada entera. No tienen licencia de tercero porque no vienen de
+ninguno, pero **tampoco se pueden presentar como medición**.

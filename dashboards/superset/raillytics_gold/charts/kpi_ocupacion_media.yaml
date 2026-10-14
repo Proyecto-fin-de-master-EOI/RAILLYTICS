@@ -1,0 +1,29 @@
+slice_name: Ocupación media
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  metric: ocupacion_media
+  header_font_size: 0.4
+  subheader: viajeros·km / plazas·km, días plausibles
+  subheader_font_size: 0.15
+  y_axis_format: .1%
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 41806438-af01-590e-95a5-a0a3fff49728
+version: 1.0.0
+dataset_uuid: 47994a16-687b-5f50-baa1-98103ce742b7
+is_managed_externally: false
+external_url: null

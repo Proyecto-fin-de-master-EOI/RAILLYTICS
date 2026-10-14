@@ -1,0 +1,32 @@
+slice_name: MAPE del modelo de ocupación
+description: 'El de partición única (8,0 %) es más bonito y menos fiable: depende de qué semanas tocaron.'
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: generado_en
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_ultima
+  metric: vt_mape_ultimo
+  header_font_size: 0.4
+  subheader: validación temporal · la referencia trivial da 10,3 %
+  subheader_font_size: 0.15
+  y_axis_format: .1%
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 22f65f5b-bd56-5e78-bb81-ef06090ef6df
+version: 1.0.0
+dataset_uuid: b2040c98-f025-5f6d-9bbc-bd963ad8ca74
+is_managed_externally: false
+external_url: null

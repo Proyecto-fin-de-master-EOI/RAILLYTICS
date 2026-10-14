@@ -1,0 +1,29 @@
+slice_name: Precio recomendado en punta
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  metric: precio_punta
+  header_font_size: 0.4
+  subheader: mañana (6-9) y tarde (15-19)
+  subheader_font_size: 0.15
+  y_axis_format: $,.2f
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 539f4acd-268d-5e51-80f1-7f9632eac9af
+version: 1.0.0
+dataset_uuid: dd36265e-8809-5aab-ae97-0ce730e38c4f
+is_managed_externally: false
+external_url: null

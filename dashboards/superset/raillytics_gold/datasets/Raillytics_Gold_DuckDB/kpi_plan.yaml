@@ -1,0 +1,304 @@
+table_name: kpi_plan
+main_dttm_col: null
+description: 'Los KPI del plan del Sprint 2 con su objetivo al lado y si se cumple. Solo están los medibles con las fuentes
+  disponibles; los que faltan (ratio de aceptación del precio, reducción de plazas vacías, detección automática de eventos
+  y recuperación ante fallos) no tienen fuente, y el motivo de cada uno está escrito en el SQL del dataset. Dos avisos de
+  lectura: el factor de ocupación lleva umbral del 72 % y no del 85 % del plan, porque se recalibró al fijar que la fórmula
+  correcta es viajeros·km / plazas·km; y la tabla son los KPI de NEGOCIO, los TÉCNICOS y el del modelo, cada uno en verde
+  o en rojo según cumpla su objetivo: un KPI lo es se cumpla o no. Los de seguimiento salen sin color porque el plan no les
+  puso umbral.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: "SELECT\n    orden, kpi, familia, valor, objetivo, comparador, unidad, nota,\n    CASE\n        WHEN objetivo IS NULL\
+  \ THEN NULL\n        WHEN comparador = '>=' THEN valor >= objetivo\n        WHEN comparador = '<=' THEN valor <= objetivo\n\
+  \    END                                                        AS cumple,\n    CASE WHEN objetivo IS NULL THEN NULL ELSE\
+  \ valor - objetivo END AS distancia_al_objetivo,\n    -- El semaforo de la tabla. Superset colorea columnas NUMERICAS, no\
+  \ booleanos ni texto, asi que\n    -- `cumple` viaja tambien como 1 / 0, y los de seguimiento (sin umbral) se quedan en\
+  \ NULL y sin\n    -- color: no es que fallen, es que el plan no les puso objetivo.\n    CASE WHEN objetivo IS NULL THEN\
+  \ NULL\n         WHEN comparador = '>=' AND valor >= objetivo THEN 1\n         WHEN comparador = '<=' AND valor <= objetivo\
+  \ THEN 1\n         ELSE 0 END                                             AS semaforo\nFROM (-- Los KPI del plan del Sprint\
+  \ 2, cada uno con su objetivo al lado y si lo cumple.\n-- Una fila por KPI: es la vista que contesta «¿vamos bien?» sin\
+  \ abrir siete dashboards.\n--\n-- Solo estan los MEDIBLES con las fuentes que hay. Los que faltan del plan y por que:\n\
+  --   ratio de aceptacion del precio recomendado  mide que parte de las recomendaciones adopta sin\n--       cambiarlas un\
+  \ revenue manager. Es un proceso humano de una empresa que el proyecto no tiene,\n--       y es el unico KPI del plan que\
+  \ no se puede suplir con un supuesto: los demas datos que\n--       faltan se presuponen para rellenar ENTRADAS, y este\
+  \ fabricaria la VALIDACION de nuestra\n--       propia salida. Diria que el modelo acierta porque lo hemos escrito nosotros.\
+  \ En su hueco va\n--       el 12, que contrasta la recomendacion contra el precio real de la CNMC, y el mecanismo que\n\
+  --       lo haria calculable esta montado: cada recomendacion se guarda con sus entradas y la version\n--       de la regla\
+  \ que la produjo (gold/fact_precio_recomendado).\n--   (la reduccion de plazas vacias ya esta: KPI 15, con el aviso de que\
+  \ con 6 meses de serie\n--    mide sobre todo estacionalidad)\n--   cobertura a eventos detectados              los eventos\
+  \ son un CSV curado a mano, no deteccion\n--   (la tasa de recuperacion ante fallos de fuente ya esta: es el KPI 14. La\
+  \ ingesta reintenta\n--    lo transitorio y escribe los intentos en el registro de cargas)\nWITH ocupacion AS (\n    SELECT\
+  \ avg(ocupacion) AS v\n    FROM read_parquet('s3://raillytics-gold/fact_ocupacion_diaria/*.parquet') WHERE plausible\n),\
+  \ revenue AS (\n    SELECT sum(ingresos_eur) / nullif(sum(plazas_ofertadas), 0) AS v\n    FROM read_parquet('s3://raillytics-gold/fact_mercado_trimestral/*.parquet')\n\
+  \    WHERE fecha_inicio = (SELECT max(fecha_inicio) FROM read_parquet('s3://raillytics-gold/fact_mercado_trimestral/*.parquet'))\n\
+  ), cobertura AS (\n    SELECT cobertura AS v FROM read_parquet('s3://raillytics-gold/fact_cobertura_ingesta/*.parquet')\n\
+  \    ORDER BY fecha DESC LIMIT 1\n), completitud AS (\n    SELECT sum(filas_limpias) * 1.0 / nullif(sum(filas), 0) AS v\n\
+  \    FROM read_parquet('s3://raillytics-gold/fact_completitud_silver/*.parquet')\n), fases AS (\n    -- Tiempo de cada fase\
+  \ del pipeline en cada dia. UN SOLO escaneo de la trazabilidad, del que\n    -- cuelgan las dos latencias: son 170 ficheros\
+  \ pequenos y leerlos dos veces se notaba de verdad\n    -- (la consulta pasaba de 120 s en Superset, que va con 512 MB y\
+  \ 2 hilos, y las graficas daban\n    -- timeout).\n    --\n    -- Se suman las fases y NO se toma el lapso del dia entero:\
+  \ ese incluiria todo lo que haya\n    -- corrido ese dia (predicciones, recalculos) y no mide el pipeline. Lo que sale es\
+  \ el tiempo de\n    -- PROCESO registrado, que es menor que el reloj de pared del orquestador (`make carga-e2e` dio\n  \
+  \  -- 31,6 min) porque este espera ademas a que los trabajos de streaming se asienten, y esa espera\n    -- no queda registrada\
+  \ como carga.\n    SELECT cast(inicio AS DATE) AS dia, proceso,\n           date_diff('second', min(inicio), max(fin)) AS\
+  \ seg\n    FROM read_parquet('s3://raillytics-gold/_trazabilidad/cargas/*.parquet', union_by_name = true)\n    WHERE proceso\
+  \ IN ('bronze_download', 'bronze_l1_raw_uploader', 'bronze_l2_parquet_converter',\n                      'silver_builder',\
+  \ 'referencia_oferta_diaria', 'referencia_oferta_franja',\n                      'referencia_ml_ocupacion_diaria', 'silver_sample',\
+  \ 'gold_build',\n                      'calidad_cobertura_ingesta', 'calidad_completitud_silver', 'ml_metricas',\n     \
+  \                 'ml_ocupacion_franja', 'precio_recomendado')\n    GROUP BY 1, 2\n), completas AS (\n    -- Las CINCO de\
+  \ Spark y Airflow. Solo los dias que las tienen todas: un dia en el que solo corrio\n    -- Gold no mide el recorrido.\n\
+  \    SELECT dia, sum(seg) / 3600.0 AS v FROM fases\n    WHERE proceso IN ('bronze_download', 'bronze_l1_raw_uploader', 'bronze_l2_parquet_converter',\n\
+  \                      'silver_builder', 'gold_build')\n    GROUP BY dia HAVING count(*) = 5\n), latencia AS (\n    SELECT\
+  \ v FROM completas ORDER BY dia DESC LIMIT 1\n), latencia_carga AS (\n    -- Latencia de la carga COMPLETA: el reloj de\
+  \ pared del orquestador, que lo registra el propio\n    -- `scripts/carga_e2e.py` al terminar.\n    --\n    -- Antes se\
+  \ sumaban las 14 fases y se exigia que estuvieran todas. No valia: una fase sin trabajo\n    -- que hacer no deja fila —le\
+  \ paso a `silver_builder` el 2026-10-14, que corrio sin nada nuevo que\n    -- escribir— y entonces el KPI no aparecia nunca.\
+  \ Ademas el reloj de pared es lo que de verdad\n    -- significa «cuanto tarda la carga»: incluye esperar a que los streams\
+  \ se asienten, que ninguna\n    -- fase ve.\n    SELECT duracion_s / 3600.0 AS v\n    FROM read_parquet('s3://raillytics-gold/_trazabilidad/cargas/*.parquet',\
+  \ union_by_name = true)\n    -- Solo las que empezaron por el principio: reanudar con `--desde gold` tambien deja fila,\
+  \ pero\n    -- eso no es la latencia de una carga completa.\n    WHERE proceso = 'carga_e2e'\n      AND regexp_extract(parametros,\
+  \ '\"desde\":\\s*\"(\\w+)\"', 1) = 'infra'\n    ORDER BY inicio DESC LIMIT 1\n), descargas AS (\n    -- Tasa de recuperacion\
+  \ ante fallos de fuente. `intentos` lo escribe el DAG en los parametros de\n    -- cada descarga (ver dags/ingesta_data_sources.py):\
+  \ la ingesta reintenta lo TRANSITORIO —un\n    -- corte de red, un timeout, un 5xx— y no lo que no se arregla reintentando\
+  \ (un 4xx, o un fichero\n    -- que los quality gates rechazan porque la fuente publica otra cosa).\n    --\n    -- Se lee\
+  \ con regexp y no con las funciones JSON a proposito: asi no depende de que la extension\n    -- json este cargada en el\
+  \ DuckDB del contenedor de Superset.\n    SELECT cast(inicio AS DATE)                                         AS dia,\n\
+  \           tabla                                                        AS fuente,\n           max(estado = 'ok')     \
+  \                                      AS acabo_bien,\n           max(coalesce(try_cast(regexp_extract(parametros, '\"intentos\"\
+  :\\s*(\\d+)', 1) AS INTEGER), 1)) AS intentos\n    FROM read_parquet('s3://raillytics-gold/_trazabilidad/cargas/*.parquet',\
+  \ union_by_name = true)\n    WHERE proceso = 'bronze_download'\n    GROUP BY 1, 2\n), recuperacion AS (\n    -- Un fallo\
+  \ es: o la descarga acabo en error, o hizo falta mas de un intento. De esos, se\n    -- recuperaron los que acabaron bien.\
+  \ Sin fallos no hay tasa (NULL), que es lo honesto: no se\n    -- puede presumir de recuperarse de nada.\n    SELECT sum(CASE\
+  \ WHEN acabo_bien AND intentos > 1 THEN 1 ELSE 0 END) * 1.0\n           / nullif(sum(CASE WHEN intentos > 1 OR NOT acabo_bien\
+  \ THEN 1 ELSE 0 END), 0) AS v\n    FROM descargas\n), vacias AS (\n    -- Reduccion de plazas vacias en hora punta, en PUNTOS\
+  \ PORCENTUALES: los ultimos 30 dias de la\n    -- serie menos los 30 anteriores. Negativo = se han reducido.\n    --\n \
+  \   -- AVISO QUE VIAJA CON EL NUMERO, porque sin el enganya: la serie son 6 meses de 2026 y el\n    -- corredor es MUY estacional\
+  \ (el T1 va al 73,8 % de ocupacion media y el T2 al 83,2 %). Con dos\n    -- ventanas consecutivas, buena parte de la diferencia\
+  \ es la estacion del ano y no la gestion.\n    -- Esto se vuelve un KPI de gestion cuando haya 12 meses y se pueda comparar\
+  \ cada mes con el\n    -- mismo mes del ano anterior; mientras tanto mide la tendencia reciente y se dice asi.\n    SELECT\n\
+  \        avg(CASE WHEN fecha > (SELECT max(fecha) FROM read_parquet('s3://raillytics-gold/fact_ocupacion_franja/*.parquet'))\
+  \ - INTERVAL 30 DAY\n                 THEN plazas_vacias END)                                                    AS reciente,\n\
+  \        avg(CASE WHEN fecha <= (SELECT max(fecha) FROM read_parquet('s3://raillytics-gold/fact_ocupacion_franja/*.parquet'))\
+  \ - INTERVAL 30 DAY\n                  AND fecha > (SELECT max(fecha) FROM read_parquet('s3://raillytics-gold/fact_ocupacion_franja/*.parquet'))\
+  \ - INTERVAL 60 DAY\n                 THEN plazas_vacias END)                                                    AS anterior\n\
+  \    FROM read_parquet('s3://raillytics-gold/fact_ocupacion_franja/*.parquet')\n    WHERE es_punta AND plausible\n), precio\
+  \ AS (\n    SELECT avg(CASE WHEN plausible THEN precio_recomendado_eur END)              AS recomendado,\n           avg(CASE\
+  \ WHEN plausible THEN cast(en_rango_observado AS INT) END)     AS en_rango\n    FROM read_parquet('s3://raillytics-gold/fact_precio_recomendado/*.parquet')\n\
+  ), externas AS (\n    SELECT mejora_variables_externas_pp AS v\n    FROM read_parquet('s3://raillytics-gold/fact_metricas_modelo/*.parquet',\
+  \ union_by_name = true)\n    WHERE mejora_variables_externas_pp IS NOT NULL\n    ORDER BY generado_en DESC LIMIT 1\n)\n\
+  SELECT * FROM (\n    SELECT 1 AS orden, 'Factor de ocupación medio' AS kpi, 'negocio' AS familia,\n           -- Recorrido\
+  \ del umbral: 85 % (el del plan) -> 80 % -> 72 %, el vigente. Ver el comentario\n           -- de UMBRAL_OCUPACION: con\
+  \ 80 % saltaria en 8 de 14 trimestres porque la serie tiene\n           -- 9,4 puntos entre T1 y T2, asi que mediria estacionalidad\
+  \ y no anomalias.\n           (SELECT v FROM ocupacion) AS valor, 0.72 AS objetivo, '>=' AS comparador, 'porcentaje' AS\
+  \ unidad,\n           'El plan decia 85 %. Esta en 72 %: por la formula por kilometros primero, y despues porque la serie\
+  \ es muy estacional y un umbral plano por encima del 74 % avisa de que es invierno, no de una anomalia. 72 % es el percentil\
+  \ 10 de 2023-2026' AS nota\n    UNION ALL SELECT 2, 'Ingreso por asiento ofertado', 'negocio',\n           (SELECT v FROM\
+  \ revenue), NULL, 'seguimiento', 'euros',\n           'Sin umbral en el plan: es una línea base para comparar'\n    UNION\
+  \ ALL SELECT 3, 'Cobertura de ingesta', 'pipeline',\n           (SELECT v FROM cobertura), 1.00, '>=', 'porcentaje',\n \
+  \          'Sobre las 9 entradas obligatorias del registro, no sobre las 13'\n    UNION ALL SELECT 4, 'Completitud de Silver',\
+  \ 'pipeline',\n           (SELECT v FROM completitud), 0.98, '>=', 'porcentaje',\n           'Filas sin ningún nulo NO controlado.\
+  \ Los huecos vienen de días que AEMET no publicó'\n    UNION ALL SELECT 5, 'Latencia del pipeline', 'pipeline',\n      \
+  \     (SELECT v FROM latencia), 4.0, '<=', 'horas',\n           'Las cinco fases de Spark y Airflow (descarga, L1, L2, Silver\
+  \ y Gold) en el ultimo dia que las tiene todas. No incluye los pasos que escribe Python: esos van en el KPI 13'\n    UNION\
+  \ ALL SELECT 6, 'Error de recalibración de la DTC', 'pipeline',\n           (SELECT v FROM dtc), 0.001, '<=', 'proporcion',\n\
+  \           'Sale 0 exacto: el reparto usa fracciones y mayor resto, no coma flotante'\n    UNION ALL SELECT 7, 'Ocupación\
+  \ en hora punta', 'negocio',\n           (SELECT punta FROM franja), NULL, 'seguimiento', 'porcentaje',\n           'Mañana\
+  \ (6-9) y tarde (15-19). Los trenes por franja son dato medido; el reparto de la demanda entre franjas es hipótesis'\n \
+  \   UNION ALL SELECT 8, 'Ocupación en hora valle', 'negocio',\n           (SELECT valle FROM franja), NULL, 'seguimiento',\
+  \ 'porcentaje',\n           'Madrugada, media mañana, mediodía y noche'\n    UNION ALL SELECT 9, 'Plazas vacías en hora\
+  \ punta', 'negocio',\n           (SELECT vacias FROM franja), NULL, 'seguimiento', 'porcentaje',\n           'Base del KPI\
+  \ de reducción de plazas vacías: hace falta una serie histórica para medir la reducción'\n    -- Un KPI lo es se cumpla\
+  \ o no, asi que este se queda aunque salga en rojo: -0,76 pp contra un\n    -- umbral de 1,5. Festivos, eventos y meteo\
+  \ EMPEORAN el modelo, porque la ocupacion es demanda\n    -- entre oferta y los efectos se cancelan al dividir. Es un resultado,\
+  \ no un fallo del pipeline, y\n    -- esta argumentado en docs/hipotesis.md como la hipotesis H3.\n    UNION ALL SELECT\
+  \ 10, 'Mejora de MAPE por variables externas', 'modelo',\n           (SELECT v FROM externas), 1.5, '>=', 'puntos',\n  \
+  \         'Negativo: festivos, eventos y meteo EMPEORAN el modelo. La ocupacion es demanda entre oferta y los efectos se\
+  \ cancelan'\n    UNION ALL SELECT 11, 'Precio recomendado medio', 'negocio',\n           (SELECT recomendado FROM precio),\
+  \ NULL, 'seguimiento', 'euros',\n           'El precio base de la CNMC es dato medido; la elasticidad que lo mueve es hipotesis\
+  \ declarada en reglas_demanda.yml'\n    UNION ALL SELECT 12, 'Recomendaciones en el rango real', 'negocio',\n          \
+  \ (SELECT en_rango FROM precio), 0.80, '>=', 'porcentaje',\n           'Ocupa el hueco del ratio de aceptacion: contrasta\
+  \ la recomendacion contra el recorrido de precios que ese operador ha puesto de verdad, no contra una decision humana que\
+  \ no existe'\n    UNION ALL SELECT 13, 'Latencia de la carga completa', 'pipeline',\n           (SELECT v FROM latencia_carga),\
+  \ 4.0, '<=', 'horas',\n           'Reloj de pared de `make carga-e2e` entero, registrado por el propio orquestador. El KPI\
+  \ 5 mide otra cosa: solo las cinco fases de Spark y Airflow. Sale en blanco hasta que se corra una carga completa'\n   \
+  \ UNION ALL SELECT 14, 'Recuperacion ante fallos de fuente', 'pipeline',\n           (SELECT v FROM recuperacion), NULL,\
+  \ 'seguimiento', 'porcentaje',\n           'Descargas que fallaron y acabaron bien sobre las que fallaron. La ingesta reintenta\
+  \ lo transitorio (red, timeout, 5xx) y no lo que no se arregla reintentando. Sale en blanco si no ha fallado ninguna: sin\
+  \ fallos no hay tasa'\n    UNION ALL SELECT 15, 'Reduccion de plazas vacias en punta', 'negocio',\n           (SELECT (reciente\
+  \ - anterior) * 100 FROM vacias), NULL, 'seguimiento', 'puntos',\n           'Ultimos 30 dias menos los 30 anteriores. Negativo\
+  \ = se reducen. OJO: con 6 meses de serie esto mide sobre todo ESTACIONALIDAD (el T1 del corredor va 9 puntos por debajo\
+  \ del T2); sera un KPI de gestion cuando haya 12 meses y se compare cada mes con el mismo del ano anterior'\n) k\nWHERE\
+  \ valor IS NOT NULL) base\nORDER BY orden"
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: c50d6240-cdc7-546b-8ed1-574d2289af0e
+metrics:
+- metric_name: kpis_medidos
+  verbose_name: KPI medidos
+  metric_type: null
+  expression: COUNT(*)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: kpis_que_cumplen
+  verbose_name: KPI que cumplen
+  metric_type: null
+  expression: SUM(CASE WHEN cumple THEN 1 ELSE 0 END)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: kpis_con_objetivo
+  verbose_name: KPI con objetivo
+  metric_type: null
+  expression: SUM(CASE WHEN objetivo IS NULL THEN 0 ELSE 1 END)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+columns:
+- column_name: kpi
+  verbose_name: KPI
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: familia
+  verbose_name: Familia
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: valor
+  verbose_name: Valor
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: objetivo
+  verbose_name: Objetivo
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: comparador
+  verbose_name: Comparador
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: unidad
+  verbose_name: Unidad
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: cumple
+  verbose_name: ¿Cumple?
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: semaforo
+  verbose_name: Cumple
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: 1 si cumple, 0 si no, vacío si el plan no le puso objetivo. Es `cumple` en número porque Superset solo colorea
+    columnas numéricas.
+  python_date_format: null
+  extra: null
+- column_name: distancia_al_objetivo
+  verbose_name: Distancia al objetivo
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: nota
+  verbose_name: Nota
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: orden
+  verbose_name: Orden
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

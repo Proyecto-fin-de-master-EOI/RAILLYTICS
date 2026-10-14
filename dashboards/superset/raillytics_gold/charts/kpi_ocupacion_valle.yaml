@@ -1,0 +1,29 @@
+slice_name: Ocupación en hora valle
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  metric: ocupacion_valle
+  header_font_size: 0.4
+  subheader: madrugada, media mañana, mediodía y noche
+  subheader_font_size: 0.15
+  y_axis_format: .1%
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 58c990e5-8962-5f20-8a5d-55694306453f
+version: 1.0.0
+dataset_uuid: a9a18854-c41d-5c50-b477-6419955bc983
+is_managed_externally: false
+external_url: null

@@ -1,0 +1,32 @@
+slice_name: Cobertura del intervalo del 90 %
+description: Si es bastante menor que el 90 % nominal, el intervalo es optimista y hay que decirlo.
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: generado_en
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_ultima
+  metric: ic_cobertura_ultima
+  header_font_size: 0.4
+  subheader: días reales dentro de la banda · nominal 90 %
+  subheader_font_size: 0.15
+  y_axis_format: .0%
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 600b35f9-feb8-510b-84cc-ee2246c86658
+version: 1.0.0
+dataset_uuid: b2040c98-f025-5f6d-9bbc-bd963ad8ca74
+is_managed_externally: false
+external_url: null

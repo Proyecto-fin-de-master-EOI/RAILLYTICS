@@ -35,6 +35,15 @@ opcionales:
   - gold_fact_mercado_trimestral
   - gold_fact_precio_trimestral
   - gold_fact_precio_mensual
+  # Grupo «corredor»: el dato diario real. Lo construyen las cargas iniciales de Python, no `make 04_silver`.
+  - silver_oferta_diaria
+  - silver_ml_ocupacion_diaria
+  - silver_turismo_mensual
+  - silver_festivos
+  - silver_meteo
+  - gold_fact_oferta_diaria
+  - gold_fact_ocupacion_diaria
+  - gold_fact_turismo_mensual
 
 tablas:
 
@@ -213,3 +222,93 @@ tablas:
        sql: "SELECT count(*) FROM gold_fact_precio_mensual f WHERE f.operador_id NOT IN ('TOTAL', 'OTRO') AND NOT EXISTS (SELECT 1 FROM gold_dim_operador d WHERE d.operador_id = f.operador_id)"}
     - {nombre: filas_conciliadas,           tipo: sql, severidad: bloqueante,
        sql: "SELECT abs((SELECT count(*) FROM gold_fact_precio_mensual) - (SELECT count(*) FROM (SELECT DISTINCT anio, mes, operador_id FROM silver_cnmc_precio_mensual WHERE trayecto = 'Madrid-Barcelona') d))"}
+
+  # ---- Silver del grupo «corredor»: el dato diario real (cargas iniciales de Python) ----
+  silver_oferta_diaria:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 100, severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [fecha, corredor, operador, trenes], severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha, corredor, operador], severidad: bloqueante}
+    - {nombre: trenes_no_negativos,         tipo: rango, columna: trenes, minimo: 0, severidad: bloqueante}
+    # Un día con más trenes que el total del snapshot es imposible: señalaría que el filtro de corredor cuenta de más.
+    - {nombre: trenes_caben_en_el_snapshot, tipo: sql, severidad: bloqueante,
+       sql: "SELECT count(*) FROM silver_oferta_diaria WHERE trenes > trenes_todos"}
+    # El corredor del proyecto tiene que estar: sin él no hay calibración ni ocupación.
+    - {nombre: corredor_madrid_barcelona_presente, tipo: sql, severidad: bloqueante, minimo: 1, maximo: 1000000000,
+       sql: "SELECT count(*) FROM silver_oferta_diaria WHERE corredor = 'Madrid-Barcelona'"}
+    # Iryo no publica en el NAP, así que su ausencia es esperada; un operador NUEVO conviene verlo.
+    - {nombre: operadores_conocidos,        tipo: dominio, columna: operador, valores: [renfe, ouigo], severidad: aviso}
+    # La serie solo crece hacia delante y el NAP publica con unos días de retraso.
+    - {nombre: serie_actualizada,           tipo: sql, severidad: aviso, maximo: 30,
+       sql: "SELECT datediff(current_date(), max(fecha)) FROM silver_oferta_diaria"}
+
+  silver_ml_ocupacion_diaria:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 30, severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [fecha, ocupacion, plausible], severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha], severidad: bloqueante}
+    - {nombre: ocupacion_positiva,          tipo: rango, columna: ocupacion, minimo: 0, severidad: bloqueante}
+    # `plausible` tiene que ser exactamente «ocupación <= 100 %»: si se desincroniza, los agregados que filtran
+    # por plausible dejarían pasar días imposibles sin que nadie lo note.
+    - {nombre: plausible_coincide_con_el_techo, tipo: sql, severidad: bloqueante,
+       sql: "SELECT count(*) FROM silver_ml_ocupacion_diaria WHERE plausible <> (ocupacion <= 1.0)"}
+    # 21 de los 25 imposibles son fin de semana por el problema de trenes contra plazas (ver docs/modelo-ocupacion.md).
+    # Que suba de un tercio significaría que el denominador ha empeorado y hay que mirarlo.
+    - {nombre: imposibles_bajo_control,     tipo: sql, severidad: aviso, maximo: 33,
+       sql: "SELECT CAST(100 * count_if(NOT plausible) / count(*) AS INT) FROM silver_ml_ocupacion_diaria"}
+
+  silver_turismo_mensual:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 24, severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [fecha, origen, destino, turistas], severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha, origen, destino], severidad: bloqueante}
+    - {nombre: turistas_positivos,          tipo: rango, columna: turistas, minimo: 0, severidad: bloqueante}
+    # Tempus3 usa el mismo campo para meses, trimestres y semestres: una fila que no sea el día 1 de un mes
+    # significaría que la serie descargada no es la mensual y el perfil de `base_mes` saldría mal.
+    - {nombre: siempre_el_primero_del_mes,  tipo: sql, severidad: bloqueante,
+       sql: "SELECT count(*) FROM silver_turismo_mensual WHERE day(fecha) <> 1"}
+    - {nombre: destino_barcelona_presente,  tipo: sql, severidad: bloqueante, minimo: 1, maximo: 1000000,
+       sql: "SELECT count(*) FROM silver_turismo_mensual WHERE destino = 'Barcelona'"}
+    # El INE publica TMOV con unos meses de retraso.
+    - {nombre: serie_actualizada,           tipo: sql, severidad: aviso, maximo: 8,
+       sql: "SELECT months_between(current_date(), max(fecha)) FROM silver_turismo_mensual"}
+
+  silver_festivos:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 10, severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [fecha, nombre], severidad: bloqueante}
+    # El contrato de la predicción admite UNA fila por fecha.
+    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha], severidad: bloqueante}
+
+  silver_meteo:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 30, severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [fecha, ciudad], severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha, ciudad], severidad: bloqueante}
+    - {nombre: las_dos_cabeceras,           tipo: dominio, columna: ciudad, valores: [MAD, BCN], severidad: bloqueante}
+    # AEMET deja huecos cuando no publica; se dejan vacíos en vez de inventar un cero, así que esto es un aviso.
+    - {nombre: temperatura_razonable,       tipo: sql, severidad: aviso,
+       sql: "SELECT count(*) FROM silver_meteo WHERE temperatura_media < -20 OR temperatura_media > 50"}
+
+  # ---- Gold del grupo «corredor» ----
+  gold_fact_oferta_diaria:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 100, severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha_id, corredor, operador_id], severidad: bloqueante}
+    - {nombre: sin_nulos,                   tipo: no_nulos, columnas: [fecha_id, fecha, corredor, operador_id, trenes], severidad: bloqueante}
+    - {nombre: fecha_en_la_dimension,       tipo: referencia, columnas: [fecha_id], tabla: gold_dim_fecha, severidad: bloqueante}
+    - {nombre: operador_en_la_dimension,    tipo: referencia, columnas: [operador_id], tabla: gold_dim_operador, severidad: aviso}
+    # Conciliación con Silver: Gold agrupa por operador_id, así que el total de trenes tiene que coincidir.
+    - {nombre: cuadra_con_silver,           tipo: sql, severidad: bloqueante,
+       sql: "SELECT abs((SELECT sum(trenes) FROM gold_fact_oferta_diaria) - (SELECT sum(trenes) FROM silver_oferta_diaria))"}
+
+  gold_fact_ocupacion_diaria:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 30, severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha_id], severidad: bloqueante}
+    - {nombre: sin_nulos,                   tipo: no_nulos, columnas: [fecha_id, fecha, corredor, ocupacion, plausible], severidad: bloqueante}
+    - {nombre: fecha_en_la_dimension,       tipo: referencia, columnas: [fecha_id], tabla: gold_dim_fecha, severidad: bloqueante}
+    - {nombre: cuadra_con_silver,           tipo: sql, severidad: bloqueante,
+       sql: "SELECT abs((SELECT count(*) FROM gold_fact_ocupacion_diaria) - (SELECT count(*) FROM silver_ml_ocupacion_diaria))"}
+
+  gold_fact_turismo_mensual:
+    - {nombre: filas_minimas,               tipo: filas_min, minimo: 24, severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [anio, mes, origen, destino], severidad: bloqueante}
+    - {nombre: sin_nulos,                   tipo: no_nulos, columnas: [anio, mes, origen, destino, turistas], severidad: bloqueante}
+    - {nombre: mes_valido,                  tipo: rango, columna: mes, minimo: 1, maximo: 12, severidad: bloqueante}
+    # La cuota solo se calcula en trimestres completos; donde esté, los tres meses tienen que sumar 1.
+    - {nombre: la_cuota_suma_uno_por_trimestre, tipo: sql, severidad: bloqueante,
+       sql: "SELECT count(*) FROM (SELECT origen, destino, anio, trimestre, sum(cuota_del_trimestre) AS s FROM gold_fact_turismo_mensual WHERE cuota_del_trimestre IS NOT NULL GROUP BY origen, destino, anio, trimestre) q WHERE abs(s - 1) > 0.0001"}

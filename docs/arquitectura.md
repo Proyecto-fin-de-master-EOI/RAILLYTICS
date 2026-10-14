@@ -54,7 +54,7 @@ si fue bien. Ese cuaderno vive en el bucket de Gold porque es una tabla que se c
 
 ## Paso a paso, con sus ficheros
 
-### Origen · las 12 fuentes
+### Origen · las 13 fuentes
 
 Todo lo que entra está declarado en `config/data_sources.yml`. Dar de alta una fuente nueva son seis
 líneas ahí: no hay que tocar código, porque el DAG lee ese fichero.
@@ -67,6 +67,7 @@ líneas ahí: no hay que tocar código, porque el DAG lee ese fichero.
 | `boe_calendario_laboral_*` (2) | xml | festivos nacionales y por comunidad |
 | `renfe_*` (2) | json | posición y retrasos de los trenes en tiempo real |
 | `crtm` (1) | zip | GTFS de Madrid; ejemplo del framework |
+| `ine_turismo_*` (1) | json | turistas Madrid→Barcelona mes a mes; el único nivel mensual |
 
 ### Paso 1 · descarga y quality gates — `make 00_ingest`
 
@@ -119,9 +120,16 @@ tener clara una mezcla**: no todo lo que hay en Silver es real.
 > Los jobs reales de Silver para esas dos tablas **no existen todavía**, y de ellas comen dos de los
 > hechos de Gold. Lo dice la cabecera del propio `silver_sample.py`.
 
+De `viajeros_enriquecidos`, **una de sus tres dimensiones ya no es inventada**: la cuota de viajeros
+de cada operador sale de la columna `Empresa` del CSV de CNMC (`make cuotas-operador`), que la publica
+por trimestre y corredor. Estación y línea siguen siendo supuestos, y no hay forma de medirlos: nadie
+publica viajeros por estación en este corredor. El reparto entre Renfe y Avlo también sigue siendo
+supuesto, porque CNMC agrega las dos marcas bajo la misma empresa.
+
 **Tablas de referencia** — cargas iniciales, no van en el DAG
 - `python/raillytics/ingesta/boe_festivos.py` → `festivos` (`make festivos`)
 - `python/raillytics/ingesta/aemet_historico.py` → `meteo` (`make meteo`)
+- `python/raillytics/ingesta/ine_turismo.py` → `turismo_mensual` (`make turismo`)
 - `python/raillytics/ingesta/nap_historico.py` + `nap_oferta.py` → `oferta_diaria` (`make nap-oferta`)
 - `python/raillytics/ingesta/referencia.py` — las escribe en el lago y registra la carga
 
@@ -132,7 +140,27 @@ tener clara una mezcla**: no todo lo que hay en Silver es real.
 Tablas preparadas para responder rápido: los hechos y las dimensiones.
 
 - `src/main/scala/raillytics/gold/GoldBuilder.scala`
-- `src/main/resources/gold/*.sql` — 9 ficheros: 4 dimensiones y 5 hechos
+- `src/main/resources/gold/*.sql` — 13 ficheros: 4 dimensiones (una con dos variantes) y 8 hechos
+
+**Tres grupos, y los dos últimos son opcionales**: si falta alguna de sus tablas Silver, el grupo se
+omite con un aviso en vez de fallar. Quien solo tenga el Silver sintético no tiene por qué haber
+lanzado las cargas iniciales.
+
+| grupo | hechos | de dónde | ¿real? |
+| --- | --- | --- | --- |
+| núcleo | `fact_viajeros`, `fact_puntualidad` | las dos tablas Silver sintéticas | no |
+| `mercado` | `fact_mercado_trimestral`, `fact_precio_trimestral`, `fact_precio_mensual` | CNMC | **sí** |
+| `corredor` | `fact_oferta_diaria`, `fact_ocupacion_diaria`, `fact_turismo_mensual` | NAP, INE y la ocupación | **sí** / mitad |
+
+**`dim_fecha` tiene dos variantes y conviene saber por qué.** La del núcleo
+(`dim_fecha.sql`) saca los días de las dos tablas sintéticas y el festivo de la marca que genera el
+propio generador. Cuando el grupo `corredor` está disponible se construye con
+`dim_fecha_corredor.sql`, que escribe la MISMA tabla pero:
+
+- cubre también las fechas de los hechos reales —sin eso se quedaban sin atributos al enlazar—;
+- **toma los festivos del BOE** en vez de la marca sintética, y añade su **ámbito** (nacional, Madrid
+  o Cataluña: un festivo en un solo extremo del corredor mueve viajes igual);
+- añade la meteo observada de las dos cabeceras.
 
 → `s3://raillytics-gold/`
 
@@ -209,21 +237,46 @@ No van en el pipeline diario: son datos históricos que se traen una vez. Las cu
 
 ```bash
 make nap-historico    # ~20 min · 572 ficheros, 420 MB
-make nap-oferta       # ~10 min · abre esos ZIP y cuenta trenes por día
+make nap-oferta       # ~14 min la primera vez, segundos las siguientes (ver la caché, más abajo)
 make festivos         # segundos · el calendario laboral del BOE
 make meteo            # ~5 min · AEMET solo sirve 15 días por petición
+make turismo          # segundos · la serie mensual del INE
 ```
 
 Sin `festivos` y `meteo`, `make 07_prediccion` falla diciendo qué origen no encuentra.
 
+**La caché de `nap-oferta`** es lo que hace que ese paso quepa en una carga diaria. Parsear un
+snapshot de Renfe tarda 1,45 s y el histórico tiene 485, así que una pasada completa son unos 14 min
+—y antes se repetían enteros cada día para añadir un fichero—. Lo que se guarda en
+`data/cache/nap_oferta/` son **funciones puras del contenido de cada ZIP** (su vigencia, si es
+coherente y los trenes por día), no la serie: la elección de qué snapshot va a cada día se recalcula
+siempre, porque depende de todos los ficheros. Por eso la serie con caché es la misma que sin ella, y
+hay un test que lo comprueba comparando las dos. Una pasada diaria cuesta **cuatro cálculos, lo mismo
+da cuánto histórico haya**. Con `make nap-oferta OFERTA_ARGS="--sin-cache"` se fuerza la pasada completa.
+
+Las dos calibraciones no escriben nada, solo informan de qué coeficientes propone el dato medido:
+
+```bash
+make calibrar         # el día de la semana, contra los trenes que circulan (NAP)
+make perfil-mensual   # el peso de cada mes del trimestre, contra el turismo del INE
+make cuotas-operador  # la cuota de cada operador, contra la columna Empresa de CNMC
+```
+
 ### 3. El pipeline, paso a paso
 
 ```bash
-make 00_ingest              # descarga las 12 fuentes
+make 00_ingest              # descarga las 13 fuentes
 make 01_raw-uploader        # ⚠ se queda abierto
 make 02_parquet-converter   # ⚠ se queda abierto
 make 04_silver              # ⚠ se queda abierto
+make nap-oferta             # Silver que no hace Spark: la oferta del NAP, desde el histórico de GTFS
+make ml-dataset             # Silver derivado: la tabla de entrenamiento
 make 05_gold
+make cobertura-ingesta      # Gold que escribe Python: los KPI de calidad...
+make completitud-silver
+make ml-modelo              # ...las métricas del modelo...
+make ml-franja              # ...la ocupación por franja...
+make precio-recomendado     # ...y el precio, que necesita la franja
 make 06_superset-import
 make 07_prediccion TRIMESTRE=2026-T4
 ```
@@ -239,12 +292,15 @@ mitad de un lote deja ficheros movidos sin su fila de trazabilidad.
 make carga-e2e
 ```
 
-Hace los siete pasos seguidos y resuelve lo de las cintas: las lanza una a una, mira si queda trabajo
+Hace los ocho pasos seguidos y resuelve lo de las cintas: las lanza una a una, mira si queda trabajo
 pendiente, espera a que los checkpoints de Spark estén asentados y las para en el punto correcto.
+También lanza lo que no es Spark, que es fácil de olvidar a mano: las dos tablas Silver de lote al
+final del paso `silver`, y en el paso `metricas` las cinco tablas Gold que escribe Python.
 
 ```bash
 make carga-e2e E2E_ARGS="--sin-prediccion"   # sin el LLM, no necesita Ollama
 make carga-e2e E2E_ARGS="--desde silver"     # reanudar desde una fase
+make carga-e2e E2E_ARGS="--desde metricas"   # solo los KPI, sin repetir Silver ni Gold (21 s)
 make carga-e2e TRIMESTRE=2026-T4             # qué trimestre predecir
 ```
 
@@ -289,7 +345,7 @@ make carga-e2e
 | Mercado trimestral | real | CNMC, de principio a fin |
 | `festivos`, `meteo`, `oferta_diaria` | real | BOE, AEMET y NAP |
 | Los 4 orígenes de la predicción | real | ninguno lee ya la muestra sintética |
-| `viajeros_enriquecidos` | **sintético** | no existe como dato abierto: tiene que salir de la propia DTC |
+| `viajeros_enriquecidos` | **sintético, con la cuota de operador real** | el detalle diario no existe como dato abierto, pero el reparto entre operadores sí lo publica CNMC |
 | `puntualidad_enriquecida` | **sintético** | el GTFS-RT ya se ingiere y nadie lo consume todavía |
 
 Las dos sintéticas no son un descuido: son el andamio que permitió desarrollar Gold y los dashboards

@@ -16,10 +16,19 @@ mismos prefijos; Gold (la app Spark GoldBuilderApp) y Superset no cambian.
 Los datos NO son reales y cubren SOLO el corredor AVE Madrid–Barcelona (una
 línea, AVE-MAD-BCN, y sus cuatro estaciones: Madrid Puerta de Atocha, Zaragoza
 Delicias, Camp de Tarragona y Barcelona Sants) y sus cuatro operadores (Renfe,
-Iryo, Ouigo y Avlo), con códigos inventados. Cuotas, servicios y retrasos de cada
-operador son inventados. Demanda
-y retrasos siguen un modelo simple (estacionalidad, día de la semana, festivos,
-lluvia, hora punta) para que los dashboards tengan algo que contar.
+Iryo, Ouigo y Avlo), con códigos inventados. Demanda y retrasos siguen un modelo
+simple (estacionalidad, día de la semana, festivos, lluvia, hora punta) para que
+los dashboards tengan algo que contar.
+
+Qué parte es supuesto y qué parte no, porque importa al presentar la tabla:
+
+  cuota de cada operador   MEDIDA: sale de la columna `Empresa` de CNMC
+                           (`make cuotas-operador`). El reparto interno entre
+                           Renfe y Avlo sí es supuesto: CNMC las agrega.
+  estación y línea         supuesto, y no hay forma de medirlo: nadie publica
+                           viajeros por estación en este corredor.
+  estacionalidad mensual   MEDIDA: índice del turismo del INE (ver _FACTOR_MES).
+  servicios y retrasos     inventados.
 
 Uso:  python -m raillytics.procesamiento.silver_sample [--start AAAA-MM-DD] [--end AAAA-MM-DD] [--seed N]
 """
@@ -48,6 +57,10 @@ VIAJEROS_COLUMNS = (
     "linea_id", "linea_nombre", "tipo_tren", "origen", "destino",
     "operador_id", "operador_nombre", "operador_empresa", "operador_segmento",
     "viajeros", "temperatura_media", "precipitacion_mm", "condicion_meteo", "es_festivo", "festivo_nombre",
+    # Marca de calidad que pide el plan: True cuando la meteo de ese día y provincia NO viene de
+    # AEMET y se ha simulado. Pasa en Zaragoza y Tarragona, que no tienen estación propia dada de
+    # alta, y en las fechas que AEMET no publicó.
+    "meteo_imputada",
 )
 PUNTUALIDAD_COLUMNS = (
     "fecha", "servicio_id", "linea_id", "operador_id", "estacion_id", "hora_prevista", "hora_real", "retraso_min", "estado",
@@ -57,6 +70,15 @@ PUNTUALIDAD_COLUMNS = (
 CORREDOR = "AVE-MAD-BCN"  # la única línea del ejemplo
 TIPOS_TREN = ("AVE",)
 CONDICIONES_METEO = ("despejado", "nuboso", "lluvia", "tormenta")
+
+# Qué provincia del corredor cubre cada estación de AEMET dada de alta. Zaragoza y Tarragona no
+# están: no se les asigna la meteo de otra ciudad —Zaragoza tiene un clima continental muy distinto
+# del de Madrid— sino que se quedan con la simulada y marcadas como imputadas.
+PROVINCIA_POR_CIUDAD_AEMET = {"MAD": "Madrid", "BCN": "Barcelona"}
+# Con la climatología diaria de AEMET (temperatura y precipitación) no se puede saber si estuvo
+# nublado, así que «nuboso» no aparece en los días reales. Los umbrales son los mismos que usa la
+# simulación para distinguir tormenta de lluvia.
+MM_TORMENTA = 15.0
 ESTADOS = ("realizado", "cancelado")
 
 
@@ -106,11 +128,34 @@ LINEAS = (
 )
 
 # Operadores del corredor: cuotas que suman 1 y 28 servicios al día en total. Avlo es la marca low cost de Renfe.
+#
+# CUOTAS CALIBRADAS (2026-10-09). Ya no son inventadas: el CSV de indicadores de CNMC trae columna
+# `Empresa`, así que el reparto de viajeros entre operadores está MEDIDO. Media de los ocho
+# trimestres más recientes del corredor Madrid-Barcelona (`make cuotas-operador` para recalcularlo):
+#
+#   empresa           cuota medida   rango observado   antes      ahora
+#   Renfe Viajeros        60.3 %      57.1 - 62.3 %     0.55      0.603  (RENFE 0.439 + AVLO 0.164)
+#   Iryo                  23.7 %      22.0 - 24.8 %     0.25      0.237
+#   OUIGO                 16.0 %      14.9 - 19.0 %     0.20      0.160
+#
+# Solo los ocho últimos trimestres porque el corredor se liberalizó por tramos (OUIGO entró en 2021,
+# Iryo en diciembre de 2022): promediar desde 2016 mezclaría un monopolio con un mercado de tres.
+#
+# Redondeadas a tres decimales suman 1.000 exacto, que es el invariante que el generador necesita:
+# si no sumaran 1, la demanda total del corredor cambiaría sin que nadie lo haya decidido.
+#
+# LO QUE SIGUE SIENDO SUPUESTO: el reparto entre Renfe y Avlo. CNMC las agrega bajo «Renfe Viajeros»
+# porque son la misma compañía, así que se conserva la proporción que ya tenía el generador
+# (RENFE 72.7 %, AVLO 27.3 % de la empresa) y eso no mejora con este cambio.
+#
+# Y lo que no cambia: `servicios_dia`, `retraso_medio_min`, `p_cancelacion` y `factor_finde` siguen
+# inventados. El NAP da trenes al día por operador y serviría para calibrar `servicios_dia`, pero no
+# cubre a Iryo, así que quedaría medio medido y medio supuesto.
 OPERADORES = (
-    Operador("RENFE", "Renfe", "Renfe Viajeros", "Alta velocidad", 0.40, 12, 2.5, 0.004, 1.00),
-    Operador("IRYO", "Iryo", "ILSA (Trenitalia, Air Nostrum)", "Alta velocidad", 0.25, 7, 2.2, 0.003, 1.00),
-    Operador("OUIGO", "Ouigo", "SNCF Voyageurs España", "Low cost", 0.20, 5, 3.4, 0.008, 1.08),
-    Operador("AVLO", "Avlo", "Renfe Viajeros", "Low cost", 0.15, 4, 2.8, 0.006, 1.06),
+    Operador("RENFE", "Renfe", "Renfe Viajeros", "Alta velocidad", 0.439, 12, 2.5, 0.004, 1.00),   # antes 0.40
+    Operador("IRYO", "Iryo", "ILSA (Trenitalia, Air Nostrum)", "Alta velocidad", 0.237, 7, 2.2, 0.003, 1.00),  # antes 0.25
+    Operador("OUIGO", "Ouigo", "SNCF Voyageurs España", "Low cost", 0.160, 5, 3.4, 0.008, 1.08),   # antes 0.20
+    Operador("AVLO", "Avlo", "Renfe Viajeros", "Low cost", 0.164, 4, 2.8, 0.006, 1.06),            # antes 0.15
 )
 
 # Factores de demanda del AVE. Índice 0 = lunes ... 6 = domingo.
@@ -118,8 +163,40 @@ _FACTOR_DIA_SEMANA = {
     "AVE": (1.05, 0.85, 0.85, 0.95, 1.25, 0.80, 1.20),
 }
 # Índice 0 = enero ... 11 = diciembre.
+#
+# ESTACIONALIDAD CALIBRADA (2026-10-11). Antes era inventada, y estaba equivocada en el mes que más
+# importa: suponía 1.20 en agosto —un pico de verano— y el dato dice 0.816, el mes MÁS BAJO del año.
+# Un 47 % de error y en dirección contraria.
+#
+# Sale del turismo interprovincial del INE (silver_turismo_mensual, operación TMOV): para cada año
+# completo se divide cada mes por la media de su año y se promedia sobre 2022-2025 (2019 y 2026 están
+# incompletos; 2020 y 2021 fuera por la pandemia). `make perfil-mensual` lo recalcula.
+#
+#   mes    medido    t vs 1    antes      mes    medido    t vs 1    antes
+#   ene     0.856     -2.0      0.85      jul     1.071     +2.4      1.20
+#   feb     0.886     -1.8      0.85      ago     0.816     -4.5      1.20  <- el error gordo
+#   mar     1.036     +0.8      0.95      sep     0.935     -3.2      1.05
+#   abr     1.006     +0.4      1.05      oct     1.072     +5.3      1.00
+#   may     1.117     +2.8      1.00      nov     1.060     +5.9      0.95
+#   jun     1.124     +8.7      1.05      dic     1.020     +0.5      1.10
+#
+# Que agosto sea el mínimo tiene sentido en un corredor de negocio: en agosto el viaje de trabajo
+# desaparece y el madrileño se va a la costa, no a Barcelona. La amplitud apenas cambia (1.38x medida
+# frente a 1.41x inventada): el generador tenía bien la MAGNITUD de la estacionalidad y mal la FORMA.
+#
+# Dos cosas que conviene tener claras:
+#   - TMOV es un PROXY: cuenta viajes en todos los medios de transporte y solo los que implican
+#     pernoctación. Esta tabla es sintética, así que el objetivo es que sea PLAUSIBLE, no inferir la
+#     demanda real; para eso está `base_mes` de config/reglas_demanda.yml, que solo usa la forma
+#     dentro del trimestre y se queda en 1.000 en los meses no significativos.
+#   - Se usan los doce valores medidos, incluidos los que no se distinguen de 1 (mar, abr, dic), por
+#     la misma razón: aquí no se afirma nada sobre el mundo, se genera una muestra.
+#
+# Coherencia con `base_mes`, que se calculó por otro camino: las dos dicen que agosto es bajo (0.816
+# aquí, 0.873 dentro de su trimestre) y julio alto dentro del verano. No se contradicen.
 _FACTOR_MES = {
-    "AVE": (0.85, 0.85, 0.95, 1.05, 1.00, 1.05, 1.20, 1.20, 1.05, 1.00, 0.95, 1.10),
+    # antes: (0.85, 0.85, 0.95, 1.05, 1.00, 1.05, 1.20, 1.20, 1.05, 1.00, 0.95, 1.10)
+    "AVE": (0.856, 0.886, 1.036, 1.006, 1.117, 1.124, 1.071, 0.816, 0.935, 1.072, 1.060, 1.020),
 }
 _FACTOR_FESTIVO = {"AVE": 1.15}
 # (tipo de tren, condición meteorológica) -> factor sobre la demanda; el resto, 1.0.
@@ -172,18 +249,30 @@ def _domingo_de_pascua(year: int) -> date:
     return date(year, month, day + 1)
 
 
-def generate_silver_sample(start: date, end: date, seed: int = 42) -> SilverSample:
-    """Genera las dos tablas Silver para el rango [start, end] (ambos inclusive)."""
+def generate_silver_sample(start: date, end: date, seed: int = 42, *,
+                           festivos_reales: dict[date, str] | None = None,
+                           meteo_real: pd.DataFrame | None = None) -> SilverSample:
+    """Genera las dos tablas Silver para el rango [start, end] (ambos inclusive).
+
+    `festivos_reales` y `meteo_real` son el enriquecimiento de verdad, y es lo que pide el plan
+    cuando habla de «cruzar los viajeros con meteorología y festivos». Si no se pasan, se simulan y
+    la función sigue siendo pura: es lo que permite probarla sin lago y sin red.
+
+    Lo que aporta pasarlos:
+    - los festivos del BOE traen también los de Madrid y Cataluña, no solo los diez nacionales que
+      genera la regla; para un corredor que une las dos ciudades eso cambia qué días son festivos;
+    - la meteo de AEMET es la observada, frente a un seno con ruido.
+    """
     if end < start:
         raise ValueError(f"el rango está invertido: {start} > {end}")
     rng = np.random.default_rng(seed)
     fechas = pd.date_range(start, end, freq="D")
-    festivos = {
+    festivos = festivos_reales if festivos_reales is not None else {
         dia: nombre
         for year in range(start.year, end.year + 1)
         for dia, nombre in festivos_nacionales(year).items()
     }
-    meteo = _meteo(rng, fechas)
+    meteo = _con_meteo_real(_meteo(rng, fechas), meteo_real)
     return SilverSample(
         viajeros=_viajeros(rng, fechas, meteo, festivos),
         puntualidad=_puntualidad(rng, fechas, meteo, festivos),
@@ -270,6 +359,36 @@ def _meteo(rng: np.random.Generator, fechas: pd.DatetimeIndex) -> pd.DataFrame:
             "condicion_meteo": condicion,
         }
     )
+
+
+def _con_meteo_real(simulada: pd.DataFrame, real: pd.DataFrame | None) -> pd.DataFrame:
+    """Sustituye la meteo simulada por la de AEMET donde la haya, y marca el resto como imputada.
+
+    No se rellena una provincia con la estación de otra: Zaragoza no tiene el clima de Madrid. Lo que
+    no cubre AEMET se queda simulado y marcado, que es la diferencia entre un hueco declarado y un
+    dato inventado que parece medido.
+    """
+    salida = simulada.copy()
+    salida["meteo_imputada"] = True
+    if real is None or real.empty:
+        return salida
+
+    r = real.copy()
+    r["provincia"] = r["ciudad"].map(PROVINCIA_POR_CIUDAD_AEMET)
+    r = r.dropna(subset=["provincia", "temperatura_media"])
+    r["fecha"] = pd.to_datetime(r["fecha"])
+    r = r[["fecha", "provincia", "temperatura_media", "precipitacion_mm"]]
+
+    unido = salida.merge(r, on=["fecha", "provincia"], how="left", suffixes=("", "_real"))
+    hay = unido["temperatura_media_real"].notna()
+    unido.loc[hay, "temperatura_media"] = unido.loc[hay, "temperatura_media_real"].round(1)
+    mm_real = unido.loc[hay, "precipitacion_mm_real"].fillna(0.0)
+    unido.loc[hay, "precipitacion_mm"] = mm_real.round(1)
+    unido.loc[hay, "condicion_meteo"] = np.select(
+        [mm_real >= MM_TORMENTA, mm_real > 0], ["tormenta", "lluvia"], default="despejado"
+    )
+    unido.loc[hay, "meteo_imputada"] = False
+    return unido.drop(columns=["temperatura_media_real", "precipitacion_mm_real"])
 
 
 def _viajeros(
@@ -383,6 +502,35 @@ def _puntualidad(
     return df[list(PUNTUALIDAD_COLUMNS)].sort_values(["fecha", "hora_prevista", "linea_id", "operador_id"], ignore_index=True)
 
 
+def _enriquecimiento_real(layout: LakeLayout, s3: "S3Settings | None"):
+    """Lee de Silver los festivos del BOE y la meteo de AEMET, si están.
+
+    Son tablas de referencia que construyen `make festivos` y `make meteo`. Si no están —en un clon
+    recién hecho, por ejemplo— se avisa y se sigue simulando: el generador tiene que poder correr
+    solo, que para eso existe.
+    """
+    con = connect(s3)
+    festivos = meteo = None
+    try:
+        filas = con.execute(
+            f"SELECT fecha, nombre FROM read_parquet('{layout.silver_glob('festivos')}')"
+        ).fetchall()
+        festivos = {f: n for f, n in filas}
+        logger.info("festivos del BOE: %d días", len(festivos))
+    except Exception:
+        logger.warning("no hay tabla de festivos en Silver: se simulan (lanza `make festivos`)")
+    try:
+        meteo = con.execute(
+            f"SELECT fecha, ciudad, temperatura_media, precipitacion_mm "
+            f"FROM read_parquet('{layout.silver_glob('meteo')}')"
+        ).df()
+        logger.info("meteo de AEMET: %d observaciones de %d ciudades",
+                    len(meteo), meteo["ciudad"].nunique())
+    except Exception:
+        logger.warning("no hay tabla de meteo en Silver: se simula (lanza `make meteo`)")
+    return festivos, meteo
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m raillytics.procesamiento.silver_sample",
@@ -391,13 +539,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--start", type=date.fromisoformat, help="primer día (AAAA-MM-DD); por defecto, 365 días antes de --end")
     parser.add_argument("--end", type=date.fromisoformat, help="último día (AAAA-MM-DD); por defecto, ayer")
     parser.add_argument("--seed", type=int, default=42, help="semilla: mismas fechas y semilla producen los mismos datos")
+    parser.add_argument("--sin-enriquecimiento-real", action="store_true",
+                        help="simula también los festivos y la meteo en vez de leerlos de Silver "
+                             "(para generar la muestra sin lago)")
     args = parser.parse_args(argv)
     end = args.end or date.today() - timedelta(days=1)
     start = args.start or end - timedelta(days=364)
 
+    parser_sin_real = args.sin_enriquecimiento_real
+
     layout = LakeLayout.from_env()
     s3 = S3Settings.from_env() if layout.uses_s3 else None
-    sample = generate_silver_sample(start, end, args.seed)
+    festivos_reales = meteo_real = None
+    if not parser_sin_real:
+        festivos_reales, meteo_real = _enriquecimiento_real(layout, s3)
+    sample = generate_silver_sample(start, end, args.seed,
+                                    festivos_reales=festivos_reales, meteo_real=meteo_real)
     written = write_silver_sample(connect(s3), layout, sample)
 
     print(f"Silver sintético {start} .. {end} (semilla {args.seed}) -> {layout.silver_root}")

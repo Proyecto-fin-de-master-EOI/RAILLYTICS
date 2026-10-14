@@ -9,6 +9,14 @@
 #   options  cómo se lee el fichero: delimiter y encoding en csv, rowTag en xml (la descarga Python y L2)
 #   checks   reglas de la descarga sobre un csv: min_bytes, min_filas, columnas (solo las aplica Python)
 #   silver   tablas que construye `make 04_silver` desde la fuente: {tabla, modo: snapshot | incremental}
+#   obligatoria  la fuente sostiene un entregable del corredor. Es el denominador del KPI de
+#            cobertura de ingesta (`make completitud`): si falta una, la ingesta del día no
+#            está completa. Son seis familias y nueve entradas: los indicadores y los dos
+#            precios de CNMC, las dos estaciones de AEMET, los dos GTFS del NAP y los dos años
+#            del BOE.
+#            NO son obligatorias: `crtm` y los dos `renfe_*` de tiempo real, que son los
+#            ejemplos con los que se montó el framework y hoy no los consume nadie; y el INE,
+#            que hace falta para RECALIBRAR `base_mes` pero no para que la predicción corra.
 sources:
   - id: crtm
     name: "CRTM - Consorcio Regional de Transportes de Madrid (GTFS estático)"
@@ -29,6 +37,7 @@ sources:
   # `checks`: si el servidor devuelve otra cosa (página de mantenimiento, columnas renombradas, fichero truncado) la descarga lo
   # rechaza y el fichero va a data/bronze_rejected/. `silver`: tablas que construye `make 04_silver` (SQL en resources/silver/).
   - id: cnmc_indicadores
+    obligatoria: true
     name: "CNMC - Indicadores trimestrales del transporte ferroviario de viajeros (viajeros, plazas, tren·km, ingresos por corredor y empresa)"
     url: "https://catalogodatos.cnmc.es/dataset/e608b7b2-0b3a-4816-a4f2-54eb3d913790/resource/611667a1-b294-45e3-9283-6e49ea2f9bbc/download/ds_24406_1.csv"
     format: csv
@@ -42,6 +51,7 @@ sources:
     silver:
       - {tabla: cnmc_trimestral, modo: snapshot}
   - id: cnmc_precio_trimestral
+    obligatoria: true
     name: "CNMC - Indicador del precio medio trimestral por trayecto"
     url: "https://catalogodatos.cnmc.es/dataset/ed44fc19-79d5-4222-b724-81e430c29a36/resource/97a05b72-874d-493f-88d8-90b850dcdc66/download/ds_24409_1.csv"
     format: csv
@@ -53,6 +63,7 @@ sources:
     silver:
       - {tabla: cnmc_precio_trimestral, modo: snapshot}
   - id: cnmc_precio_mensual
+    obligatoria: true
     name: "CNMC - Indicador del precio medio mensual por trayecto"
     url: "https://catalogodatos.cnmc.es/dataset/e880b3ca-6b78-4b84-ad93-6e645e6938d0/resource/de217355-6f5d-48f6-8c72-31cd86eefe00/download/ds_24410_1.csv"
     format: csv
@@ -69,12 +80,14 @@ sources:
   # ventana de 15 días —el máximo que admite la API— que termina hace 5, porque AEMET publica
   # con retardo y pedir "hasta hoy" devuelve un tramo vacío.
   - id: aemet_madrid_barajas
+    obligatoria: true
     name: "AEMET - Valores climatológicos diarios, Madrid-Barajas (estación 3195)"
     url: "https://opendata.aemet.es/opendata/api/valores/climatologicos/diarios/datos/fechaini/{fecha_ini}T00:00:00UTC/fechafin/{fecha_fin}T23:59:59UTC/estacion/3195"
     format: json
     downloader: aemet
     auth: {env: AEMET_API_KEY, header: api_key}
   - id: aemet_barcelona_prat
+    obligatoria: true
     name: "AEMET - Valores climatológicos diarios, Barcelona-El Prat (estación 0076)"
     url: "https://opendata.aemet.es/opendata/api/valores/climatologicos/diarios/datos/fechaini/{fecha_ini}T00:00:00UTC/fechafin/{fecha_fin}T23:59:59UTC/estacion/0076"
     format: json
@@ -87,12 +100,14 @@ sources:
   # Requiere clave (NAP_API_KEY en el .env; se pide en nap.transportes.gob.es, Editar Perfil).
   # Iryo no publica en el NAP, así que la oferta cubre Renfe y OUIGO, no el corredor completo.
   - id: nap_gtfs_renfe
+    obligatoria: true
     name: "NAP - GTFS de Renfe (Media, Larga Distancia y AVE), último snapshot del histórico"
     url: "https://nap.transportes.gob.es/api/v2/conjunto-dato/897/historico"
     format: zip
     downloader: nap
     auth: {env: NAP_API_KEY, header: ApiKey}
   - id: nap_gtfs_ouigo
+    obligatoria: true
     name: "NAP - GTFS de OUIGO, último snapshot del histórico"
     url: "https://nap.transportes.gob.es/api/v2/conjunto-dato/1515/historico"
     format: zip
@@ -109,12 +124,36 @@ sources:
   # No declaran `silver`: la tabla de festivos sale de unir los dos años, y una tabla Silver solo
   # puede declararla una fuente.
   - id: boe_calendario_laboral_2025
+    obligatoria: true
     name: "BOE - Calendario laboral de 2025 (festivos nacionales y por comunidad autónoma)"
     url: "https://www.boe.es/diario_boe/xml.php?id=BOE-A-2024-21316"
     format: xml
     options: {rowTag: documento}
   - id: boe_calendario_laboral_2026
+    obligatoria: true
     name: "BOE - Calendario laboral de 2026 (festivos nacionales y por comunidad autónoma)"
     url: "https://www.boe.es/diario_boe/xml.php?id=BOE-A-2025-21667"
     format: xml
     options: {rowTag: documento}
+  # --- INE (API Tempus3): turismo interprovincial, operación TMOV ---
+  # Tabla 53267, «turistas por provincia de destino desagregados por provincia de origen». El INE la
+  # estima con la POSICIÓN DE TELÉFONOS MÓVILES, no con una encuesta, así que es un conteo y no una
+  # muestra. Serie MENSUAL desde julio de 2019 y sin clave de API.
+  #
+  # Para qué está: es el único dato real de nivel mensual del proyecto. CNMC solo publica trimestres,
+  # así que el reparto diario de la predicción trataba enero y marzo como el mismo nivel. Con esta
+  # tabla se calibra `base_mes` en config/reglas_demanda.yml (`make perfil-mensual`).
+  #
+  # Lo que mide y lo que NO: son viajes en TODOS los medios de transporte, no solo tren, y «turista»
+  # en TMOV implica pernoctación, así que la ida y vuelta en el día no entra. Se usa por su FORMA
+  # (qué peso tiene cada mes), no por su nivel.
+  #
+  # La URL lleva los parámetros dentro porque es un GET sin cuerpo: `tv` repetido filtra el cubo
+  # (FK_Variable 96 = provincia de origen, id 29 = Madrid; 115 = provincia de destino, id 9 =
+  # Barcelona) y `nult` pide los últimos N meses. Los ids se localizan en
+  # servicios.ine.es/wstempus/js/ES/VALORES_GRUPOSTABLA/53267/115.
+  # No declara `silver`: la tabla la construye `make turismo` desde Python, como los festivos.
+  - id: ine_turismo_madrid_barcelona
+    name: "INE - Turistas de Madrid a Barcelona, mensual (operación TMOV, tabla 53267)"
+    url: "https://servicios.ine.es/wstempus/js/ES/DATOS_TABLA/53267?tv=96:29&tv=115:9&nult=100"
+    format: json

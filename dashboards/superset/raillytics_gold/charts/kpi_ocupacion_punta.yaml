@@ -1,0 +1,29 @@
+slice_name: Ocupación en hora punta
+description: El reparto de la demanda entre franjas es una hipótesis declarada, no una medida.
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  metric: ocupacion_punta
+  header_font_size: 0.4
+  subheader: mañana (6-9) y tarde (15-19)
+  subheader_font_size: 0.15
+  y_axis_format: .1%
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: b8a338b9-b18c-51c8-a81f-e7257875d05e
+version: 1.0.0
+dataset_uuid: a9a18854-c41d-5c50-b477-6419955bc983
+is_managed_externally: false
+external_url: null

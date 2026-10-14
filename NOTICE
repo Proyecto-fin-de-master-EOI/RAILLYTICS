@@ -1,0 +1,115 @@
+RAILLYTICS — avisos de licencia y atribución
+============================================
+
+En este repositorio conviven DOS cosas con licencias distintas, y conviene no
+mezclarlas:
+
+1. EL CÓDIGO (Python, Scala, SQL, configuración, documentación propia) es obra
+   propia y no deriva de los datos de terceros. Se publica bajo la licencia MIT
+   del fichero LICENSE.
+
+2. LOS DATOS y las tablas construidas a partir de ellos NO están cubiertos por
+   esa licencia. Los publican terceros con sus propias condiciones, y algunas
+   obligan a cosas concretas al redistribuir. El detalle completo, con el enlace
+   a las condiciones de cada fuente, está en docs/licencias.md.
+
+
+ATRIBUCIÓN OBLIGATORIA
+----------------------
+
+Dos fuentes exigen un texto literal. Hay que reproducirlo al publicar cualquier
+cifra, tabla o gráfico que salga de ellas:
+
+  CNMC (Comisión Nacional de los Mercados y la Competencia)
+  Licencia: Creative Commons Reconocimiento-CompartirIgual 4.0 Internacional
+            (CC BY-SA 4.0) — https://creativecommons.org/licenses/by-sa/4.0/
+
+      Origen de los datos: Comisión Nacional de los Mercados y la Competencia
+
+  INE (Instituto Nacional de Estadística)
+  Licencia: Creative Commons Reconocimiento 4.0 (CC BY 4.0)
+            https://creativecommons.org/licenses/by/4.0/
+  Los datos se tratan (se calculan cuotas mensuales), así que el texto que
+  corresponde es el de elaboración propia:
+
+      Elaboración propia con datos extraídos del sitio web del INE: www.ine.es
+
+Las otras dos fuentes no exigen una fórmula literal, pero se citan igualmente:
+
+  AEMET (Agencia Estatal de Meteorología)
+  Reutilización autorizada citando a AEMET como autor.
+
+      Datos meteorológicos: © AEMET (Agencia Estatal de Meteorología)
+
+  BOE (Boletín Oficial del Estado)
+  Son disposiciones oficiales y no están sujetas a derecho de autor (art. 13
+  del texto refundido de la Ley de Propiedad Intelectual). Se cita el documento
+  concreto porque identifica la versión usada.
+
+      Festivos: resoluciones de la Dirección General de Trabajo publicadas en
+      el BOE (BOE-A-2024-21316 para 2025, BOE-A-2025-21667 para 2026)
+
+  NAP (Punto de Acceso Nacional de Transporte Multimodal, Mº de Transportes)
+  Condiciones de uso PENDIENTES DE CONFIRMAR: su página de aviso legal devuelve
+  404. Existe por el Reglamento Delegado (UE) 2017/1926, que obliga a publicar
+  la información de transporte de viajeros para que terceros la usen, y esa es
+  la finalidad declarada. Hasta confirmarlo se cita la fuente igualmente.
+
+      Horarios: Punto de Acceso Nacional de Transporte Multimodal
+      (Ministerio de Transportes)
+
+
+COMPARTIR IGUAL: QUÉ OBLIGA LA LICENCIA DE LA CNMC
+--------------------------------------------------
+
+CC BY-SA 4.0 impone que las obras DERIVADAS se distribuyan bajo la misma
+licencia. En este proyecto son obra derivada de los datos de la CNMC:
+
+  - las tablas de Silver construidas desde sus CSV
+      silver/cnmc_trimestral, silver/cnmc_precio_trimestral,
+      silver/cnmc_precio_mensual
+  - las tablas de Gold que salen de ellas
+      gold/fact_mercado_trimestral, gold/fact_precio_trimestral,
+      gold/fact_precio_mensual
+  - la ocupación diaria, que usa sus plazas·km como denominador
+      silver/ml_ocupacion_diaria, gold/fact_ocupacion_diaria
+  - los gráficos del cuadro de mandos que muestran cualquiera de las anteriores
+
+Todo eso, si se redistribuye, va bajo CC BY-SA 4.0. El CÓDIGO que las construye
+no es obra derivada de los datos y sigue siendo MIT.
+
+El INE es CC BY 4.0, que NO obliga a compartir igual, así que no añade ninguna
+condición de copyleft. Y una obra bajo CC BY 4.0 se puede incorporar a una obra
+CC BY-SA 4.0: la obra combinada va bajo CC BY-SA 4.0, que es lo que ocurre aquí.
+
+
+LO QUE NO SE PUEDE HACER CON ESTOS DATOS
+----------------------------------------
+
+Las dos licencias prohíben expresamente DESNATURALIZAR el sentido de la
+información. En este proyecto hay dos casos concretos donde eso importa, y están
+documentados en docs/gobierno-datos.md:
+
+  - La serie de turismo del INE (operación TMOV) cuenta viajes en TODOS los
+    medios de transporte y solo los que implican pernoctación. Presentarla como
+    viajeros de tren sería desnaturalizarla. Se usa su FORMA (el peso de cada
+    mes), nunca su nivel.
+
+  - El indicador «viajeros por plaza ofertada» de la CNMC NO es ocupación y pasa
+    del 100 % legítimamente, porque un asiento se vende por tramos. Presentarlo
+    como ocupación sería desnaturalizarlo.
+
+
+DATOS SINTÉTICOS
+----------------
+
+Dos tablas del repositorio NO son datos reales de ninguna fuente: las genera
+python/raillytics/procesamiento/silver_sample.py de forma determinista, y están
+marcadas como tales en docs/gobierno-datos.md.
+
+  silver/viajeros_enriquecidos     el detalle por estación y línea es inventado;
+                                   la cuota de cada operador sí sale de la CNMC
+  silver/puntualidad_enriquecida   inventada entera
+
+No tienen licencia de tercero porque no vienen de ninguno, pero tampoco se
+pueden presentar como medición.

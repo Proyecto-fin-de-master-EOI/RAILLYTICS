@@ -1,0 +1,40 @@
+slice_name: Demanda media prevista
+description: Reparto diario del total trimestral de la CNMC con las reglas de config/reglas_demanda.yml.
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_ultima
+  metric:
+    expressionType: SQL
+    sqlExpression: AVG(viajeros_previstos)
+    label: viajeros/día
+    hasCustomLabel: true
+    optionName: metric_26655443
+    aggregate: null
+    column: null
+    datasourceWarning: false
+  header_font_size: 0.4
+  subheader: viajeros al día · última ejecución
+  subheader_font_size: 0.15
+  y_axis_format: ',d'
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 4756b622-9707-5e8a-97c7-75f7f2a6acfb
+version: 1.0.0
+dataset_uuid: ce2482b5-226e-5980-80be-4ed2706e8696
+is_managed_externally: false
+external_url: null

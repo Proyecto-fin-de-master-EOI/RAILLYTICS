@@ -1,4 +1,4 @@
-database_name: Raillytics Gold (DuckDB)
+database_name: Raillytics Lake (DuckDB)
 sqlalchemy_uri: 'duckdb:///:memory:'
 cache_timeout: null
 expose_in_sqllab: true

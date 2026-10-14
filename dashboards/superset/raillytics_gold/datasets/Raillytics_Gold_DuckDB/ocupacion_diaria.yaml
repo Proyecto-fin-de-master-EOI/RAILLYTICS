@@ -1,0 +1,313 @@
+table_name: ocupacion_diaria
+main_dttm_col: fecha
+description: 'Coeficiente de ocupación diaria del corredor AVE Madrid–Barcelona: viajeros·km / plazas·km. MITAD REAL — el
+  total del trimestre es de la CNMC, pero el reparto entre los días lo hacen las reglas del proyecto, así que la ocupación
+  de un día concreto NO es una medición. No es «viajeros por plaza»: un asiento se vende por tramos, así que el ratio de cabezas
+  pasa del 100 % legítimamente; medido en km, el 100 % sí es un techo real. «Plausible» marca los días que no lo pasan, y
+  21 de los 25 imposibles son fin de semana porque el NAP da trenes y no plazas y las composiciones dobles no se ven: cualquier
+  media debería filtrar por plausible o decir que no lo hace.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: "-- Fact_Ocupacion_Diaria ⋈ Dim_Fecha, con los trenes del día al lado para poder leer numerador y denominador juntos.\n\
+  -- MITAD REAL: ocupacion = viajeros·km / plazas·km. El total del TRIMESTRE es de la CNMC, pero el reparto\n-- entre los\
+  \ días lo hacen las reglas del proyecto, así que la ocupación de un día NO es una medición.\n-- `plausible` marca los días\
+  \ que no pasan del 100 %. 21 de los 25 imposibles son fin de semana, y no es\n-- un fallo de la fuente: el NAP da trenes\
+  \ y no plazas, así que las composiciones dobles no se ven.\nSELECT\n    f.fecha,\n    f.fecha_id,\n    f.corredor,\n   \
+  \ f.ocupacion,\n    f.plausible,\n    f.festivo, f.vispera, f.puente, f.regreso, f.evento, f.junto_a_evento,\n    f.temperatura_media_mad,\
+  \ f.temperatura_media_bcn,\n    d.anio, d.trimestre, d.mes, d.nombre_mes, d.dia_semana, d.nombre_dia,\n    d.es_fin_de_semana,\
+  \ d.festivo_nombre, d.festivo_ambito,\n    t.trenes,\n    d.anio || '-T' || d.trimestre                           AS trimestre_etiqueta\n\
+  FROM read_parquet('s3://raillytics-gold/fact_ocupacion_diaria/*.parquet') AS f\nLEFT JOIN read_parquet('s3://raillytics-gold/dim_fecha/*.parquet')\
+  \        AS d USING (fecha_id)\nLEFT JOIN (\n    SELECT fecha_id, sum(trenes) AS trenes\n    FROM read_parquet('s3://raillytics-gold/fact_oferta_diaria/*.parquet')\n\
+  \    WHERE corredor = 'Madrid-Barcelona'\n    GROUP BY fecha_id\n) AS t USING (fecha_id)"
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: 47994a16-687b-5f50-baa1-98103ce742b7
+metrics:
+- metric_name: ocupacion_media
+  verbose_name: Ocupación media
+  metric_type: null
+  expression: AVG(CASE WHEN plausible THEN ocupacion END)
+  description: Solo días plausibles (ocupación <= 100 %).
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: ocupacion_maxima
+  verbose_name: Ocupación máxima
+  metric_type: null
+  expression: MAX(CASE WHEN plausible THEN ocupacion END)
+  description: null
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: dias
+  verbose_name: Días
+  metric_type: null
+  expression: COUNT(*)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: dias_imposibles
+  verbose_name: Días imposibles
+  metric_type: null
+  expression: SUM(CASE WHEN plausible THEN 0 ELSE 1 END)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: pct_imposibles
+  verbose_name: '% días imposibles'
+  metric_type: null
+  expression: AVG(CASE WHEN plausible THEN 0.0 ELSE 1.0 END)
+  description: Días con ocupación calculada por encima del 100 %. Señala el problema del denominador, no necesariamente un
+    error de la fuente.
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: trenes_por_dia
+  verbose_name: Trenes por día
+  metric_type: null
+  expression: AVG(trenes)
+  description: null
+  d3format: ',.1f'
+  extra: null
+  warning_text: null
+columns:
+- column_name: fecha
+  verbose_name: Fecha
+  is_dttm: true
+  is_active: true
+  type: DATE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ocupacion
+  verbose_name: Ocupación
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: plausible
+  verbose_name: Plausible
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Falso si la ocupación calculada pasa del 100 %, que es imposible.
+  python_date_format: null
+  extra: null
+- column_name: nombre_dia
+  verbose_name: Día de la semana
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: dia_semana
+  verbose_name: Día de la semana (nº)
+  is_dttm: false
+  is_active: true
+  type: INT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: nombre_mes
+  verbose_name: Mes
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: mes
+  verbose_name: Mes (nº)
+  is_dttm: false
+  is_active: true
+  type: INT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: anio
+  verbose_name: Año
+  is_dttm: false
+  is_active: true
+  type: INT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: trimestre_etiqueta
+  verbose_name: Trimestre
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: es_fin_de_semana
+  verbose_name: Fin de semana
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: festivo
+  verbose_name: Festivo
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: festivo_ambito
+  verbose_name: Festivo (ámbito)
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: vispera
+  verbose_name: Víspera de tramo festivo
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: puente
+  verbose_name: Puente
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: regreso
+  verbose_name: Regreso de tramo festivo
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: evento
+  verbose_name: Día con evento
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: trenes
+  verbose_name: Trenes del día
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: temperatura_media_mad
+  verbose_name: Temperatura Madrid
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: temperatura_media_bcn
+  verbose_name: Temperatura Barcelona
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

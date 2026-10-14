@@ -1,0 +1,53 @@
+slice_name: KPI del plan del Sprint 2
+description: Cada KPI medible del plan con su objetivo y si se cumple. Los que faltan no tienen fuente; el motivo está en
+  el SQL del dataset.
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  adhoc_filters: []
+  query_mode: raw
+  groupby: []
+  metrics: []
+  all_columns:
+  - familia
+  - kpi
+  - valor
+  - comparador
+  - objetivo
+  - unidad
+  - semaforo
+  - nota
+  percent_metrics: []
+  order_by_cols:
+  - '["orden", true]'
+  row_limit: 100
+  server_page_length: 15
+  include_search: false
+  show_totals: false
+  table_timestamp_format: smart_date
+  show_cell_bars: false
+  color_pn: false
+  allow_render_html: false
+  column_config: {}
+  conditional_formatting:
+  - column: semaforo
+    operator: '>='
+    targetValue: 1
+    colorScheme: '#A7E8C0'
+  - column: semaforo
+    operator: <
+    targetValue: 1
+    colorScheme: '#EFA1AA'
+  temporal_columns_lookup: {}
+  time_grain_sqla: null
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: efd4ecad-5ec2-519f-ae49-39cdcbb1adca
+version: 1.0.0
+dataset_uuid: c50d6240-cdc7-546b-8ed1-574d2289af0e
+is_managed_externally: false
+external_url: null

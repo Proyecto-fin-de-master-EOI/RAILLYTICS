@@ -1,0 +1,17 @@
+{
+  "dias_test": 31,
+  "mape": 0.08035739133570335,
+  "mae_puntos": 6.62791966293828,
+  "r2": -0.10312977483491514,
+  "desde": "2026-05-14",
+  "hasta": "2026-06-30",
+  "validacion_temporal": {
+    "tramos": 5,
+    "mape_medio": 0.10071073642758196,
+    "mape_base_medio": 0.10318938710306351,
+    "tramos_en_que_gana": 3,
+    "r2_medio": -0.4361599149871524
+  },
+  "variables": 26,
+  "dias_entrenamiento": 124
+}

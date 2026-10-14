@@ -1,0 +1,40 @@
+slice_name: Días de demanda punta
+description: 'No son «trenes en alerta»: no existe dato de demanda por tren. Son días.'
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_ultima
+  metric:
+    expressionType: SQL
+    sqlExpression: SUM(CASE WHEN indice >= 1.2 THEN 1 ELSE 0 END)
+    label: días
+    hasCustomLabel: true
+    optionName: metric_30698186
+    aggregate: null
+    column: null
+    datasourceWarning: false
+  header_font_size: 0.4
+  subheader: días con índice ≥ 1.20 (un 19 % sobre un día corriente)
+  subheader_font_size: 0.15
+  y_axis_format: ',d'
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 5312157a-d7d3-5313-987c-786aae26d1af
+version: 1.0.0
+dataset_uuid: ce2482b5-226e-5980-80be-4ed2706e8696
+is_managed_externally: false
+external_url: null
