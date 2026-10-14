@@ -472,7 +472,7 @@ separa); en los **precios** `RENFE` es Renfe-AVE y `AVLO` es Renfe-AVLO. «Viaje
 
 ### Superset
 
-- **Conexión**: la base de datos `Raillytics Gold (DuckDB)` es `duckdb:///:memory:` con la
+- **Conexión**: la base de datos `Raillytics Lake (DuckDB)` es `duckdb:///:memory:` con la
   extensión `httpfs` precargada. Al arrancar, el contenedor guarda las credenciales de MinIO del
   `.env` como *secret* persistente de DuckDB (`docker/superset/superset-run.sh` ejecuta
   `python -m raillytics.utils.lake persist-secret`), así el YAML versionado no contiene
