@@ -11,5 +11,9 @@ final case class DataSource(
   // Reglas de la descarga (min_bytes, min_filas, columnas): las aplica Python; aquí solo se valida que la clave exista.
   checks: Map[String, Any] = Map.empty,
   // Tablas Silver que `make 04_silver` construye a partir de esta fuente.
-  silver: Seq[SilverTabla] = Seq.empty
+  silver: Seq[SilverTabla] = Seq.empty,
+  // Quién trae la fuente (http | aemet | nap): lo aplica la descarga de Python; aquí solo se valida.
+  downloader: String = "http",
+  // De dónde sale la credencial: {env: NOMBRE_VARIABLE, header}. Nunca el secreto.
+  auth: Map[String, String] = Map.empty
 )

@@ -29,6 +29,7 @@ sql: |-
       ('gold:fact_mercado_trimestral', 'filas_minimas', 'filas_min', 'bloqueante', 'al menos 5 filas'),
       ('gold:fact_mercado_trimestral', 'grano_unico', 'unico', 'bloqueante', 'sin duplicados por anio, trimestre, operador_id'),
       ('gold:fact_mercado_trimestral', 'lineas_en_dim_linea', 'referencia', 'bloqueante', 'linea_id existen en gold_dim_linea'),
+      ('gold:fact_mercado_trimestral', 'ocupacion_posible', 'sql', 'bloqueante', 'consulta SQL · ocupacion posible'),
       ('gold:fact_mercado_trimestral', 'operadores_en_dim_operador', 'sql', 'bloqueante', 'consulta SQL · operadores en dim operador'),
       ('gold:fact_mercado_trimestral', 'sin_operadores_otro', 'sql', 'aviso', 'consulta SQL · sin operadores otro'),
       ('gold:fact_mercado_trimestral', 'viajeros_conciliados', 'sql', 'bloqueante', 'consulta SQL · viajeros conciliados'),

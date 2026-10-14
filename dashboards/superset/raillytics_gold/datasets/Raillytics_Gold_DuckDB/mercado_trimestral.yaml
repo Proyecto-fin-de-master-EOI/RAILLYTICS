@@ -2,7 +2,8 @@ table_name: mercado_trimestral
 main_dttm_col: fecha_inicio
 description: 'Mercado trimestral del corredor AVE Madrid–Barcelona por operador. Datos REALES de la CNMC (no sintéticos), solo el corredor
   AVE Madrid–Barcelona. En la demanda Avlo va dentro de Renfe (la CNMC no la separa); en los precios aparece por separado hasta 2025-T4.
-  «Viajeros por plaza ofertada» no es ocupación: un asiento sirve a varios tramos.'
+  «Viajeros por plaza ofertada» no es ocupación: un asiento sirve a varios tramos, y por eso
+  llega a pasar del 100%. La ocupación real es «Coeficiente de ocupación», que pondera por distancia (viajeros·km / plazas·km).'
 default_endpoint: null
 offset: 0
 cache_timeout: null
@@ -68,6 +69,15 @@ metrics:
   expression: SUM(viajeros) * 1.0 / NULLIF(SUM(plazas_ofertadas), 0)
   description: null
   d3format: .2f
+  extra: null
+  warning_text: null
+- metric_name: coeficiente_ocupacion
+  verbose_name: Coeficiente de ocupación
+  metric_type: null
+  expression: SUM(viajeros_km) * 1.0 / NULLIF(SUM(plazas_km), 0)
+  description: 'Plazas·km ocupadas sobre plazas·km ofertadas. Es la ocupación de verdad, porque
+    pondera por distancia recorrida y no cuenta dos veces el asiento que se vende por tramos.'
+  d3format: .1%
   extra: null
   warning_text: null
 - metric_name: total_tren_km

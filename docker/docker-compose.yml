@@ -38,7 +38,7 @@ x-airflow-common:
     REGLAS_DEMANDA: /opt/airflow/raillytics_config/reglas_demanda.yml
     PREDICCIONES_ROOT: /opt/airflow/resultados/predicciones
     PREDICCION_CACHE_DIR: /opt/airflow/raillytics_data/cache/prediccion
-    _PIP_ADDITIONAL_REQUIREMENTS: "requests~=2.32 PyYAML~=6.0 duckdb~=1.5.5"
+    _PIP_ADDITIONAL_REQUIREMENTS: "requests~=2.32 PyYAML~=6.0 duckdb~=1.5.5 defusedxml~=0.7"
   volumes:
     - ../dags:/opt/airflow/dags
     - ../python:/opt/airflow/python

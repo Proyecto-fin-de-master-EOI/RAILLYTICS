@@ -175,7 +175,8 @@ def _alcanzable(g: Grafo, desde: str, hasta: str) -> bool:
     ("fuente:cnmc_precio_mensual", "dashboard:mercado-corredor"),
     ("gen:silver_sample", "dashboard:demanda-ferroviaria"),          # el Silver sintético hasta el dashboard
     ("silver:cnmc_trimestral", "gold:fact_prediccion_demanda"),      # la predicción lee la demanda real
-    ("gen:muestra_prediccion", "gold:fact_prediccion_demanda"),
+    ("silver:festivos", "gold:fact_prediccion_demanda"),             # festivos del BOE y meteo de AEMET, ya sin muestra
+    ("silver:meteo", "gold:fact_prediccion_demanda"),
     ("modelo:ollama", "dashboard:prediccion-demanda"),
 ])
 def test_recorridos_completos_del_repo_real(real, desde, hasta):

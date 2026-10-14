@@ -25,9 +25,12 @@ object DataSourceConfig extends Logging {
   }
 
   // Mismas listas que python/raillytics/ingesta/formats.py: una clave desconocida es un error en los dos parsers.
-  private val ClavesFuente = Set("id", "name", "url", "format", "options", "checks", "silver")
-  private val OpcionesLectura = Set("delimiter", "encoding")
+  private val ClavesFuente = Set("id", "name", "url", "format", "options", "checks", "silver", "downloader", "auth")
+  private val OpcionesPorFormato: Map[String, Set[String]] = SourceFormat.OptionsByFormat
+  private val OpcionesLectura: Set[String] = OpcionesPorFormato.values.flatten.toSet
   private val ChecksDescarga = Set("min_bytes", "min_filas", "columnas")
+  private val Descargadores = Set("http", "aemet", "nap")
+  private val OpcionesAuth = Set("env", "header")
 
   // Separado de load() para poder probarlo con un YAML en memoria.
   def loadFromStream(is: InputStream): Seq[DataSource] = {
@@ -57,12 +60,29 @@ object DataSourceConfig extends Logging {
       s"Formato no soportado: '$format' (soportados: ${SupportedFormats.mkString(", ")})"
     )
     val options = bloque(id, "options", m, OpcionesLectura).map { case (k, v) => k -> v.toString }
+    // Cada formato admite sus propias opciones y solo las suyas; los que no admiten ninguna (json,
+    // zip) se leen igual siempre, así que declarar `options` en ellos es un error de configuración.
+    val permitidas = OpcionesPorFormato.getOrElse(format, Set.empty[String])
+    val impropias = (options.keySet -- permitidas).toSeq.sorted
+    require(impropias.isEmpty,
+      s"Fuente '$id': el formato '$format' no admite ${impropias.mkString(", ")} en 'options'" +
+        (if (permitidas.isEmpty) "" else s" (admite: ${permitidas.toSeq.sorted.mkString(", ")})"))
     val checks = bloque(id, "checks", m, ChecksDescarga)
-    require(options.isEmpty && checks.isEmpty || format == "csv",
-      s"Fuente '$id': 'options' y 'checks' solo se admiten en fuentes csv (formato '$format')")
+    require(checks.isEmpty || format == "csv",
+      s"Fuente '$id': 'checks' solo se admite en fuentes csv (formato '$format')")
     options.get("delimiter").foreach { d =>
       require(d.length == 1, s"Fuente '$id': options.delimiter debe ser un único carácter, no '$d'")
     }
+    require(format != "xml" || options.get("rowTag").exists(_.trim.nonEmpty),
+      s"Fuente '$id': una fuente xml necesita options.rowTag, el elemento que L2 trata como fila")
+    // `downloader` y `auth` solo los usa la descarga de Python (ver downloaders.py); aquí se
+    // validan para que un typo no pase en silencio, igual que con `checks`.
+    val downloader = Option(m.get("downloader")).map(_.toString).getOrElse("http")
+    require(Descargadores.contains(downloader),
+      s"Fuente '$id': downloader no soportado '$downloader' (soportados: ${Descargadores.toSeq.sorted.mkString(", ")})")
+    val auth = bloque(id, "auth", m, OpcionesAuth).map { case (k, v) => k -> v.toString }
+    require(auth.isEmpty || auth.contains("env"),
+      s"Fuente '$id': 'auth' necesita 'env', el NOMBRE de la variable de entorno con la credencial")
     DataSource(
       id = requiredField(m, "id"),
       name = requiredField(m, "name"),
@@ -70,7 +90,9 @@ object DataSourceConfig extends Logging {
       format = format,
       options = options,
       checks = checks,
-      silver = silver(id, m)
+      silver = silver(id, m),
+      downloader = downloader,
+      auth = auth
     )
   }
 

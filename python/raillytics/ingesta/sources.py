@@ -10,8 +10,11 @@ import yaml
 from raillytics.ingesta.formats import (
     CHECKS_DESCARGA,
     CLAVES_FUENTE,
+    DESCARGADORES,
     MODOS_SILVER,
+    OPCIONES_AUTH,
     OPCIONES_LECTURA,
+    OPCIONES_POR_FORMATO,
     SUPPORTED_FORMATS,
 )
 
@@ -32,9 +35,11 @@ class DataSource:
     name: str
     url: str
     format: str
-    options: dict[str, str] = field(default_factory=dict)  # cómo se lee el fichero: delimiter, encoding (solo csv)
+    options: dict[str, str] = field(default_factory=dict)  # cómo se lee el fichero: delimiter y encoding en csv, rowTag en xml
     checks: dict[str, Any] = field(default_factory=dict)   # reglas de la descarga: min_bytes, min_filas, columnas (solo csv)
     silver: tuple[SilverTabla, ...] = ()                   # tablas Silver que se construyen desde esta fuente
+    downloader: str = "http"                               # quién trae la fuente (ver downloaders.py); http = GET directo de `url`
+    auth: dict[str, str] = field(default_factory=dict)     # {env: NOMBRE_VARIABLE, header: ...}; nunca el secreto
 
 
 def load_sources(path: Path) -> list[DataSource]:
@@ -63,13 +68,35 @@ def _parsear(entry: dict[str, Any]) -> DataSource:
     if fmt not in SUPPORTED_FORMATS:
         raise ValueError(f"Formato no soportado: '{fmt}' (soportados: {sorted(SUPPORTED_FORMATS)})")
     options = _bloque(fuente, "options", entry, OPCIONES_LECTURA)
+    # Cada formato admite sus propias opciones y solo las suyas; los que no admiten ninguna (json,
+    # zip) se leen igual siempre, así que declarar `options` en ellos es un error de configuración.
+    permitidas = OPCIONES_POR_FORMATO.get(fmt, set())
+    impropias = sorted(set(options) - permitidas)
+    if impropias:
+        admite = f" (admite: {', '.join(sorted(permitidas))})" if permitidas else ""
+        raise ValueError(f"Fuente '{fuente}': el formato '{fmt}' no admite {', '.join(impropias)} en 'options'{admite}")
     checks = _bloque(fuente, "checks", entry, CHECKS_DESCARGA)
-    if (options or checks) and fmt != "csv":
-        raise ValueError(f"Fuente '{fuente}': 'options' y 'checks' solo se admiten en fuentes csv (formato '{fmt}')")
+    if checks and fmt != "csv":
+        raise ValueError(f"Fuente '{fuente}': 'checks' solo se admite en fuentes csv (formato '{fmt}')")
     delimitador = options.get("delimiter")
     if delimitador is not None and len(str(delimitador)) != 1:
         raise ValueError(f"Fuente '{fuente}': options.delimiter debe ser un único carácter, no {delimitador!r}")
+    if fmt == "xml" and not str(options.get("rowTag", "")).strip():
+        raise ValueError(
+            f"Fuente '{fuente}': una fuente xml necesita options.rowTag, el elemento que L2 trata como fila"
+        )
     _validar_checks(fuente, checks)
+    downloader = entry.get("downloader", "http")
+    if downloader not in DESCARGADORES:
+        raise ValueError(
+            f"Fuente '{fuente}': downloader no soportado '{downloader}' (soportados: {sorted(DESCARGADORES)})"
+        )
+    auth = _bloque(fuente, "auth", entry, OPCIONES_AUTH)
+    if auth and "env" not in auth:
+        raise ValueError(f"Fuente '{fuente}': 'auth' necesita 'env', el NOMBRE de la variable de entorno con la credencial")
+    for clave, valor in auth.items():
+        if not isinstance(valor, str) or not valor.strip():
+            raise ValueError(f"Fuente '{fuente}': auth.{clave} debe ser un texto no vacío, no {valor!r}")
     return DataSource(
         id=entry["id"],
         name=entry["name"],
@@ -78,6 +105,8 @@ def _parsear(entry: dict[str, Any]) -> DataSource:
         options={k: str(v) for k, v in options.items()},
         checks=checks,
         silver=tuple(_silver(fuente, entry.get("silver"))),
+        downloader=downloader,
+        auth={k: str(v) for k, v in auth.items()},
     )
 
 

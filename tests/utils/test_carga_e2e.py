@@ -252,3 +252,35 @@ def test_si_la_descarga_falla_se_corta_con_error(capsys):
 def test_la_cli_asegurar_cnmc_exige_el_trimestre(capsys):
     assert e2e.main(["--asegurar-cnmc"]) == 2
     assert "--trimestre" in capsys.readouterr().err
+
+
+def test_la_salida_se_pone_en_utf8_porque_en_windows_es_cp1252(monkeypatch):
+    """El log usa ▶, ✓ y ✗, que no existen en cp1252.
+
+    Sin esto el script muere con UnicodeEncodeError en la primera línea que imprime, antes de hacer
+    nada: pasó al lanzar `make carga-e2e` en Windows por primera vez.
+    """
+    class FlujoFalso:
+        def __init__(self):
+            self.encoding = "cp1252"
+            self.reconfigurado = None
+
+        def reconfigure(self, **kwargs):
+            self.reconfigurado = kwargs
+
+    salida, error = FlujoFalso(), FlujoFalso()
+    monkeypatch.setattr(e2e.sys, "stdout", salida)
+    monkeypatch.setattr(e2e.sys, "stderr", error)
+
+    e2e.salida_utf8()
+
+    assert salida.reconfigurado == {"encoding": "utf-8", "errors": "replace"}
+    assert error.reconfigurado == {"encoding": "utf-8", "errors": "replace"}
+
+
+def test_salida_utf8_aguanta_un_flujo_sin_reconfigure(monkeypatch):
+    """Un stdout redirigido puede no tener `reconfigure`: no debe reventar por eso."""
+    monkeypatch.setattr(e2e.sys, "stdout", object())
+    monkeypatch.setattr(e2e.sys, "stderr", object())
+
+    e2e.salida_utf8()

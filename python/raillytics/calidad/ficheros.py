@@ -9,7 +9,8 @@ Gates (todos sobre el contenido en memoria, sin tocar disco):
   contenido_no_vacio   bloqueante  el servidor devolvió bytes
   formato_declarado    bloqueante  el contenido ES lo que dice config/data_sources.yml:
                                    csv -> texto con cabecera delimitada; json -> JSON válido;
-                                   zip -> archivo ZIP íntegro con al menos un miembro
+                                   xml -> XML bien formado y con contenido; zip -> archivo ZIP
+                                   íntegro con al menos un miembro
   content_type         aviso       la cabecera Content-Type del servidor es coherente con el formato
   tamano_minimo        bloqueante  (solo si la fuente declara checks.min_bytes) el fichero pesa al menos eso
   cabecera_esperada    bloqueante  (checks.columnas) la cabecera, sin BOM y partida con el delimitador, es la esperada
@@ -25,6 +26,10 @@ import io
 import json
 import zipfile
 from collections.abc import Mapping, Sequence
+
+# defusedxml y no xml.etree directamente: el XML llega de internet y el parser de la librería
+# estándar es vulnerable a la expansión de entidades (el «billion laughs»).
+from defusedxml.ElementTree import ParseError, fromstring as _parsear_xml
 
 from raillytics.calidad.registro import (
     RESULTADO_FALLO,
@@ -44,8 +49,11 @@ _CSV_DELIMITERS = (",", ";", "\t", "|")
 _CONTENT_TYPES = {
     "csv": {"text/csv", "text/plain", "application/csv", "application/vnd.ms-excel"},
     "json": {"application/json", "text/json", "application/x-json"},
+    "xml": {"application/xml", "text/xml"},
     "zip": {"application/zip", "application/x-zip-compressed", "application/octet-stream"},
 }
+# Lo que delata que el contenido no es ni texto tabular ni JSON: marcado o binario.
+_NI_TEXTO_NI_JSON = ("ZIP", "binario", "HTML", "XML", "HTML/XML")
 
 
 def validar_contenido(
@@ -123,6 +131,14 @@ def _describir_contenido(content: bytes, codificacion: str = "utf-8") -> str:
     if inicio[:1] in (b"{", b"["):
         return "JSON"
     if inicio[:1] == b"<":
+        # Distinguir HTML de XML importa: una página de error de un proxy («<html><body>...») es
+        # XML bien formado, así que sin esto colaría como xml válido. Cuando no hay forma de
+        # saberlo (un `<foo>` a secas) se devuelve el genérico y el formato declarado decide.
+        cabeza = inicio[:512].lower()
+        if cabeza.startswith(b"<?xml"):
+            return "XML"
+        if cabeza.startswith((b"<!doctype html", b"<html")):
+            return "HTML"
         return "HTML/XML"
     try:
         content[:4096].decode(codificacion)
@@ -148,8 +164,20 @@ def _comprobar_formato(content: bytes, formato: str, opciones: Mapping[str, str]
         except zipfile.BadZipFile as exc:
             return f"ZIP inválido: {exc}"
         return None
+    if formato == "xml":
+        if parece == "HTML":
+            return "declarado xml, el contenido parece HTML (¿una página de error del servidor?)"
+        if parece not in ("XML", "HTML/XML"):
+            return f"declarado xml, el contenido parece {parece}"
+        try:
+            raiz = _parsear_xml(content)
+        except (ParseError, ValueError) as exc:  # ValueError cubre las defensas de defusedxml
+            return f"XML inválido: {exc}"
+        if len(raiz) == 0 and not (raiz.text or "").strip():
+            return f"el XML solo trae el elemento raíz <{raiz.tag}> vacío"
+        return None
     if formato == "json":
-        if parece in ("ZIP", "binario", "HTML/XML"):
+        if parece in _NI_TEXTO_NI_JSON:
             return f"declarado json, el contenido parece {parece}"
         try:
             json.loads(content)
@@ -157,7 +185,7 @@ def _comprobar_formato(content: bytes, formato: str, opciones: Mapping[str, str]
             return f"JSON inválido: {exc}"
         return None
     if formato == "csv":
-        if parece in ("ZIP", "binario", "HTML/XML", "JSON"):
+        if parece in _NI_TEXTO_NI_JSON + ("JSON",):
             return f"declarado csv, el contenido parece {parece}"
         opciones = opciones or {}
         # Con delimitador declarado, ese y solo ese: declarar `,` sobre un fichero con `;` es un error de configuración.
