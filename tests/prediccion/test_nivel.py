@@ -1,6 +1,16 @@
 import pytest
 
-from raillytics.prediccion.nivel import NivelError, calcular_nivel, desviacion_relativa, miles
+from raillytics.prediccion.nivel import (
+    NivelError,
+    _cuantil,
+    _extremos,
+    calcular_nivel,
+    cobertura,
+    desviacion_relativa,
+    errores_backtest,
+    intervalo,
+    miles,
+)
 from raillytics.prediccion.trimestre import Trimestre
 
 T = Trimestre.parse
@@ -87,3 +97,81 @@ def test_desviacion_relativa():
     assert desviacion_relativa(900, 1_000) == pytest.approx(-0.10)
     with pytest.raises(NivelError):
         desviacion_relativa(10, 0)
+
+
+# --- backtest de la regla y el intervalo que sale de él ---
+
+def _serie(crecimiento: float, anios=range(2015, 2027), base=1_000_000) -> dict:
+    """Una serie con estacionalidad fija y crecimiento constante: la regla debería acertar siempre."""
+    estacion = {1: 0.9, 2: 1.1, 3: 1.2, 4: 1.0}
+    return {
+        T(f"{a}-T{t}"): int(base * estacion[t] * (1 + crecimiento) ** (a - 2015))
+        for a in anios for t in (1, 2, 3, 4)
+    }
+
+
+def test_con_crecimiento_constante_la_regla_no_se_equivoca():
+    # La regla es «el mismo trimestre del año pasado por el crecimiento del último publicado»: si el
+    # crecimiento es constante y la estacionalidad fija, el error tiene que ser ~0.
+    errores = [e for _, e in errores_backtest(_serie(0.05))]
+
+    assert errores and max(abs(e) for e in errores) < 1e-3
+
+
+def test_un_trimestre_que_toca_la_pandemia_en_cualquiera_de_sus_entradas_queda_fuera():
+    # No basta con excluir el trimestre objetivo: si su base (T-4) o su referencia de crecimiento
+    # (U-4) cayeron en pandemia, el error que mide es la pandemia, no la regla.
+    objetivos = [t for t, _ in errores_backtest(_serie(0.05))]
+
+    assert not any(t.anio in (2020, 2021) for t in objetivos)
+    assert not any(t.menos(4).anio in (2020, 2021) for t in objetivos)
+
+
+def test_el_intervalo_se_obtiene_dividiendo_y_no_multiplicando():
+    # El error se definió como previsto/real - 1, así que deshacerlo es DIVIDIR. Multiplicar daría
+    # una banda al revés y desplazada, que es el fallo clásico aquí. Con una regla que se pasa
+    # siempre, el valor real estuvo por DEBAJO: la banda tiene que quedar por debajo del central.
+    serie = _serie(0.05)
+    # Se infla el último año para que la regla se pase de forma sistemática al predecirlo.
+    serie = {t: (int(v * 1.2) if t.anio <= 2025 else v) for t, v in serie.items()}
+    nivel = calcular_nivel(serie, T("2026-T3"))
+
+    banda = intervalo(nivel, serie)
+
+    assert banda.bajo < banda.alto
+    assert banda.sesgo > 0, "la regla debería salir con sesgo positivo en esta serie"
+    assert banda.bajo < nivel.total, "si la regla se pasa, el extremo bajo queda por debajo del central"
+
+
+def test_el_cuantil_alto_del_error_da_el_extremo_bajo_de_la_banda():
+    serie = _serie(0.05)
+    nivel = calcular_nivel(serie, T("2026-T3"))
+
+    estrecha = intervalo(nivel, serie, confianza=0.50)
+    ancha = intervalo(nivel, serie, confianza=0.95)
+
+    assert ancha.bajo <= estrecha.bajo and ancha.alto >= estrecha.alto
+
+
+def test_sin_bastantes_trimestres_no_se_da_intervalo_en_vez_de_dar_uno_malo():
+    corta = _serie(0.05, anios=range(2024, 2027))
+    nivel = calcular_nivel(corta, T("2026-T3"))
+
+    with pytest.raises(NivelError, match="backtest"):
+        intervalo(nivel, corta)
+
+
+def test_la_cobertura_sale_entre_cero_y_uno_y_deja_fuera_los_extremos():
+    serie = _serie(0.05)
+
+    c = cobertura(serie)
+
+    assert 0.0 <= c <= 1.0
+
+
+def test_la_correccion_de_muestra_finita_ensancha_la_banda():
+    # Sin ella el intervalo sale optimista: con los datos reales, uno que decía 90 % cubría el 79 %.
+    errores = sorted([-0.08, -0.05, -0.02, 0.0, 0.01, 0.02, 0.03, 0.05, 0.09, 0.15])
+    bajo, alto = _extremos(errores, 0.90)
+
+    assert bajo <= _cuantil(errores, 0.05) and alto >= _cuantil(errores, 0.95)

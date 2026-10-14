@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import duckdb
 import pandas as pd
@@ -7,6 +7,7 @@ import pytest
 from raillytics.procesamiento.silver_sample import (
     CONDICIONES_METEO,
     ESTADOS,
+    OPERADORES as OPERADORES_DEF,
     PUNTUALIDAD_COLUMNS,
     TIPOS_TREN,
     VIAJEROS_COLUMNS,
@@ -70,12 +71,29 @@ def test_the_corridor_has_the_four_operators_with_consistent_attributes(sample):
     assert viajeros.groupby("operador_id").operador_empresa.first()["AVLO"] == "Renfe Viajeros"  # Avlo es de Renfe
 
 
-def test_market_shares_follow_the_model(sample):
+def test_market_shares_reproduce_the_cnmc_split(sample):
+    # Las cuotas de OPERADORES ya no son inventadas: salen de la columna `Empresa` de CNMC (ver la
+    # cabecera de silver_sample y `make cuotas-operador`). Así que lo que hay que comprobar es que la
+    # tabla generada reproduce el reparto MEDIDO.
+    #
+    # El contraste va por EMPRESA, que es el grano en que CNMC publica: Avlo es la low cost de Renfe
+    # Viajeros y CNMC no las separa, así que su reparto interno sigue siendo un supuesto y no es lo
+    # que este test defiende.
     cuota = sample.viajeros.groupby("operador_id").viajeros.sum()
     cuota = (cuota / cuota.sum()).to_dict()
 
-    assert cuota["RENFE"] == pytest.approx(0.40, abs=0.03) and cuota["AVLO"] == pytest.approx(0.15, abs=0.03)
-    assert cuota["RENFE"] > cuota["IRYO"] > cuota["OUIGO"] > cuota["AVLO"]
+    assert cuota["RENFE"] + cuota["AVLO"] == pytest.approx(0.603, abs=0.02)  # Renfe Viajeros
+    assert cuota["IRYO"] == pytest.approx(0.237, abs=0.02)
+    assert cuota["OUIGO"] == pytest.approx(0.160, abs=0.02)
+    # Solo se ordena lo que CNMC separa: Avlo y Ouigo quedan a dos décimas de punto una de otra, y
+    # cuál sale delante depende de los factores de fin de semana, no del dato.
+    assert cuota["RENFE"] > cuota["IRYO"] > cuota["OUIGO"]
+
+
+def test_the_shares_add_up_to_one(sample):
+    # Es el invariante que documenta OPERADORES: si no suman 1, la demanda total del corredor cambia
+    # sin que nadie lo haya decidido.
+    assert sum(op.cuota for op in OPERADORES_DEF) == pytest.approx(1.0)
 
 
 def test_each_operator_runs_its_own_number_of_services_per_day(sample):
@@ -144,3 +162,59 @@ def test_festivos_nacionales_computes_good_friday():
     assert festivos_nacionales(2025)[date(2025, 4, 18)] == "Viernes Santo"
     assert festivos_nacionales(2026)[date(2026, 4, 3)] == "Viernes Santo"
     assert len(festivos_nacionales(2025)) == 10
+
+
+# --- enriquecimiento real: festivos del BOE y meteo de AEMET ---
+
+def test_sin_enriquecimiento_real_el_generador_sigue_funcionando_solo():
+    # Es lo que permite probarlo sin lago y sin red, y generar la muestra en un clon recién hecho.
+    s = generate_silver_sample(START, END, seed=7)
+
+    assert not s.viajeros.empty
+    assert s.viajeros["meteo_imputada"].all(), "sin AEMET, toda la meteo está simulada"
+
+
+def test_la_meteo_de_aemet_sustituye_a_la_simulada_y_el_resto_queda_marcado():
+    # AEMET solo cubre las dos cabeceras: a Zaragoza y Tarragona NO se les asigna la meteo de otra
+    # ciudad, porque su clima es distinto. Se quedan simuladas y marcadas.
+    fechas = pd.date_range(START, END, freq="D")
+    real = pd.DataFrame({
+        "fecha": list(fechas) * 2,
+        "ciudad": ["MAD"] * len(fechas) + ["BCN"] * len(fechas),
+        "temperatura_media": [11.5] * len(fechas) + [19.5] * len(fechas),
+        "precipitacion_mm": [0.0] * len(fechas) * 2,
+    })
+
+    s = generate_silver_sample(START, END, seed=7, meteo_real=real)
+    v = s.viajeros
+
+    assert (v.loc[v.provincia == "Madrid", "temperatura_media"] == 11.5).all()
+    assert (v.loc[v.provincia == "Barcelona", "temperatura_media"] == 19.5).all()
+    assert not v.loc[v.provincia == "Madrid", "meteo_imputada"].any()
+    assert v.loc[v.provincia == "Zaragoza", "meteo_imputada"].all()
+
+
+def test_un_dia_que_aemet_no_publico_se_queda_simulado_y_marcado():
+    # AEMET deja huecos. La diferencia entre un hueco declarado y un dato inventado que parece
+    # medido es justo esta marca.
+    fechas = pd.date_range(START, END, freq="D")
+    real = pd.DataFrame({
+        "fecha": [fechas[0]], "ciudad": ["MAD"],
+        "temperatura_media": [11.5], "precipitacion_mm": [0.0],
+    })
+
+    v = generate_silver_sample(START, END, seed=7, meteo_real=real).viajeros
+    madrid = v[v.provincia == "Madrid"]
+
+    assert not madrid[madrid.fecha == fechas[0]]["meteo_imputada"].any()
+    assert madrid[madrid.fecha != fechas[0]]["meteo_imputada"].all()
+
+
+def test_los_festivos_reales_sustituyen_a_los_nacionales_por_regla():
+    # El BOE trae también los de Madrid y Cataluña, y para un corredor que une las dos ciudades eso
+    # cambia qué días son festivos.
+    propios = {START + timedelta(days=3): "Fiesta inventada (Cataluña)"}
+
+    v = generate_silver_sample(START, END, seed=7, festivos_reales=propios).viajeros
+
+    assert set(v.loc[v.es_festivo, "festivo_nombre"]) == {"Fiesta inventada (Cataluña)"}

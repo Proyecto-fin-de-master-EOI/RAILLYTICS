@@ -1,0 +1,366 @@
+table_name: precio_recomendado
+main_dttm_col: fecha
+description: 'Precio recomendado por día, franja y operador. El precio base y el rango al que se acota la recomendación son
+  DATO MEDIDO de la CNMC; la elasticidad es una HIPÓTESIS declarada en config/reglas_demanda.yml, donde está el intento de
+  estimarla (−0,299 con error estándar 0,453: ruido) y por qué no se puede con estas fuentes. Con la referencia medida la
+  regla es neutra en promedio: lo que señala es qué días y franjas van por encima o por debajo de la media, no que el nivel
+  de precios del corredor esté mal. El ratio de aceptación del plan NO está aquí porque mide un proceso humano —qué recomendaciones
+  adopta un revenue manager— que el proyecto no tiene; lo que sí queda montado es el mecanismo que lo haría calculable.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: "-- Precio recomendado por dia, franja horaria y operador del corredor.\n--\n-- QUE ES DATO Y QUE ES HIPOTESIS, porque\
+  \ esta tabla mezcla las dos:\n--   precio base         MEDIDO: `precio_medio_eur` de la CNMC, por trayecto, trimestre y\
+  \ operador\n--   rango min/max       MEDIDO: el recorrido de precios observado de ese operador en el corredor\n--   ocupacion\
+  \ prevista  derivada, y con la hipotesis `base_franja` dentro\n--   elasticidad         HIPOTESIS declarada en config/reglas_demanda.yml\n\
+  --\n-- La regla:  precio_base x (ocupacion / referencia) ** (1/|elasticidad|),  acotado al rango observado.\n--\n-- Por\
+  \ que la elasticidad es hipotesis: se intento estimarla con un panel de 45 trimestres-operador de\n-- la CNMC y salio -0,299\
+  \ con error estandar 0,453 (t = -0,66), o sea ruido. Hay dos razones de fondo:\n-- el operador sube el precio cuando preve\
+  \ demanda alta (endogeneidad), y el corredor esta topado por\n-- capacidad —el precio sube un 72 % entre 2023-T1 y 2025-T4\
+  \ y los viajeros se quedan en 3,3-3,9 M por\n-- trimestre—, asi que la serie no mide cuanta demanda hay sino cuantas plazas\
+  \ se vendieron.\n--\n-- QUE DICE Y QUE NO DICE: con la referencia medida la regla es NEUTRA en promedio, asi que lo que\n\
+  -- senala es que dias y que franjas van por encima o por debajo de la media del corredor. No afirma\n-- que el nivel de\
+  \ precios este mal, ni predice lo que el operador va a hacer.\n--\n-- `version_regla` firma los parametros con los que se\
+  \ calculo cada fila. Es lo que haria atribuible\n-- un ratio de aceptacion el dia que hubiera un revenue manager que aceptara\
+  \ o rechazara.\nSELECT\n    fecha,\n    franja,\n    es_punta,\n    CASE WHEN es_punta THEN 'punta' ELSE 'valle' END   \
+  \     AS tipo_franja,\n    operador_id,\n    empresa                                                 AS operador,\n    anio,\n\
+  \    trimestre,\n    precio_base_eur,\n    precio_min_eur,\n    precio_max_eur,\n    ocupacion,\n    ocupacion_referencia,\n\
+  \    elasticidad,\n    factor,\n    precio_sin_acotar_eur,\n    precio_recomendado_eur,\n    variacion,\n    recortado,\n\
+  \    en_rango_observado,\n    plausible,\n    version_regla\nFROM read_parquet('s3://raillytics-gold/fact_precio_recomendado/*.parquet')"
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: dd36265e-8809-5aab-ae97-0ce730e38c4f
+metrics:
+- metric_name: precio_recomendado_medio
+  verbose_name: Precio recomendado
+  metric_type: null
+  expression: AVG(CASE WHEN plausible THEN precio_recomendado_eur END)
+  description: Media de las recomendaciones de los días plausibles.
+  d3format: $,.2f
+  extra: null
+  warning_text: null
+- metric_name: precio_base_medio
+  verbose_name: Precio real de la CNMC
+  metric_type: null
+  expression: AVG(CASE WHEN plausible THEN precio_base_eur END)
+  description: El precio medio observado, que es la base sobre la que se recomienda.
+  d3format: $,.2f
+  extra: null
+  warning_text: null
+- metric_name: precio_punta
+  verbose_name: Precio recomendado en punta
+  metric_type: null
+  expression: AVG(CASE WHEN es_punta AND plausible THEN precio_recomendado_eur END)
+  description: Mañana (6-9) y tarde (15-19).
+  d3format: $,.2f
+  extra: null
+  warning_text: null
+- metric_name: precio_valle
+  verbose_name: Precio recomendado en valle
+  metric_type: null
+  expression: AVG(CASE WHEN NOT es_punta AND plausible THEN precio_recomendado_eur END)
+  description: null
+  d3format: $,.2f
+  extra: null
+  warning_text: null
+- metric_name: en_rango
+  verbose_name: Recomendaciones en el rango observado
+  metric_type: null
+  expression: AVG(CASE WHEN plausible THEN CAST(en_rango_observado AS INT) END)
+  description: 'Parte de las recomendaciones que caen dentro del recorrido de precios que ese operador ha puesto de verdad
+    en el corredor. Es lo medible que ocupa el hueco del ratio de aceptación: contrasta el modelo contra dato real en vez
+    de contra una decisión humana que no existe.'
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: desvio_medio
+  verbose_name: Desvío sobre el precio real
+  metric_type: null
+  expression: AVG(CASE WHEN plausible THEN abs(variacion) END)
+  description: Cuánto mueve la regla el precio, en valor absoluto.
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: recomendaciones
+  verbose_name: Recomendaciones registradas
+  metric_type: null
+  expression: COUNT(*)
+  description: Cada una guardada con sus entradas y la versión de la regla. Es el mecanismo sobre el que se calcularía el
+    ratio de aceptación si hubiera operador.
+  d3format: ',d'
+  extra: null
+  warning_text: null
+columns:
+- column_name: fecha
+  verbose_name: Día
+  is_dttm: true
+  is_active: true
+  type: DATE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: franja
+  verbose_name: Franja
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: tipo_franja
+  verbose_name: Punta o valle
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: es_punta
+  verbose_name: Es hora punta
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: operador
+  verbose_name: Operador
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: operador_id
+  verbose_name: Código de operador
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: anio
+  verbose_name: Año
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: trimestre
+  verbose_name: Trimestre
+  is_dttm: false
+  is_active: true
+  type: INTEGER
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: precio_base_eur
+  verbose_name: Precio real (€)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Precio medio que publica la CNMC para ese operador y trimestre. Dato medido.
+  python_date_format: null
+  extra: null
+- column_name: precio_min_eur
+  verbose_name: Mínimo observado (€)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: precio_max_eur
+  verbose_name: Máximo observado (€)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ocupacion
+  verbose_name: Ocupación prevista
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ocupacion_referencia
+  verbose_name: Ocupación de referencia
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Media de los días plausibles. Con ella la regla es neutra en promedio.
+  python_date_format: null
+  extra: null
+- column_name: elasticidad
+  verbose_name: Elasticidad declarada
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: factor
+  verbose_name: Factor aplicado
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: precio_sin_acotar_eur
+  verbose_name: Precio antes de acotar (€)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: precio_recomendado_eur
+  verbose_name: Precio recomendado (€)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: variacion
+  verbose_name: Variación sobre el real
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: recortado
+  verbose_name: Acotado al rango observado
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: en_rango_observado
+  verbose_name: Dentro del rango observado
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: plausible
+  verbose_name: Plausible
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: version_regla
+  verbose_name: Versión de la regla
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

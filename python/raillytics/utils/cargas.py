@@ -79,6 +79,11 @@ def _ahora() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+# El mismo reloj, para quien declara su propio `inicio` (ver `Ejecucion.tabla`): mezclar relojes aquí
+# daría duraciones negativas.
+ahora = _ahora
+
+
 def _describir(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"[:2000]
 
@@ -123,8 +128,16 @@ class Ejecucion:
             self.run_id = f"{self.inicio:%Y%m%dT%H%M%S}-{self.proceso}-{uuid.uuid4().hex[:6]}"
 
     @contextmanager
-    def tabla(self, nombre: str, origen: str | None = None, destino: str | None = None) -> Iterator[CargaTabla]:
-        carga = CargaTabla(nombre, origen, destino)
+    def tabla(self, nombre: str, origen: str | None = None, destino: str | None = None,
+              inicio: datetime | None = None) -> Iterator[CargaTabla]:
+        """Registra la carga de una tabla. El bloque `with` suele envolver solo la escritura.
+
+        `inicio` sirve para los pasos en los que lo que cuesta es el CÁLCULO y no la escritura: el
+        recuento de la oferta del NAP tarda minutos parseando GTFS y luego escribe en un segundo, así
+        que sin esto el registro diría que la fase dura un segundo y el KPI de latencia del pipeline
+        se quedaría corto. Quien lo pasa declara cuándo empezó a trabajar de verdad.
+        """
+        carga = CargaTabla(nombre, origen, destino, inicio=inicio or _ahora())
         self.tablas.append(carga)
         try:
             yield carga

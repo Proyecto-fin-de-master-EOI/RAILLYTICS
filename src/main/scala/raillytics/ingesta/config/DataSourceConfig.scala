@@ -25,7 +25,13 @@ object DataSourceConfig extends Logging {
   }
 
   // Mismas listas que python/raillytics/ingesta/formats.py: una clave desconocida es un error en los dos parsers.
-  private val ClavesFuente = Set("id", "name", "url", "format", "options", "checks", "silver", "downloader", "auth")
+  // `obligatoria` la lee solo el lado Python (es el denominador del KPI de cobertura de ingesta:
+  // raillytics.calidad.cobertura_ingesta), pero tiene que estar en esta lista: el parser rechaza
+  // cualquier clave que no conozca, así que sin ella L2 no arranca. Las dos listas de claves válidas
+  // —ésta y CLAVES_FUENTE de python/raillytics/ingesta/formats.py— describen el mismo fichero y hay
+  // que tocarlas a la vez.
+  private val ClavesFuente =
+    Set("id", "name", "url", "format", "options", "checks", "silver", "downloader", "auth", "obligatoria")
   private val OpcionesPorFormato: Map[String, Set[String]] = SourceFormat.OptionsByFormat
   private val OpcionesLectura: Set[String] = OpcionesPorFormato.values.flatten.toSet
   private val ChecksDescarga = Set("min_bytes", "min_filas", "columnas")

@@ -1,0 +1,30 @@
+slice_name: Recomendaciones en el rango real
+description: 'Ocupa el hueco del ratio de aceptación: contrasta el modelo contra dato real en vez de contra una decisión humana
+  que el proyecto no tiene.'
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  metric: en_rango
+  header_font_size: 0.4
+  subheader: dentro del recorrido de precios que ese operador ha puesto
+  subheader_font_size: 0.15
+  y_axis_format: .0%
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 9f9c0836-227c-5f0e-95cc-6a15bad2d7f0
+version: 1.0.0
+dataset_uuid: dd36265e-8809-5aab-ae97-0ce730e38c4f
+is_managed_externally: false
+external_url: null

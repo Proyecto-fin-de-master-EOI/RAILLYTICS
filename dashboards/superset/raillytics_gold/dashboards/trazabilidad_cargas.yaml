@@ -1,7 +1,36 @@
 dashboard_title: Trazabilidad de cargas
 description: 'Historial de las cargas del lake (Bronze, Silver y Gold): qué se ejecutó, cuándo, cuántas filas, duración, errores
   y frescura por tabla, y los quality gates de cada carga. Fuente: s3://raillytics-gold/_trazabilidad/cargas/ y .../calidad/.'
-css: ''
+css: "/* ===== Raillytics — estilo de cuadro de mandos =====\n   El COLOR de marca no se pone aqui: va en THEME_DEFAULT de\
+  \ superset_config.py, que son tokens de\n   Ant Design y tinen toda la interfaz. Esto solo da forma de TARJETA a las graficas,\
+  \ que el tema no\n   cubre. Las reglas llevan !important y van prefijadas con body porque Superset genera su CSS con\n \
+  \  emotion y gana por especificidad a un selector de clase suelto. */\n\nbody .dashboard .dashboard-content,\nbody .dashboard\
+  \ .grid-content {\n  background-color: #F6F7FB !important;\n}\n\n/* Cada grafica, una tarjeta blanca */\nbody .dashboard-component-chart-holder\
+  \ {\n  background: #FFFFFF !important;\n  border: 1px solid #E8EAF2 !important;\n  border-radius: 14px !important;\n  box-shadow:\
+  \ 0 1px 2px rgba(31,36,55,.05), 0 10px 28px rgba(31,36,55,.06) !important;\n  box-sizing: border-box !important;\n  overflow:\
+  \ hidden !important;\n}\n\n/* Filo violeta sobre las tarjetas de KPI */\nbody #CHART-kpi_demanda_prevista .dashboard-component-chart-holder,\n\
+  body #CHART-kpi_dias_alerta .dashboard-component-chart-holder,\nbody #CHART-kpi_mercado_precio .dashboard-component-chart-holder,\n\
+  body #CHART-kpi_backtest_mape .dashboard-component-chart-holder,\nbody #CHART-kpi_cobertura_oferta .dashboard-component-chart-holder,\n\
+  body #CHART-kpi_ocupacion_media .dashboard-component-chart-holder,\nbody #CHART-kpi_dias_imposibles .dashboard-component-chart-holder,\n\
+  body #CHART-kpi_demanda_prevista,\nbody #CHART-kpi_dias_alerta,\nbody #CHART-kpi_mercado_precio,\nbody #CHART-kpi_backtest_mape\
+  \ {\n  border-top: 3px solid #6C3FD1 !important;\n}\n\n/* Titulo de cada grafica: versalitas grises, como en la maqueta\
+  \ */\nbody .dashboard-component-chart-holder .header-title,\nbody .dashboard-component-chart-holder .header-title span,\n\
+  body .dashboard-component-chart-holder .editable-title {\n  font-size: 11.5px !important;\n  font-weight: 700 !important;\n\
+  \  letter-spacing: .055em !important;\n  text-transform: uppercase !important;\n  color: #6B7187 !important;\n}\n\n/* Numeros\
+  \ grandes */\nbody .header-line { color: #1F2437 !important; font-weight: 700 !important; letter-spacing: -.02em !important;\
+  \ }\nbody .subheader-line { color: #6B7187 !important; font-weight: 500 !important; }\n\n/* Bloques de texto */\nbody .dashboard-markdown\
+  \ {\n  background: #FFFFFF !important;\n  border: 1px solid #E8EAF2 !important;\n  border-left: 4px solid #6C3FD1 !important;\n\
+  \  border-radius: 12px !important;\n  padding: 14px 20px !important;\n  box-shadow: 0 1px 2px rgba(31,36,55,.05) !important;\n\
+  }\nbody .dashboard-markdown h2 { font-size: 15px !important; font-weight: 700 !important; color: #6C3FD1 !important; margin:\
+  \ 2px 0 10px !important; }\nbody .dashboard-markdown th { background: #F1ECFB !important; font-weight: 600 !important; }\n\
+  body .dashboard-markdown td, body .dashboard-markdown th { border-color: #E8EAF2 !important; padding: 6px 10px !important;\
+  \ }\nbody .dashboard-markdown a { color: #6C3FD1 !important; }\n\n/* Cabeceras de tabla */\nbody .dashboard-component-chart-holder\
+  \ table thead th {\n  background: #F1ECFB !important;\n  color: #1F2437 !important;\n  font-size: 11px !important;\n  font-weight:\
+  \ 700 !important;\n  letter-spacing: .04em !important;\n  text-transform: uppercase !important;\n}\nbody .dashboard-component-chart-holder\
+  \ table tbody tr:hover td { background: #FAF8FE !important; }\n\n/* Pie de atribucion: discreto */\nbody #MARKDOWN-atribucion\
+  \ .dashboard-markdown {\n  border-left-color: #E8EAF2 !important;\n  background: #FBFBFD !important;\n  font-size: 11.5px\
+  \ !important;\n  color: #6B7187 !important;\n}\nbody #MARKDOWN-atribucion h2 { font-size: 12px !important; color: #6B7187\
+  \ !important; text-transform: uppercase !important; letter-spacing: .05em !important; }"
 slug: trazabilidad-cargas
 uuid: 2afa4f4d-6d0f-5e21-a7be-f47642b49cbf
 position:
@@ -318,7 +347,7 @@ position:
       uuid: c6248132-46a2-5cc5-8f8c-4af0f4c64b7c
       sliceName: Historial de cargas
 metadata:
-  color_scheme: supersetColors
+  color_scheme: raillytics
   refresh_frequency: 0
   timed_refresh_immune_slices: []
   expanded_slices: {}

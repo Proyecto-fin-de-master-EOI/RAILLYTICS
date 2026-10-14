@@ -1,0 +1,42 @@
+slice_name: Precio recomendado por operador y franja
+description: 'El precio real de la CNMC al lado del recomendado: la regla es neutra en promedio, así que lo que se ve es el
+  reparto entre punta y valle, no un nivel distinto.'
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  adhoc_filters: []
+  query_mode: aggregate
+  groupby:
+  - operador
+  - tipo_franja
+  metrics:
+  - precio_base_medio
+  - precio_recomendado_medio
+  - en_rango
+  all_columns: []
+  percent_metrics: []
+  order_by_cols:
+  - '["precio_recomendado_medio", false]'
+  row_limit: 50
+  server_page_length: 10
+  include_search: false
+  show_totals: false
+  table_timestamp_format: smart_date
+  show_cell_bars: true
+  color_pn: false
+  allow_render_html: false
+  column_config: {}
+  conditional_formatting: []
+  temporal_columns_lookup: {}
+  time_grain_sqla: null
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: a5d146c9-4806-56c3-9e7d-6410cb9bf645
+version: 1.0.0
+dataset_uuid: dd36265e-8809-5aab-ae97-0ce730e38c4f
+is_managed_externally: false
+external_url: null

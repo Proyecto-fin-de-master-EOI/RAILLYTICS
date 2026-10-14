@@ -2,6 +2,9 @@
 # Ejecuta los tests SBT antes de pushear, solo si el push incluye cambios en Scala/SBT.
 set -euo pipefail
 
+# Ojo: tambien cuenta config/data_sources.yml. El parser de Scala rechaza cualquier clave que no
+# conozca, asi que anadir una clave al registro desde Python rompe L2 aunque no se toque ni una linea
+# de Scala. Paso el 2026-10-13 con `obligatoria` y no lo vio nadie hasta correr la carga entera.
 zero="0000000000000000000000000000000000000000"
 has_scala_changes=false
 
@@ -21,7 +24,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     cambiados=$(git log --name-only --pretty=format: "$remote_sha..$local_sha" 2>/dev/null || true)
   fi
 
-  if printf '%s\n' "$cambiados" | grep -qE '(^|/)([^/]+\.(scala|sbt)|project/.*)$'; then
+  if printf '%s\n' "$cambiados" | grep -qE '(^|/)([^/]+\.(scala|sbt)|project/.*|config/data_sources\.yml)$'; then
     has_scala_changes=true
   fi
 done

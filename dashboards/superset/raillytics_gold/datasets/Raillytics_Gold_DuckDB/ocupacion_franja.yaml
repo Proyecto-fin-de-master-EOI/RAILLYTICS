@@ -1,0 +1,204 @@
+table_name: ocupacion_franja
+main_dttm_col: fecha
+description: 'Ocupación por franja horaria. Los TRENES por franja son dato medido —la hora de salida del GTFS del NAP— pero
+  el reparto de la demanda entre franjas es una HIPÓTESIS declarada en config/reglas_demanda.yml: dentro del día el operador
+  elige libremente el horario, así que la oferta sigue a la demanda y no queda señal con la que medir el diferencial de ocupación.
+  Los KPI de hora punta y hora valle heredan esa condición. El perfil de oferta sí es real y tiene un dato interesante: Renfe
+  concentra en las puntas y OUIGO reparte casi plano.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: "-- Demanda y ocupacion por franja horaria del corredor.\n--\n-- QUE ES DATO Y QUE ES HIPOTESIS, porque esta tabla mezcla\
+  \ las dos y no distinguirlo seria enganoso:\n--   trenes por franja   MEDIDO: hora de salida del origen en stop_times.txt\
+  \ del GTFS del NAP\n--   demanda del dia     derivada: reparto de la DTC desde el total trimestral de la CNMC\n--   reparto\
+  \ por franja  HIPOTESIS: `base_franja` de config/reglas_demanda.yml\n--\n-- Por que el reparto es hipotesis y no medida:\
+  \ dentro del dia el operador elige libremente a que hora\n-- pone cada tren, asi que la oferta sigue a la demanda de cerca\
+  \ y no queda senal con la que estimar\n-- el diferencial de ocupacion entre franjas. El modelo que si funciono para el dia\
+  \ de la semana\n-- (demanda = oferta atenuada) daria aqui la MADRUGADA como la franja mas llena, que es absurdo.\n--\n--\
+  \ `plausible` marca las filas que no pasan del 100 %. Arrastra el aviso de siempre: el NAP da trenes\n-- y no plazas, asi\
+  \ que las composiciones dobles no se ven.\nSELECT\n    fecha,\n    franja,\n    es_punta,\n    CASE WHEN es_punta THEN 'punta'\
+  \ ELSE 'valle' END        AS tipo_franja,\n    trenes,\n    cuota_oferta,\n    cuota_demanda,\n    ocupacion,\n    plazas_vacias,\n\
+  \    plausible\nFROM read_parquet('s3://raillytics-gold/fact_ocupacion_franja/*.parquet')"
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: a9a18854-c41d-5c50-b477-6419955bc983
+metrics:
+- metric_name: ocupacion_punta
+  verbose_name: Ocupación en hora punta
+  metric_type: null
+  expression: AVG(CASE WHEN es_punta AND plausible THEN ocupacion END)
+  description: Mañana (6-9) y tarde (15-19). Solo días plausibles.
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: ocupacion_valle
+  verbose_name: Ocupación en hora valle
+  metric_type: null
+  expression: AVG(CASE WHEN NOT es_punta AND plausible THEN ocupacion END)
+  description: null
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: plazas_vacias_punta
+  verbose_name: Plazas vacías en punta
+  metric_type: null
+  expression: AVG(CASE WHEN es_punta AND plausible THEN plazas_vacias END)
+  description: Proporción de la capacidad de las franjas punta que no se vende. Es el margen sobre el que actuaría cualquier
+    medida de gestión de la demanda.
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: ocupacion_media_franja
+  verbose_name: Ocupación media
+  metric_type: null
+  expression: AVG(CASE WHEN plausible THEN ocupacion END)
+  description: null
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: trenes_franja
+  verbose_name: Trenes
+  metric_type: null
+  expression: SUM(trenes)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: dias_franja
+  verbose_name: Días
+  metric_type: null
+  expression: COUNT(DISTINCT fecha)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+columns:
+- column_name: fecha
+  verbose_name: Día
+  is_dttm: true
+  is_active: true
+  type: DATE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: franja
+  verbose_name: Franja
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: tipo_franja
+  verbose_name: Punta o valle
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: es_punta
+  verbose_name: Es hora punta
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: trenes
+  verbose_name: Trenes
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: cuota_oferta
+  verbose_name: Cuota de la oferta
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Parte de los trenes del día que salen en esa franja. Dato medido.
+  python_date_format: null
+  extra: null
+- column_name: cuota_demanda
+  verbose_name: Cuota de la demanda
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Parte de la demanda del día asignada a esa franja. Derivada de la hipótesis.
+  python_date_format: null
+  extra: null
+- column_name: ocupacion
+  verbose_name: Ocupación
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: plazas_vacias
+  verbose_name: Plazas vacías
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: plausible
+  verbose_name: Plausible
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

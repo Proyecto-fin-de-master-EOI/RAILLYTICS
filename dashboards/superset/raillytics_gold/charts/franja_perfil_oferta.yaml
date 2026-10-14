@@ -1,0 +1,40 @@
+slice_name: Trenes por franja horaria
+description: 'El perfil de oferta SÍ es dato medido: sale de la hora de salida de cada tren en el GTFS.'
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  adhoc_filters: []
+  query_mode: aggregate
+  groupby:
+  - franja
+  - tipo_franja
+  metrics:
+  - trenes_franja
+  - ocupacion_media_franja
+  all_columns: []
+  percent_metrics: []
+  order_by_cols:
+  - '["trenes_franja", false]'
+  row_limit: 20
+  server_page_length: 10
+  include_search: false
+  show_totals: false
+  table_timestamp_format: smart_date
+  show_cell_bars: true
+  color_pn: false
+  allow_render_html: false
+  column_config: {}
+  conditional_formatting: []
+  temporal_columns_lookup: {}
+  time_grain_sqla: null
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: b191cc85-603a-5b7a-a13c-2d277a89599e
+version: 1.0.0
+dataset_uuid: a9a18854-c41d-5c50-b477-6419955bc983
+is_managed_externally: false
+external_url: null

@@ -25,7 +25,7 @@ def test_load_sources_parses_valid_yaml():
 def test_load_sources_accepts_zip_and_the_project_registry_is_consistent():
     # El registro real del proyecto: CRTM sirve un GTFS (zip); Renfe, JSON; la CNMC, tres CSV con `;`;
     # AEMET, JSON con descarga en dos pasos; el NAP, el GTFS de cada operador en zip; el BOE, el
-    # calendario laboral de cada año en xml.
+    # calendario laboral de cada año en xml; el INE, la serie mensual de turismo en JSON.
     fuentes = load_sources(Path(__file__).parents[2] / "config" / "data_sources.yml")
     sources = {s.id: s.format for s in fuentes}
 
@@ -36,6 +36,7 @@ def test_load_sources_accepts_zip_and_the_project_registry_is_consistent():
         "aemet_madrid_barajas": "json", "aemet_barcelona_prat": "json",
         "nap_gtfs_renfe": "zip", "nap_gtfs_ouigo": "zip",
         "boe_calendario_laboral_2025": "xml", "boe_calendario_laboral_2026": "xml",
+        "ine_turismo_madrid_barcelona": "json",
     }
     # Las fuentes con credencial declaran de qué variable de entorno sale, nunca el secreto.
     con_auth = {s.id: s.auth["env"] for s in fuentes if s.auth}

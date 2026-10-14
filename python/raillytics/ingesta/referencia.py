@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from datetime import datetime
 
 import duckdb
 import pandas as pd
@@ -33,13 +34,19 @@ def escribir(
     parametros: Mapping[str, object],
     env: Mapping[str, str],
     origen: str,
+    inicio: datetime | None = None,
 ) -> str:
-    """Deja la tabla en su prefijo de Silver (sobrescribe: es idempotente) y registra la carga."""
+    """Deja la tabla en su prefijo de Silver (sobrescribe: es idempotente) y registra la carga.
+
+    `inicio` es para quien tarda en CALCULAR lo que escribe: el recuento de la oferta del NAP son
+    minutos de GTFS y un segundo de escritura, y sin declararlo el registro diría que la fase dura un
+    segundo. Ver `Ejecucion.tabla`.
+    """
     layout = LakeLayout.from_env(env)
     con = conexion(layout, env)
     destino = layout.silver_file(tabla)
     with registrar_carga(f"referencia_{tabla}", "silver", layout, con, parametros=parametros) as ejecucion:
-        with ejecucion.tabla(tabla, origen=origen, destino=destino) as carga:
+        with ejecucion.tabla(tabla, origen=origen, destino=destino, inicio=inicio) as carga:
             ensure_parent_dir(destino)
             # pandas guarda las fechas como timestamps de nanosegundos y el contrato de la predicción
             # pide DATE, que es lo que escribiría Spark: se castea al copiar.

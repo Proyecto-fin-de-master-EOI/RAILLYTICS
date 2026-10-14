@@ -22,13 +22,21 @@ from raillytics.prediccion.calendario import Calendario, construir_calendario
 from raillytics.prediccion.contexto_cnmc import construir_contexto
 from raillytics.prediccion.entradas import Entradas, cargar_config, cargar_entradas, raiz_bronze
 from raillytics.prediccion.gates import TABLA, evaluar_gates
-from raillytics.prediccion.nivel import NivelEsperado, calcular_nivel, desviacion_relativa, miles
+from raillytics.prediccion.nivel import (
+    NivelError,
+    NivelEsperado,
+    calcular_nivel,
+    cobertura,
+    desviacion_relativa,
+    intervalo,
+    miles,
+)
 from raillytics.prediccion.normalizar import IndiceDia, normalizar_indices, repartir
 from raillytics.prediccion.ollama import OllamaClient, OllamaSettings
 from raillytics.prediccion.prompt import cargar_plantilla, construir_prompt
 from raillytics.prediccion.publicacion import GOLD_TABLA, construir_gold, publicar_gold
 from raillytics.prediccion.reglas import RUTA_POR_DEFECTO as RUTA_REGLAS
-from raillytics.prediccion.reglas import cargar_reglas, combinar, es_modo_eventos, indices_base
+from raillytics.prediccion.reglas import cargar_reglas, combinar, es_modo_eventos, indices_base, perfil_mensual
 from raillytics.prediccion.salida import (
     CORREDOR,
     RAIZ_POR_DEFECTO,
@@ -143,7 +151,9 @@ def _indices_modo_eventos(
         parametros["cache"] = _estado_cache(cliente)
     else:
         parametros["cache"] = "sin llamada"
-    indices = combinar(indices_base(calendario, reglas), factores, calendario, reglas)
+    # El perfil del mes se aplica al final, sobre el valor ya combinado: es un nivel, así que escala
+    # también el factor del LLM y el ajuste de los días junto a un evento.
+    indices = perfil_mensual(combinar(indices_base(calendario, reglas), factores, calendario, reglas), reglas)
     return indices, [d.isoformat() for d in con_evento]
 
 
@@ -186,6 +196,23 @@ def ejecutar(
     with registrar_carga(PROCESO, CAPA, layout, con, parametros=parametros) as ejecucion:
         with ejecucion.tabla(TABLA, origen=f"{s.modelo} · {version_prompt}") as carga:
             entradas, publicados, nivel, total, sinteticas = _preparar(trimestre, total_manual, env, layout, con, imprimir)
+            # Intervalo del nivel: sale de los errores que la regla cometio en los trimestres ya
+            # publicados, no de suponer una distribucion. Sin bastantes puntos se sigue sin banda:
+            # mejor ninguna que una inventada.
+            banda = banda_cobertura = None
+            if nivel is not None:
+                try:
+                    banda = intervalo(nivel, publicados)
+                    banda_cobertura = cobertura(publicados, banda.confianza)
+                    imprimir(f"{banda.describir()}; cobertura medida {banda_cobertura:.0%}")
+                    if banda_cobertura < banda.confianza - 0.05:
+                        imprimir(
+                            f"AVISO: el intervalo dice {banda.confianza:.0%} y cubre el "
+                            f"{banda_cobertura:.0%}. Con pocos trimestres de backtest la banda sale "
+                            "optimista: usala como orden de magnitud, no como garantia."
+                        )
+                except NivelError as exc:
+                    imprimir(f"sin intervalo de confianza: {exc}")
             prompt, calendario = _prompt(trimestre, version_prompt, total, publicados, entradas, env)
             dias = trimestre.dias()
             fechas_llm = None
@@ -209,6 +236,15 @@ def ejecutar(
             exigir(resultados)
             # Primero Gold y después el CSV: si Gold falla no queda un CSV sin su fila de trazabilidad en el dashboard.
             gold = construir_gold(df, calendario, total_esperado=total, datos_sinteticos=sinteticas)
+            if banda is not None:
+                # La banda del TOTAL se reparte entre los días con los MISMOS índices, así que la
+                # banda diaria tiene la forma de la predicción. Ojo con lo que esto cubre y lo que
+                # no: cubre la incertidumbre del nivel trimestral, que es donde está el error
+                # grande, pero NO la del reparto entre días.
+                gold["viajeros_min"] = [float(v) for v in repartir(valores, banda.bajo)]
+                gold["viajeros_max"] = [float(v) for v in repartir(valores, banda.alto)]
+                gold["ic_confianza"] = float(banda.confianza)
+                gold["ic_cobertura"] = float(banda_cobertura) if banda_cobertura is not None else None
             with ejecucion.tabla(GOLD_TABLA, origen=f"{s.modelo} · {version_prompt}") as carga_gold:
                 carga_gold.destino = publicar_gold(con, layout, gold)
                 carga_gold.filas = len(gold)

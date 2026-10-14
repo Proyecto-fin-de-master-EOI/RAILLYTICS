@@ -1,0 +1,79 @@
+slice_name: Demanda diaria prevista, con su intervalo del 90 %
+description: La banda sale de los errores que la regla de nivel cometió en 24 trimestres ya publicados. Cubre la incertidumbre
+  del total trimestral, que es donde está el error grande, no la del reparto entre días.
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_line
+params:
+  viz_type: echarts_timeseries_line
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  - clause: WHERE
+    expressionType: SQL
+    sqlExpression: es_ultima
+  x_axis: fecha
+  time_grain_sqla: P1D
+  x_axis_sort_asc: true
+  x_axis_sort_series: name
+  x_axis_sort_series_ascending: true
+  metrics:
+  - expressionType: SQL
+    sqlExpression: AVG(viajeros_min)
+    label: mínimo del IC
+    hasCustomLabel: true
+    optionName: metric_ic_min
+    aggregate: null
+    column: null
+  - expressionType: SQL
+    sqlExpression: SUM(viajeros_previstos)
+    label: previsto
+    hasCustomLabel: true
+    optionName: metric_ic_centro
+    aggregate: null
+    column: null
+  - expressionType: SQL
+    sqlExpression: AVG(viajeros_max)
+    label: máximo del IC
+    hasCustomLabel: true
+    optionName: metric_ic_max
+    aggregate: null
+    column: null
+  groupby: []
+  order_desc: true
+  row_limit: 10000
+  truncate_metric: true
+  show_empty_columns: true
+  comparison_type: values
+  annotation_layers: []
+  forecastPeriods: 10
+  forecastInterval: 0.8
+  x_axis_title_margin: 15
+  y_axis_title_margin: 15
+  y_axis_title_position: Left
+  sort_series_type: sum
+  color_scheme: raillytics
+  only_total: true
+  show_legend: true
+  legendType: scroll
+  legendOrientation: top
+  x_axis_time_format: smart_date
+  rich_tooltip: true
+  tooltipTimeFormat: smart_date
+  y_axis_format: SMART_NUMBER
+  truncateXAxis: true
+  y_axis_bounds:
+  - null
+  - null
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 106a4c59-b985-5cc1-a921-44916a0ffbc4
+version: 1.0.0
+dataset_uuid: ce2482b5-226e-5980-80be-4ed2706e8696
+is_managed_externally: false
+external_url: null

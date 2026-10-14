@@ -1,0 +1,29 @@
+slice_name: Días con ocupación imposible
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  metric: pct_imposibles
+  header_font_size: 0.4
+  subheader: 'por encima del 100 %: el denominador se queda corto'
+  subheader_font_size: 0.15
+  y_axis_format: .1%
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: fb293014-b4c7-55dd-962e-67ae87f06ea9
+version: 1.0.0
+dataset_uuid: 47994a16-687b-5f50-baa1-98103ce742b7
+is_managed_externally: false
+external_url: null

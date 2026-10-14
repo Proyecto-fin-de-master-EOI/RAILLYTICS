@@ -20,19 +20,51 @@
 # cuatro trimestres medidos. Con los valores anteriores (vie 1.30, dom 1.25) el domingo implicaba un
 # 99 % de ocupación media: todos los domingos del año prácticamente llenos, que no se sostiene.
 #
-# Los valores de ahora conservan la DIRECCIÓN de la hipótesis —el viernes y el domingo van más
-# llenos, porque el operador no puede añadir trenes sin límite— pero moderada hasta que cabe en la
-# capacidad medida. El domingo queda en un 86 % de ocupación implicada, dentro del rango observado
-# en los trimestres reales (74-87 %).
+# El domingo conserva la DIRECCIÓN de la hipótesis —va más lleno, porque el operador no puede añadir
+# trenes sin límite— moderada hasta que cabe en la capacidad medida: queda en un 96 % de ocupación
+# implicada, que es alto pero posible, y tiene detrás un argumento real (la oferta cae un 24 % el
+# domingo, así que si la demanda no cae tanto, la ocupación sube).
 #
-# Lo medido es el TECHO, no el valor: que el viernes sea 1.15 y no 1.10 sigue siendo un juicio.
-# Para recalcularlo tras ampliar el histórico: `make nap-oferta && make calibrar`.
+# Lo medido es el TECHO, no el valor. Para recalcularlo tras ampliar el histórico:
+# `make nap-oferta && make calibrar`.
+#
+# EL VIERNES: SE INTENTÓ BAJARLO A 0.98 Y SE DEVOLVIÓ A 1.15 (2026-10-11).
+#
+# Queda anotado porque el intento enseña dónde está el límite de lo que se puede medir, y porque el
+# 1.15 sigue siendo el coeficiente con menos apoyo del fichero.
+#
+# Lo que se midió, y es lo único que hay: el operador pone 65 trenes un viernes (mediana) frente a
+# 71 un jueves, y ha llegado a poner 78 un jueves. O sea que el viernes NO está topado por
+# capacidad: pone menos porque quiere. Si el viernes fuera el día de más demanda de la semana,
+# dejaría dinero en la mesa.
+#
+# Por qué no basta para cambiarlo:
+#
+#   - Es UNA sola medida, no tres. Modelar la demanda como la oferta atenuada
+#     (`demanda = oferta ** alfa`) da 0.96-0.98 para el viernes, pero eso NO es una medida
+#     independiente: es la misma oferta comprimida hacia la media.
+#   - El interés de búsqueda de Google Trends da 0.94, pero **ese número no es utilizable**. De
+#     Trends solo se puede usar la AMPLITUD del perfil semanal, porque no cambia al rotarlo; los
+#     valores por día dependen del desfase entre buscar y viajar, que no se puede identificar (ver
+#     docs/modelo-ocupacion.md). Usarlo fue un error, y es lo que hizo parecer que había tres
+#     medidas coincidentes.
+#   - Y la oferta arrastra el aviso de siempre: **el NAP da trenes, no plazas**. Esos 65 trenes del
+#     viernes pueden ser composiciones más largas. Es el mismo problema que impide decidir el fin de
+#     semana, y vale igual aquí.
+#
+# El argumento que sostiene el 1.15 sigue en pie: el viernes la demanda puede superar lo que el
+# operador ofrece y la diferencia se absorbe en ocupación. Con un 85.7 % implicado eso es posible,
+# no imposible. Es el MISMO argumento que mantiene el domingo en 1.00, y aplicarlo a uno y no al
+# otro sería incoherente.
+#
+# Qué haría falta para cerrarlo: plazas por día (no trenes), o demanda diaria observada. Mientras no
+# haya una de las dos, el viernes se queda como hipótesis documentada, igual que los festivos.
 base_dia_semana:
   lun: 1.05
   mar: 1.00
   mié: 1.00
   jue: 1.05
-  vie: 1.15
+  vie: 1.15   # hipótesis; se intentó bajarlo a 0.98 y no hay con qué sostenerlo (ver arriba)
   sáb: 0.80
   dom: 1.00
 festivo_entre_semana: 0.70
@@ -41,3 +73,155 @@ ajustes:
   vispera: 0.20
   regreso: 0.20
   junto_a_evento: 0.05
+
+# PERFIL MENSUAL (2026-10-09). `base_mes` multiplica el valor del día por el coeficiente de su mes.
+#
+# Qué arregla: el total que reparte la DTC es TRIMESTRAL (CNMC no publica meses), y hasta ahora las
+# reglas solo miraban el día de la semana, los festivos y los puentes. Eso dejaba una hipótesis
+# implícita que nadie había escrito: que dentro de un trimestre todos los meses están al mismo nivel.
+# El valor anterior de los doce meses era, de hecho, 1.000 implícito.
+#
+# De dónde sale: del INE, turistas de Madrid a Barcelona mes a mes (operación TMOV, tabla 53267,
+# estimada por posición de teléfonos móviles). Para cada trimestre completo se calcula qué cuota de
+# sus turistas cae en cada mes y se promedia por mes de calendario sobre 2019 y 2022-2026 (2020 y
+# 2021 fuera: la pandemia no es calendario). Un mes neutro se lleva 1/3 del trimestre, así que el
+# coeficiente es cuota*3. Recalcular con `make turismo && make perfil-mensual`.
+#
+# Lo que el INE mide y lo que no: son viajes en TODOS los medios de transporte, y «turista» en TMOV
+# implica pernoctación, así que la ida y vuelta en el día no entra. Por eso se usa su FORMA (qué peso
+# tiene cada mes) y no su nivel: lo que se afirma es que marzo concentra más viajes Madrid-Barcelona
+# que enero, no cuántos viajeros hubo.
+#
+# Los meses cuyo efecto NO se distingue del neutro con cinco años de muestra (|t| < 2) se quedan en
+# 1.000 clavado y no en su cuota medida: may (t=1.2), jun (t=1.8), sep (t=-1.1), nov (t=0.6) y dic
+# (t=-1.2). Medir una diferencia no da derecho a afirmarla, y así el motivo de cada día solo menciona
+# el perfil cuando el perfil hace algo.
+#
+# NO se renormaliza el trimestre para que sus tres meses promedien 1.000, aunque lo pareciera:
+# `normalizar_indices` reescala el reparto a media 1.0 antes de aplicar el total de CNMC, así que un
+# factor común dentro del trimestre se cancela. Renormalizar solo dejaba los meses neutros en 0.995 y
+# compraba una falsa precisión del medio por ciento.
+#
+# Diferencia con los festivos, que no se pudieron inferir (ver docs/modelo-ocupacion.md): allí el
+# efecto salía con t=0.71 sobre 34 trimestres y aquí jul da t=16.4 y ago t=-9.2. La causa es que la
+# cuota mensual se mide DENTRO del trimestre, así que la estacionalidad trimestral —que era lo que
+# confundía la estimación de los festivos— ya está descontada.
+#
+#   mes    cuota del trimestre    t      antes      ahora
+#   ene          30.0 %         -3.6     1.000      0.901
+#   feb          31.9 %         -3.1     1.000      0.957
+#   mar          38.1 %          4.0     1.000      1.143
+#   abr          31.4 %         -3.4     1.000      0.942
+#   jul          38.1 %         16.4     1.000      1.142
+#   ago          29.1 %         -9.2     1.000      0.873
+#   oct          33.9 %          2.1     1.000      1.016
+base_mes:
+  ene: 0.901
+  feb: 0.957
+  mar: 1.143
+  abr: 0.942
+  may: 1.000
+  jun: 1.000
+  jul: 1.142
+  ago: 0.873
+  sep: 1.000
+  oct: 1.016
+  nov: 1.000
+  dic: 1.000
+
+# PERFIL POR FRANJA HORARIA (2026-10-13). Multiplica la ocupación esperada de cada franja respecto a
+# una franja corriente, y con él se reparte la demanda del día entre las seis franjas:
+#
+#     demanda_franja  ∝  trenes_franja  ×  base_franja[franja]
+#
+# QUÉ ES DATO Y QUÉ ES HIPÓTESIS, porque aquí la mezcla es fácil de pasar por alto:
+#
+#   - Los TRENES por franja son dato MEDIDO: salen de `stop_times.txt` del GTFS del NAP, tomando la
+#     hora de salida del origen de cada tren. El perfil real del corredor es tarde 29,2 %, mañana
+#     22,5 %, mediodía 20,8 %, media mañana 13,6 %, noche 10,8 % y madrugada 3,1 %.
+#   - Estos coeficientes son HIPÓTESIS. No hay forma de medirlos con las fuentes del proyecto.
+#
+# POR QUÉ NO SE PUEDEN MEDIR, y conviene que quede escrito porque se intentó: con el día de la semana
+# funcionó modelar la demanda como la oferta atenuada (`demanda = oferta ** alfa`), porque el operador
+# no puede añadir trenes el domingo sin límite y la ocupación absorbe la diferencia. Dentro del día no
+# aplica: el operador SÍ elige libremente a qué hora pone cada tren, así que la oferta sigue a la
+# demanda de cerca y el modelo daría ocupación plana en todas las franjas. Peor aún, con alfa < 1
+# daría la MADRUGADA como la franja más llena, que es absurdo: de noche hay pocos trenes porque hay
+# poca gente, no porque el operador no pueda poner más.
+#
+# DE DÓNDE SALE LA DIRECCIÓN: en un corredor de negocio el viajero de ida y vuelta en el día se
+# concentra en la primera hora y en la vuelta de la tarde, y esos trenes van más llenos que los de
+# mediodía. La madrugada va floja incluso con pocos trenes. Las magnitudes son moderadas a propósito:
+# un ±10 % sobre la franja corriente, no un ±50 %.
+#
+# CÓMO SE COMPROBARÍA: hace falta ocupación observada por franja, que no publica nadie. Mientras no la
+# haya, esto es una hipótesis declarada y los KPI de ocupación en punta y en valle que salen de aquí
+# heredan esa condición. Está dicho así en el cuadro de mandos.
+base_franja:
+  madrugada: 0.85
+  mañana: 1.10
+  media mañana: 0.95
+  mediodía: 0.95
+  tarde: 1.10
+  noche: 0.90
+  sin hora: 1.00    # trenes cuyo GTFS no trae hora: ni se penalizan ni se premian
+
+# PRECIO RECOMENDADO (2026-10-13). El sprint pide un precio recomendado y un ratio de aceptación. El
+# precio sí se puede construir; el ratio de aceptación no, y por qué está en docs/hipotesis.md.
+#
+#     precio_recomendado = precio_base(operador, trimestre) × (ocupación_prevista / referencia) ** (1/|ε|)
+#
+# acotado al recorrido de precios REAL de ese operador en el trayecto.
+#
+# QUÉ ES DATO Y QUÉ ES HIPÓTESIS:
+#
+#   - El precio base es DATO MEDIDO: `precio_medio_eur` de silver/cnmc_precio_trimestral, el precio
+#     medio que la CNMC publica por trayecto, trimestre y operador. 73 observaciones en el corredor.
+#   - El recorrido al que se acota también es DATO MEDIDO: el mínimo y el máximo observados de ese
+#     operador. RENFE se mueve entre 0,89 y 1,38 veces su propia media; OUIGO entre 0,72 y 1,40;
+#     IRYO entre 0,64 y 1,57; AVLO entre 0,83 y 1,15. La recomendación nunca propone un precio que no
+#     se haya visto en el corredor. Es un tope conservador: lo publicado son medias trimestrales, así
+#     que el recorrido del billete concreto es bastante más ancho que éste.
+#   - La ELASTICIDAD es hipótesis. La ocupación prevista viene de `base_franja`, que también lo es.
+#
+# POR QUÉ LA ELASTICIDAD NO SE PUDO MEDIR, y queda escrito porque se intentó. Se estimó un panel de
+# 45 filas (3 operadores × 15 trimestres) con log(viajeros) contra log(precio), efectos fijos de
+# operador, trimestre del año y tendencia:
+#
+#     elasticidad = -0,299   error estándar 0,453   t = -0,66   R² 0,78
+#
+# El signo es el correcto pero no es significativa, y hay dos razones de fondo para no insistir:
+#
+#   1. Endogeneidad. El operador sube el precio precisamente cuando prevé demanda alta, así que el
+#      precio y los viajeros se mueven juntos y el coeficiente se va hacia cero.
+#   2. El corredor está topado por capacidad. De 2023-T1 a 2025-T4 el precio medio sube un 72 %
+#      (42,87 -> 73,61 €) y los viajeros se quedan en 3,3-3,9 M por trimestre. Esa serie no mide
+#      cuánta demanda hay, mide cuántas plazas se vendieron. No se puede estimar una curva de demanda
+#      con la oferta tocando el techo.
+#
+# DE DÓNDE SALE EL VALOR DECLARADO (-1,00):
+#
+#   - Está dentro del intervalo de confianza de la estimación propia: -0,299 ± 2,026 × 0,453 con 37
+#     grados de libertad da [-1,22 , 0,62], que contiene el -1,00.
+#   - Es el valor neutro y legible: con elasticidad unitaria el exponente vale 1 y la regla se queda
+#     en «un 10 % de ocupación por encima de la referencia, un 10 % de precio por encima». Cualquier
+#     otro valor metería una curvatura que no tenemos con qué justificar.
+#   - No se toma prestada una cifra de la literatura. Lo publicado para este corredor (Román 2008,
+#     Martín y Nombela 2008) son modelos logit anteriores a la liberalización, de un mercado con un
+#     solo operador ferroviario compitiendo contra el avión; no es trasladable al corredor de tres
+#     operadores de 2022 en adelante, y copiar el número daría una falsa precisión.
+#
+# REFERENCIA DE OCUPACIÓN: `medida` toma la ocupación media de los días plausibles de
+# gold/fact_ocupacion_franja. Con eso la regla es NEUTRA en promedio —la recomendación media coincide
+# con el precio real de la CNMC— y lo único que dice es qué días y qué franjas van por encima o por
+# debajo de la media. No afirma que el nivel de precios del corredor esté mal, porque eso no lo
+# sabemos: haría falta la elasticidad que no se pudo medir. Puede ponerse un número entre 0 y 1 para
+# fijar un objetivo distinto.
+#
+# CÓMO SE COMPROBARÍA la elasticidad: hacen falta precio y demanda a la misma frecuencia y una fuente
+# de variación del precio ajena a la demanda (un cambio regulatorio, un canon, una huelga del
+# competidor). Mientras no la haya, esto es una hipótesis declarada y el precio recomendado hereda esa
+# condición. Está dicho así en el cuadro de mandos.
+precio_recomendado:
+  elasticidad: -1.00
+  referencia_ocupacion: medida

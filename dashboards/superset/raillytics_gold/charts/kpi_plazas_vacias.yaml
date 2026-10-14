@@ -1,0 +1,29 @@
+slice_name: Plazas vacías en hora punta
+description: Es el margen sobre el que actuaría cualquier medida de gestión de la demanda.
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  adhoc_filters:
+  - clause: WHERE
+    comparator: No filter
+    expressionType: SIMPLE
+    operator: TEMPORAL_RANGE
+    subject: fecha
+  metric: plazas_vacias_punta
+  header_font_size: 0.4
+  subheader: capacidad de las franjas punta que no se vende
+  subheader_font_size: 0.15
+  y_axis_format: .1%
+  time_format: smart_date
+  force_timestamp_formatting: false
+  extra_form_data: {}
+  dashboards: []
+query_context: null
+cache_timeout: null
+uuid: 34c1f77d-1f33-5f66-a8b2-07afdbc276c9
+version: 1.0.0
+dataset_uuid: a9a18854-c41d-5c50-b477-6419955bc983
+is_managed_externally: false
+external_url: null

@@ -1,0 +1,194 @@
+table_name: cobertura_ingesta
+main_dttm_col: fecha
+description: 'KPI de completitud de la ingesta que pide el plan del Sprint 2: fuentes del registro descargadas correctamente
+  sobre el total de fuentes declaradas, con umbral del 98 %. No confundir con el «% de quality gates OK»: aquel mide cuántas
+  reglas se cumplen y este cuánto dato falta. Se pueden tener todos los gates en verde y faltar meses de datos. El denominador
+  es el registro de HOY, así que un día anterior al alta de una fuente nueva sale por debajo del 100 %: compara «fuentes intentadas»
+  con «esperadas» para distinguir un fallo real de un registro que ha crecido.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: "-- Completitud de la ingesta: fuentes obligatorias descargadas OK sobre el total del registro.\n-- NO es lo mismo que\
+  \ el «% de quality gates OK», que mide cuantas REGLAS se cumplen. Se pueden tener\n-- todos los gates en verde y faltar\
+  \ meses de datos, porque ningun gate pregunta si estan todos los\n-- dias ni si se intentaron todas las fuentes.\n--\n--\
+  \ La metrica pilla las dos averias que importan y son distintas: una fuente que se intento y FALLO, y\n-- una del registro\
+  \ que NI SE INTENTO, que es la que no sale en ningun log de error. `fuentes_intentadas`\n-- sirve para distinguirlas.\n\
+  --\n-- El denominador es el registro de HOY, asi que un dia anterior a dar de alta una fuente nueva sale\n-- por debajo\
+  \ del 100 %. Es deliberado: la pregunta es «tengo hoy todo lo que el proyecto necesita».\nSELECT\n    fecha,\n    fuentes_esperadas,\n\
+  \    fuentes_intentadas,\n    ok_del_registro                                        AS fuentes_ok,\n    fuentes_esperadas\
+  \ - ok_del_registro                     AS fuentes_que_faltan,\n    cobertura,\n    umbral,\n    cumple_umbral,\n    cargas,\n\
+  \    fecha = max(fecha) OVER ()                              AS es_ultima\nFROM read_parquet('s3://raillytics-gold/fact_cobertura_ingesta/*.parquet')"
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: 63a444f7-eb8b-5bb5-9fb6-fb608f1c6c49
+metrics:
+- metric_name: cobertura_ultima
+  verbose_name: Cobertura de ingesta
+  metric_type: null
+  expression: MAX(CASE WHEN es_ultima THEN cobertura END)
+  description: De la última ingesta registrada. El umbral del plan es el 98 %.
+  d3format: .1%
+  extra: null
+  warning_text: null
+- metric_name: fuentes_ok_ultima
+  verbose_name: Fuentes descargadas OK
+  metric_type: null
+  expression: MAX(CASE WHEN es_ultima THEN fuentes_ok END)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: fuentes_que_faltan_ultima
+  verbose_name: Fuentes que faltan
+  metric_type: null
+  expression: MAX(CASE WHEN es_ultima THEN fuentes_que_faltan END)
+  description: Del registro actual. Si es > 0, mirar si fallaron o si ni se intentaron.
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: dias_bajo_umbral
+  verbose_name: Días por debajo del umbral
+  metric_type: null
+  expression: SUM(CASE WHEN cumple_umbral THEN 0 ELSE 1 END)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: dias_con_ingesta
+  verbose_name: Días con ingesta
+  metric_type: null
+  expression: COUNT(*)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+columns:
+- column_name: fecha
+  verbose_name: Día
+  is_dttm: true
+  is_active: true
+  type: DATE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fuentes_esperadas
+  verbose_name: Fuentes del registro
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fuentes_intentadas
+  verbose_name: Fuentes intentadas
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fuentes_ok
+  verbose_name: Fuentes OK
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: fuentes_que_faltan
+  verbose_name: Fuentes que faltan
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: cobertura
+  verbose_name: Cobertura
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: umbral
+  verbose_name: Umbral
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: cumple_umbral
+  verbose_name: Cumple el umbral
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: cargas
+  verbose_name: Cargas registradas
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: es_ultima
+  verbose_name: Última ingesta
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b

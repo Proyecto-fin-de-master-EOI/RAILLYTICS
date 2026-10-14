@@ -22,6 +22,11 @@ COLUMNAS_GOLD = (
     "run_id", "generado_en", "trimestre", "corredor", "modelo", "version_prompt", "datos_sinteticos", "total_esperado",
     "fecha", "dia_semana", "festivo", "eventos", "viajeros_previstos", "indice", "motivo",
     "vispera", "puente", "regreso", "junto_a_evento", "exceso",
+    # Banda de confianza del NIVEL, repartida entre los días con los mismos índices. Va vacía cuando
+    # el total se fija a mano o cuando no hay bastantes trimestres de backtest. Se guardan como
+    # DOUBLE aunque sean viajeros: el esquema del Parquet tiene que ser idéntico en todas las
+    # ejecuciones, y una con banda y otra sin ella darían tipos distintos si fueran enteros.
+    "viajeros_min", "viajeros_max", "ic_confianza", "ic_cobertura",
 )
 
 
