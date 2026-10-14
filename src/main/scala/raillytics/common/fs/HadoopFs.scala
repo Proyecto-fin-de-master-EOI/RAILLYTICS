@@ -19,8 +19,15 @@ object HadoopFs {
 
   // FileSystem que corresponde al esquema de root: s3a://bucket -> MinIO (con
   // las credenciales que SparkSessionFactory dejó en hadoopConf), file:// -> local.
+  //
+  // La raíz se convierte con Path y no con `new URI(root)`: las rutas del .env se
+  // escriben sin codificar, así que un proyecto en un directorio con espacios
+  // ("file:///E:/Mis Proyectos/...") hacía fallar la conversión con
+  // URISyntaxException ("Illegal character in path"), que es lo que tumbó una carga
+  // el 2026-10-02. Path sí acepta rutas sin codificar y es lo que usa el resto del
+  // código (ver el mismo motivo en RawUploader).
   def forRoot(root: String, hadoopConf: Configuration): FileSystem =
-    FileSystem.get(new URI(root), hadoopConf)
+    FileSystem.get(new Path(root).toUri, hadoopConf)
 
   // Mueve srcPath dentro de destDir (creándolo si no existe) con el nombre fileName
   // y devuelve la ruta destino. En disco local rename es atómico: el fichero nunca
