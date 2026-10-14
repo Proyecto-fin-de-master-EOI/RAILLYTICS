@@ -17,7 +17,7 @@ params:
   - comparador
   - objetivo
   - unidad
-  - cumple
+  - semaforo
   - nota
   percent_metrics: []
   order_by_cols:
@@ -31,7 +31,15 @@ params:
   color_pn: false
   allow_render_html: false
   column_config: {}
-  conditional_formatting: []
+  conditional_formatting:
+  - column: semaforo
+    operator: '>='
+    targetValue: 1
+    colorScheme: '#A7E8C0'
+  - column: semaforo
+    operator: <
+    targetValue: 1
+    colorScheme: '#EFA1AA'
   temporal_columns_lookup: {}
   time_grain_sqla: null
   extra_form_data: {}

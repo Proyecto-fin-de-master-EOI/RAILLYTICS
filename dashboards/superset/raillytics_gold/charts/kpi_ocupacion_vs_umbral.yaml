@@ -1,7 +1,8 @@
 slice_name: Factor de ocupación
-description: 'KPI de negocio del plan del Sprint 2. El umbral era «> 85 %» y se recalibró a «> 80 %» el 2026-10-03, al fijar
-  que la fórmula correcta es viajeros·km / plazas·km: medido por km el 100 % es un techo real, mientras que viajeros por plaza
-  pasa del 100 % legítimamente. Solo entran los días plausibles.'
+description: 'KPI de negocio del plan del Sprint 2. El umbral del plan era «> 85 %» y está en «> 72 %»: primero porque la
+  fórmula correcta es viajeros·km / plazas·km y no viajeros por plaza —por km el 100 % es un techo real—, y después porque
+  la serie es muy estacional, con 9,4 puntos entre el T1 y el T2, así que un umbral plano por encima del 74 % no avisa de
+  anomalías, avisa de que es invierno. El 72 % es el percentil 10 de la serie 2023-2026. Solo entran los días plausibles.'
 certified_by: null
 certification_details: null
 viz_type: big_number_total
@@ -15,17 +16,17 @@ params:
     subject: fecha
   metric: ocupacion_media
   header_font_size: 0.4
-  subheader: viajeros·km / plazas·km · umbral de referencia 80%
+  subheader: viajeros·km / plazas·km · umbral de referencia 72%
   subheader_font_size: 0.15
   y_axis_format: .1%
   time_format: smart_date
   force_timestamp_formatting: false
   conditional_formatting:
   - operator: <
-    targetValue: 0.8
+    targetValue: 0.72
     colorScheme: '#EFA1AA'
   - operator: '>='
-    targetValue: 0.8
+    targetValue: 0.72
     colorScheme: '#A7E8C0'
   extra_form_data: {}
   dashboards: []

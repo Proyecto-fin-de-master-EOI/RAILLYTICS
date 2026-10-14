@@ -37,7 +37,7 @@ import time
 import urllib.request
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -374,6 +374,31 @@ def paso_gold(ctx: Contexto) -> None:
     make(ctx, "05_gold")
 
 
+def registrar_e2e(ctx: Contexto, inicio: float, duraciones: list[tuple[str, float]],
+                  fallidas: list[str], args: argparse.Namespace) -> None:
+    """Deja una fila en el registro de cargas con el reloj de pared de la carga entera.
+
+    De mejor esfuerzo: si el lago no está accesible la carga no deja de haber salido bien, así que
+    esto avisa y no falla. Los segundos de cada paso van en los parámetros, que es lo que permite
+    mirar después dónde se fue el tiempo sin volver a correrla.
+    """
+    try:
+        from raillytics.utils.cargas import ahora, registrar_carga
+
+        comenzo = ahora() - timedelta(seconds=time.monotonic() - inicio)
+        parametros = {
+            "pasos": {nombre: round(segundos, 1) for nombre, segundos in duraciones},
+            "desde": args.desde,
+            "con_prediccion": not args.sin_prediccion,
+            "descargas_fallidas": fallidas,
+        }
+        with registrar_carga("carga_e2e", "pipeline", parametros=parametros) as ejecucion:
+            with ejecucion.tabla(None, origen="make carga-e2e", inicio=comenzo):
+                pass
+    except Exception as exc:  # noqa: BLE001 - la carga ya ha terminado bien
+        log(f"  (no se pudo registrar la carga completa: {exc})")
+
+
 def paso_metricas(ctx: Contexto) -> None:
     """Las tablas Gold que escribe Python y no Spark: KPI de calidad, modelo, franja y precio.
 
@@ -463,6 +488,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         if nombre == "descarga" and isinstance(resultado, list):
             fallidas = resultado
         duraciones.append((nombre, time.monotonic() - t0))
+
+    # La latencia de la carga COMPLETA la mide quien la lanza, no la suma de las fases: una fase que
+    # no tiene trabajo que hacer no deja fila en el registro —le pasó a `silver_builder` el 2026-10-14,
+    # que corrió sin nada nuevo que escribir—, y sumar fases exigía que estuvieran TODAS para dar un
+    # número, así que el KPI no aparecía nunca. Esto registra el reloj de pared del orquestador, que
+    # además es lo que de verdad significa «cuánto tarda la carga»: incluye lo que las fases no ven,
+    # como esperar a que los streams se asienten.
+    registrar_e2e(ctx, inicio, duraciones, fallidas, args)
 
     log("✓ carga end-to-end completada en " + f"{(time.monotonic() - inicio) / 60:.1f} min (" +
         ", ".join(f"{n} {d:.0f}s" for n, d in duraciones) + ")")
