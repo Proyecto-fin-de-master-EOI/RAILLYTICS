@@ -26,6 +26,13 @@ CARGAS_REALES = [
     ("prediccion_muestra", "festivos"),
     ("silver_builder", "cnmc_precio_mensual"), ("silver_builder", "cnmc_trimestral"), ("silver_builder", "cnmc_viajeros_producto"),
     ("silver_sample", "puntualidad_enriquecida"), ("silver_sample", "viajeros_enriquecidos"),
+    # Las tablas que construye Python (sus llamadas a registrar_carga y ejecucion.tabla, 2026-10-14).
+    ("referencia_festivos", "festivos"), ("referencia_meteo", "meteo"), ("referencia_turismo_mensual", "turismo_mensual"),
+    ("referencia_oferta_diaria", "oferta_diaria"), ("referencia_oferta_franja", "oferta_franja"),
+    ("referencia_ml_ocupacion_diaria", "ml_ocupacion_diaria"),
+    ("ml_metricas", "fact_metricas_modelo"), ("ml_ocupacion_franja", "fact_ocupacion_franja"),
+    ("precio_recomendado", "fact_precio_recomendado"), ("calidad_completitud_silver", "fact_completitud_silver"),
+    ("calidad_cobertura_ingesta", "fact_cobertura_ingesta"),
 ]
 GATES_REALES = [
     ("bronze_download", "cnmc_indicadores"), ("bronze_l1_raw_uploader", "crtm"), ("bronze_l2_parquet_converter", "crtm/stops"),

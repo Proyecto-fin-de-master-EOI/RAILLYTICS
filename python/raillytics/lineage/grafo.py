@@ -10,13 +10,16 @@ Fuentes de cada parte del grafo:
   Silver/Gold → Gold           las tablas `silver_*`/`gold_*` que cita cada src/main/resources/gold/<tabla>.sql (la trazabilidad solo
                                guarda «origen = s3a://raillytics-silver», sin decir de qué tablas)
   generadores sintéticos       silver_sample y prediccion.muestra (constantes de sus módulos)
-  predicción                   config/prediccion.yml (de qué lee) y las constantes de salida de raillytics.prediccion
+  tablas que construye Python  DERIVADAS: festivos, meteo, oferta del NAP, tabla de entrenamiento, KPI del modelo y del precio…
+                               (no pasan por Spark ni declaran nada que leer, así que sus entradas se declaran aquí)
+  predicción                  config/prediccion.yml (de qué lee) y las constantes de salida de raillytics.prediccion
   Gold → dataset → dashboard   dashboards/superset/: el `read_parquet('s3://raillytics-gold/<tabla>/')` de cada dataset y los gráficos
                                colocados en cada dashboard
   reglas de calidad            config/quality_gates.yml
 """
 from __future__ import annotations
 
+import fnmatch
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -87,6 +90,49 @@ class Grafo:
     nodos: list[Nodo] = field(default_factory=list)
     aristas: list[Arista] = field(default_factory=list)
     reglas: list[Regla] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class Derivada:
+    proceso: str            # el que registra la carga (primer argumento de registrar_carga)
+    salida: str             # id del nodo que escribe
+    entradas: tuple[str, ...]   # ids de nodo; `fuente:<patrón>` son todas las fuentes del registro que encajan (fnmatch)
+    descripcion: str
+    modulo: str             # fichero que la construye
+
+
+# Tablas que construye Python y no Spark. Las de la ingesta descargan su fuente ellas mismas (no pasan por L1/L2), así que la arista sale
+# de la fuente. Los nombres van como texto para no importar scikit-learn al generar el grafo; un test los contrasta con las constantes
+# de cada módulo. fact_cobertura_ingesta no tiene entradas: lee el registro de cargas, que es metadato del lake y no un nodo.
+DERIVADAS: tuple[Derivada, ...] = (
+    Derivada("referencia_festivos", "silver:festivos", ("fuente:boe_calendario_laboral_*",),
+             "Festivos de Madrid o Cataluña del calendario laboral del BOE", "python/raillytics/ingesta/boe_festivos.py"),
+    Derivada("referencia_meteo", "silver:meteo", ("fuente:aemet_*",),
+             "Temperatura media y precipitación diarias de AEMET en las dos cabeceras del corredor",
+             "python/raillytics/ingesta/aemet_historico.py"),
+    Derivada("referencia_turismo_mensual", "silver:turismo_mensual", ("fuente:ine_turismo*",),
+             "Turistas mensuales entre Madrid y Barcelona del INE", "python/raillytics/ingesta/ine_turismo.py"),
+    Derivada("referencia_oferta_diaria", "silver:oferta_diaria", ("fuente:nap_gtfs_*",),
+             "Trenes por día, corredor y operador del histórico GTFS del NAP", "python/raillytics/ingesta/nap_oferta.py"),
+    Derivada("referencia_oferta_franja", "silver:oferta_franja", ("fuente:nap_gtfs_*",),
+             "Trenes por día, corredor y franja horaria del histórico GTFS del NAP", "python/raillytics/ingesta/nap_oferta.py"),
+    Derivada("referencia_ml_ocupacion_diaria", "silver:ml_ocupacion_diaria",
+             ("silver:oferta_diaria", "silver:cnmc_trimestral", "silver:festivos", "silver:meteo"),
+             "Tabla de entrenamiento: ocupación diaria implicada con sus variables de calendario y meteo", "python/raillytics/ml/dataset.py"),
+    Derivada("ml_metricas", "gold:fact_metricas_modelo", ("silver:ml_ocupacion_diaria",),
+             "Métricas del modelo de ocupación diaria (MAPE, R², intervalo)", "python/raillytics/ml/modelo.py"),
+    Derivada("ml_ocupacion_franja", "gold:fact_ocupacion_franja", ("silver:oferta_franja", "silver:ml_ocupacion_diaria"),
+             "Ocupación estimada por día, operador y franja horaria", "python/raillytics/ml/franja.py"),
+    Derivada("precio_recomendado", "gold:fact_precio_recomendado", ("gold:fact_ocupacion_franja", "silver:cnmc_precio_trimestral"),
+             "Precio recomendado por día, franja y operador", "python/raillytics/prediccion/precio.py"),
+    Derivada("calidad_completitud_silver", "gold:fact_completitud_silver",
+             ("silver:viajeros_enriquecidos", "silver:puntualidad_enriquecida", "silver:cnmc_trimestral",
+              "silver:cnmc_precio_trimestral", "silver:cnmc_precio_mensual", "silver:oferta_diaria", "silver:festivos",
+              "silver:meteo", "silver:turismo_mensual", "silver:ml_ocupacion_diaria"),
+             "KPI de completitud de las tablas de Silver", "python/raillytics/calidad/completitud_silver.py"),
+    Derivada("calidad_cobertura_ingesta", "gold:fact_cobertura_ingesta", (),
+             "KPI de cobertura de la ingesta, calculado del registro de cargas", "python/raillytics/calidad/cobertura_ingesta.py"),
+)
 
 
 # ------------------------------------------------------------------------------------------------ utilidades de SQL
@@ -174,10 +220,22 @@ class _Constructor:
             silver = self.nodo("silver", tabla)
             self.arista(silver_sample, silver, SILVER_SAMPLE,
                         "Generador determinista (python -m raillytics.procesamiento.silver_sample)")
-        muestra = self.nodo("gen", "muestra_prediccion", "Festivos, eventos, meteo y demanda sintéticos para la predicción")
+        # La predicción ya lee datos reales (config/prediccion.yml): la muestra queda para probarla sin ellos y no llega más allá de L2.
+        muestra = self.nodo("gen", "muestra_prediccion", "Festivos, eventos, meteo y demanda sintéticos para probar la predicción sin datos reales")
         for fuente in FUENTES_MUESTRA:
             l2 = self.nodo("l2", f"muestra_{fuente}", "Muestra sintética en Bronze L2")
             self.arista(muestra, l2, MUESTRA, "Generador determinista (python -m raillytics.prediccion.muestra)")
+
+    def derivadas(self) -> None:
+        fuentes = [n.nombre for n in self.nodos.values() if n.capa == "fuente"]
+        for d in DERIVADAS:
+            capa, _, nombre = d.salida.partition(":")
+            salida = self.nodo(capa, nombre, d.descripcion, d.modulo)
+            modulo = d.modulo.removeprefix("python/").removesuffix(".py").replace("/", ".")
+            for entrada in d.entradas:
+                capa_e, _, patron = entrada.partition(":")
+                for nombre_e in fnmatch.filter(fuentes, patron) if capa_e == "fuente" else [patron]:
+                    self.arista(self.nodo(capa_e, nombre_e), salida, d.proceso, f"{d.descripcion} (python -m {modulo})", d.modulo)
 
     # -- Gold
     def gold(self) -> None:
@@ -257,6 +315,7 @@ def construir(raiz: Path) -> Grafo:
     c = _Constructor(raiz)
     c.fuentes()
     c.generadores()
+    c.derivadas()
     c.gold()
     c.prediccion()
     c.superset()

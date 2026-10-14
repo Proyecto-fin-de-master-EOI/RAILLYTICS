@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from raillytics.lineage.grafo import CAPAS, Grafo, construir, descripcion_de_sql, sin_comentarios
+from raillytics.lineage.grafo import CAPAS, DERIVADAS, Grafo, construir, descripcion_de_sql, sin_comentarios
 
 RAIZ = Path(__file__).resolve().parents[2]
 
@@ -175,12 +175,58 @@ def _alcanzable(g: Grafo, desde: str, hasta: str) -> bool:
     ("fuente:cnmc_precio_mensual", "dashboard:mercado-corredor"),
     ("gen:silver_sample", "dashboard:demanda-ferroviaria"),          # el Silver sintético hasta el dashboard
     ("silver:cnmc_trimestral", "gold:fact_prediccion_demanda"),      # la predicción lee la demanda real
-    ("silver:festivos", "gold:fact_prediccion_demanda"),             # festivos del BOE y meteo de AEMET, ya sin muestra
-    ("silver:meteo", "gold:fact_prediccion_demanda"),
+    ("fuente:boe_calendario_laboral_2025", "gold:fact_prediccion_demanda"),   # festivos del BOE y meteo de AEMET, ya sin muestra
+    ("fuente:aemet_madrid_barajas", "gold:fact_prediccion_demanda"),
+    ("fuente:nap_gtfs_renfe", "gold:fact_precio_recomendado"),       # oferta del NAP -> modelo de ocupación -> precio
+    ("fuente:nap_gtfs_ouigo", "gold:fact_metricas_modelo"),
     ("modelo:ollama", "dashboard:prediccion-demanda"),
 ])
 def test_recorridos_completos_del_repo_real(real, desde, hasta):
     assert _alcanzable(real, desde, hasta), f"no hay camino {desde} → {hasta}"
+
+
+# Lee el registro de cargas (_trazabilidad), que es metadato del lake y no un nodo: no tiene de dónde venir.
+SIN_ENTRADAS = {"gold:fact_cobertura_ingesta"}
+
+
+def test_toda_tabla_de_silver_gold_o_prediccion_sabe_de_donde_viene(real):
+    # Una tabla nueva que construya Python sin declararse en DERIVADAS aparece aquí sin entradas.
+    con_entrada = {a.destino for a in real.aristas}
+    huerfanas = {n.id for n in real.nodos if n.capa in ("silver", "pred", "gold") and n.id not in con_entrada}
+
+    assert huerfanas == SIN_ENTRADAS
+
+
+def test_las_tablas_derivadas_usan_los_nombres_de_sus_modulos():
+    # DERIVADAS lleva los nombres como texto (no importa scikit-learn): si un módulo renombra su tabla o su proceso, esto falla.
+    from raillytics.calidad import cobertura_ingesta, completitud_silver
+    from raillytics.ingesta import aemet_historico, boe_festivos, ine_turismo
+    from raillytics.ml import dataset, franja, modelo
+    from raillytics.prediccion import precio
+
+    declaradas = {d.proceso: d for d in DERIVADAS}
+    esperadas = {
+        "referencia_festivos": ("silver:festivos", f"fuente:{boe_festivos.PREFIJO_FUENTE}*"),
+        "referencia_meteo": ("silver:meteo", f"fuente:{aemet_historico.PREFIJO_FUENTE}*"),
+        f"referencia_{ine_turismo.TABLA}": (f"silver:{ine_turismo.TABLA}", f"fuente:{ine_turismo.PREFIJO_FUENTE}*"),
+        f"referencia_{dataset.TABLA}": (f"silver:{dataset.TABLA}", None),
+        "ml_metricas": (f"gold:{modelo.GOLD_TABLA}", None),
+        "ml_ocupacion_franja": (f"gold:{franja.GOLD_TABLA}", None),
+        "precio_recomendado": (f"gold:{precio.GOLD_TABLA}", None),
+        "calidad_completitud_silver": (f"gold:{completitud_silver.GOLD_TABLA}", None),
+        "calidad_cobertura_ingesta": (f"gold:{cobertura_ingesta.GOLD_TABLA}", None),
+    }
+    for proceso, (salida, fuente) in esperadas.items():
+        assert declaradas[proceso].salida == salida
+        if fuente:
+            assert declaradas[proceso].entradas == (fuente,)
+    # La completitud lee exactamente las tablas de Silver que mide.
+    assert declaradas["calidad_completitud_silver"].entradas == tuple(f"silver:{t}" for t in completitud_silver.TABLAS)
+
+
+def test_cada_tabla_derivada_apunta_al_modulo_que_la_construye():
+    for d in DERIVADAS:
+        assert (RAIZ / d.modulo).is_file(), d.modulo
 
 
 def test_las_dos_fuentes_nuevas_de_la_cnmc_llegan_a_su_tabla_silver(real):

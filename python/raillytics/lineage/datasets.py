@@ -18,7 +18,7 @@ import re
 import uuid
 from typing import Any
 
-from raillytics.lineage.grafo import CAPAS, Grafo
+from raillytics.lineage.grafo import CAPAS, DERIVADAS, Grafo
 from raillytics.prediccion.publicacion import GOLD_TABLA as GOLD_PREDICCION
 
 AIRFLOW_URL_POR_DEFECTO = "http://localhost:8080"
@@ -29,6 +29,11 @@ CALIDAD_PARQUET = "s3://raillytics-gold/_trazabilidad/calidad/*.parquet"
 CAPAS_TRAZABLES = ("staging", "l1", "l2", "silver", "pred", "gold")
 
 # (proceso, tabla) de la tabla `cargas` -> id del nodo. Un ZIP de L2 registra una fila por fichero (`crtm/stops`): se agrupan en la fuente.
+# Las tablas que construye Python registran su nombre tal cual: el nodo es la capa de su salida declarada más la tabla.
+_WHEN_DERIVADAS = "\n".join(
+    f"    WHEN '{p}' THEN '{capa}:' || tabla"
+    for p, capa in dict.fromkeys((d.proceso, d.salida.partition(":")[0]) for d in DERIVADAS)
+)
 EXPR_NODO_CARGA = f"""CASE proceso
     WHEN 'bronze_download' THEN 'staging:' || tabla
     WHEN 'bronze_l1_raw_uploader' THEN 'l1:' || tabla
@@ -38,6 +43,7 @@ EXPR_NODO_CARGA = f"""CASE proceso
     WHEN 'gold_build' THEN 'gold:' || tabla
     WHEN 'prediccion_muestra' THEN 'l2:muestra_' || tabla
     WHEN 'prediccion_demanda' THEN CASE WHEN tabla = '{GOLD_PREDICCION}' THEN 'gold:' ELSE 'pred:' END || tabla
+{_WHEN_DERIVADAS}
   END"""
 
 # (proceso, tabla) de la tabla `calidad` -> id del nodo. Los gates de Silver los evalúan varios procesos (silver_builder, gold_build,
