@@ -42,9 +42,15 @@ def ingesta_data_sources():
         # Trazabilidad: una fila por descarga en <bucket gold>/_trazabilidad/cargas/ y una
         # por quality gate en .../calidad/, con el mismo run_id (MinIO y credenciales
         # salen de las variables MINIO_* del contenedor).
-        with registrar_carga("bronze_download", "bronze", parametros={"format": source.format}) as ejecucion:
+        parametros = {"format": source.format, "obligatoria": source.obligatoria, "intentos": 1}
+        with registrar_carga("bronze_download", "bronze", parametros=parametros) as ejecucion:
             with ejecucion.tabla(source.id, origen=source.url) as carga:
                 descarga = download(source, BRONZE_STAGING_ROOT, BRONZE_REJECTED_ROOT)
+                # Los intentos van al registro porque de ahí sale la «tasa de recuperación ante
+                # fallos de fuente» del plan: una descarga con intentos > 1 es un fallo transitorio
+                # del que se salió solo. `parametros` se serializa al cerrar la ejecución, así que
+                # basta con mutarlo aquí.
+                parametros["intentos"] = descarga.intentos
                 carga.destino = str(descarga.path)
                 carga.bytes = descarga.bytes
                 registrar_calidad(descarga.gates, "bronze_download", "bronze", ejecucion.run_id)

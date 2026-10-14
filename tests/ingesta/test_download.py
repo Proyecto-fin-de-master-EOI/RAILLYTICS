@@ -190,3 +190,68 @@ def test_un_csv_cuya_cabecera_cambio_va_a_cuarentena_con_su_motivo(tmp_path, req
     rechazado = resultado.path
     assert rechazado.parent == tmp_path / "rechazados" / "cnmc"
     assert "Periodo" in (rechazado.parent / f"{rechazado.name}.rechazo.txt").read_text(encoding="utf-8")
+
+
+# --- reintentos ante fallos de fuente (KPI «tasa de recuperación» del plan) ---------------------
+#
+# Lo que se vigila aquí es la DISTINCIÓN, no el bucle: reintentar lo que no se arregla reintentando
+# retrasa el fallo y encima lo disfraza de recuperación en el KPI.
+
+
+def test_un_corte_de_red_se_reintenta_y_la_descarga_se_recupera(tmp_path, requests_mock, monkeypatch):
+    monkeypatch.setattr("raillytics.ingesta.download.time.sleep", lambda _: None)
+    requests_mock.get(SOURCE.url, [
+        {"exc": requests.ConnectionError},
+        {"exc": requests.ConnectionError},
+        {"content": CSV, "headers": {"Content-Type": "text/csv"}},
+    ])
+
+    descarga = download(SOURCE, tmp_path)
+
+    assert descarga.aceptada
+    assert descarga.intentos == 3 and descarga.recuperada
+
+
+def test_un_5xx_tambien_se_reintenta(tmp_path, requests_mock, monkeypatch):
+    monkeypatch.setattr("raillytics.ingesta.download.time.sleep", lambda _: None)
+    requests_mock.get(SOURCE.url, [
+        {"status_code": 503},
+        {"content": CSV, "headers": {"Content-Type": "text/csv"}},
+    ])
+
+    descarga = download(SOURCE, tmp_path)
+
+    assert descarga.aceptada and descarga.intentos == 2
+
+
+def test_un_404_no_se_reintenta_porque_no_se_arregla_solo(tmp_path, requests_mock, monkeypatch):
+    monkeypatch.setattr("raillytics.ingesta.download.time.sleep", lambda _: None)
+    requests_mock.get(SOURCE.url, status_code=404)
+
+    with pytest.raises(requests.HTTPError):
+        download(SOURCE, tmp_path)
+
+    assert requests_mock.call_count == 1   # un solo intento: la URL o la credencial están mal
+
+
+def test_un_fichero_rechazado_no_se_reintenta_y_no_cuenta_como_recuperado(tmp_path, requests_mock, monkeypatch):
+    """Si el NAP publica un ZIP que no es un GTFS, volver a bajarlo da el mismo ZIP. Eso tiene que
+    verse en rojo, no convertirse en una recuperación."""
+    monkeypatch.setattr("raillytics.ingesta.download.time.sleep", lambda _: None)
+    requests_mock.get(SOURCE.url, content=_zip(("x.bin", b"\x00\x01")), headers={"Content-Type": "application/zip"})
+
+    descarga = download(SOURCE, tmp_path)
+
+    assert not descarga.aceptada
+    assert requests_mock.call_count == 1
+    assert descarga.intentos == 1 and not descarga.recuperada
+
+
+def test_si_falla_en_todos_los_intentos_se_propaga_el_error(tmp_path, requests_mock, monkeypatch):
+    monkeypatch.setattr("raillytics.ingesta.download.time.sleep", lambda _: None)
+    requests_mock.get(SOURCE.url, exc=requests.ConnectionError)
+
+    with pytest.raises(requests.ConnectionError):
+        download(SOURCE, tmp_path, reintentos=3)
+
+    assert requests_mock.call_count == 3
