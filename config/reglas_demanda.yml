@@ -175,7 +175,7 @@ base_franja:
 #
 # QUÉ ES DATO Y QUÉ ES HIPÓTESIS:
 #
-#   - El precio base es DATO MEDIDO: `precio_medio_eur` de silver/cnmc_precio_trimestral, el precio
+#   - El precio base es DATO MEDIDO: `precio_eur` de silver/cnmc_precio_trimestral, el precio
 #     medio que la CNMC publica por trayecto, trimestre y operador. 73 observaciones en el corredor.
 #   - El recorrido al que se acota también es DATO MEDIDO: el mínimo y el máximo observados de ese
 #     operador. RENFE se mueve entre 0,89 y 1,38 veces su propia media; OUIGO entre 0,72 y 1,40;

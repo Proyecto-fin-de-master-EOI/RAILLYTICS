@@ -5,8 +5,10 @@ festivos) todavía no existen. Este módulo genera, de forma determinista, las
 dos tablas Silver con el contrato de columnas que producirán esos jobs, y las
 deja donde ellos las dejarán (bucket Silver de MinIO, o SILVER_ROOT local):
 
-  viajeros_enriquecidos    grano (fecha, estación, línea, operador): viajeros
-                           del día, meteo de la provincia y festivo nacional.
+  viajeros_enriquecidos    grano (fecha, par origen-destino, línea, operador):
+                           viajes del día entre las dos estaciones, su distancia
+                           y sus viajeros·km, meteo de la provincia de origen y
+                           festivo nacional.
   puntualidad_enriquecida  grano servicio (tren): operador, hora prevista/real
                            de llegada, retraso, estado, meteo y festivo.
 
@@ -53,13 +55,22 @@ SILVER_PUNTUALIDAD = "puntualidad_enriquecida"
 
 # Contrato de columnas de cada tabla Silver (lo que Gold espera encontrar).
 VIAJEROS_COLUMNS = (
-    "fecha", "estacion_id", "estacion_nombre", "provincia", "comunidad", "latitud", "longitud",
-    "linea_id", "linea_nombre", "tipo_tren", "origen", "destino",
+    "fecha",
+    # El par origen-destino es el grano: una fila es «viajes de A a B ese día con ese operador».
+    "estacion_origen_id", "estacion_origen_nombre", "estacion_destino_id", "estacion_destino_nombre",
+    "distancia_km",
+    # Atributos de la estación de ORIGEN, que es de donde sale dim_estacion (todas aparecen como
+    # origen en algún par, así que el catálogo de estaciones queda completo).
+    "codigo_adif", "municipio", "provincia", "comunidad", "latitud", "longitud",
+    # Atributos de la LÍNEA (cabeceras y kilometraje), que es de donde sale dim_linea. `longitud_km`
+    # no se inventa: es la diferencia de puntos kilométricos entre la primera y la última parada.
+    "linea_id", "linea_nombre", "tipo_tren", "origen", "destino", "longitud_km",
     "operador_id", "operador_nombre", "operador_empresa", "operador_segmento",
-    "viajeros", "temperatura_media", "precipitacion_mm", "condicion_meteo", "es_festivo", "festivo_nombre",
+    "viajeros", "viajeros_km",
+    "temperatura_media", "precipitacion_mm", "condicion_meteo", "es_festivo", "festivo_nombre",
     # Marca de calidad que pide el plan: True cuando la meteo de ese día y provincia NO viene de
-    # AEMET y se ha simulado. Pasa en Zaragoza y Tarragona, que no tienen estación propia dada de
-    # alta, y en las fechas que AEMET no publicó.
+    # AEMET y se ha simulado. Pasa en los pares que SALEN de Zaragoza o Tarragona —no tienen estación
+    # de AEMET dada de alta— y en las fechas que AEMET no publicó.
     "meteo_imputada",
 )
 PUNTUALIDAD_COLUMNS = (
@@ -86,10 +97,13 @@ ESTADOS = ("realizado", "cancelado")
 class Estacion:
     id: str
     nombre: str
+    codigo_adif: str   # el de verdad, leído del GTFS de Renfe del NAP (stops.txt)
+    municipio: str
     provincia: str
     comunidad: str
     latitud: float
     longitud: float
+    pk_km: float       # punto kilométrico desde Madrid: la distancia entre dos paradas es su resta
     peso: float  # tamaño relativo: multiplica la demanda y el retraso en llegada
 
 
@@ -112,19 +126,69 @@ class Linea:
     nombre: str
     tipo_tren: str
     paradas: tuple[str, ...]  # códigos de estación en orden origen -> destino
-    demanda_base: int         # viajeros/día por parada antes de aplicar factores
+    demanda_base: int         # VIAJES/día de toda la línea antes de aplicar factores (no por parada)
 
 
-# Códigos inventados (no son los de Adif); coordenadas aproximadas de la ciudad.
+# El `id` es un código corto del proyecto, no el de Adif. El de Adif sí es el real: sale de
+# `stops.txt` del GTFS de Renfe del NAP, que es la misma fuente con la que se cuenta la oferta.
+#
+# Ojo con el municipio de Camp de Tarragona: la estación NO está en la ciudad de Tarragona sino en
+# PERAFORT, a unos 10 km. Es un buen ejemplo de por qué el municipio se declara y no se deduce del
+# nombre: quien agrupe por «Tarragona» contaría mal.
+# Los puntos kilométricos son los de la LAV Madrid–Zaragoza–Barcelona y suman los 621 km que se
+# publican para Madrid–Barcelona (307 + 221 + 93), que es la comprobación de que son coherentes.
+# Con ellos la distancia de cualquier par de paradas es una resta, y eso permite calcular
+# viajeros·km DESDE ABAJO y contrastarlo con el que publica la CNMC.
+#
+# PESOS CALIBRADOS (2026-10-17). Los pesos reparten los viajes entre pares (modelo de gravedad:
+# flujo(A→B) ∝ peso(A) × peso(B)), y ahora hay con qué medirlos. La CNMC publica viajeros Y
+# viajeros·km del corredor, y su cociente es la DISTANCIA MEDIA DE UN VIAJE:
+#
+#   trimestre   viajeros     viajeros·km      km por viaje
+#   2026-T2     3.424.458    1.739.511.035       508,0
+#   2026-T1     2.927.096    1.485.019.092       507,3
+#   2025-T4     3.330.447    1.720.535.033       516,6
+#   2025-T3     3.539.071    1.783.904.682       504,1
+#   2025-T2     3.941.922    2.004.833.997       508,6
+#   2025-T1     3.545.191    1.783.456.096       503,1
+#   --------------------------------------------------------
+#   media de los seis trimestres                 507,9
+#
+# Con los pesos anteriores (ZARDE 1.0, TARRA 0.4) el modelo daba 461,3 km por viaje: se quedaba un 9 %
+# corto, porque repartía demasiados viajes a las paradas intermedias. Escalando las dos intermedias
+# por un único factor k y resolviendo para que la media salga 507,9 sale k = 0,5589, y de ahí los
+# pesos de abajo (con dos decimales, el modelo da 508,1 km).
+#
+# Lo que NO queda calibrado: la proporción entre Madrid (3.0) y Barcelona (2.6). Una distancia media
+# no puede decidirla —es simétrica, da igual en qué punta esté el peso—, así que se conserva la que
+# ya tenía el generador y sigue siendo un supuesto.
+#
+# Lo que sale del reparto: Madrid–Barcelona se lleva el 63,5 % de los viajes, Madrid–Zaragoza el
+# 13,7 %, Barcelona–Zaragoza el 11,8 %, Madrid–Tarragona el 5,4 %, Barcelona–Tarragona el 4,7 % y
+# Zaragoza–Tarragona el 1,0 %. Que el extremo a extremo domine es lo que se espera de este eje.
 ESTACIONES = (
-    Estacion("MADPA", "Madrid Puerta de Atocha", "Madrid", "Comunidad de Madrid", 40.4066, -3.6895, 3.0),
-    Estacion("ZARDE", "Zaragoza Delicias", "Zaragoza", "Aragón", 41.6590, -0.9120, 1.0),
-    Estacion("TARRA", "Camp de Tarragona", "Tarragona", "Cataluña", 41.1690, 1.2020, 0.4),
-    Estacion("BCNSA", "Barcelona Sants", "Barcelona", "Cataluña", 41.3792, 2.1400, 2.6),
+    Estacion("MADPA", "Madrid Puerta de Atocha", "60000", "Madrid", "Madrid", "Comunidad de Madrid", 40.4066, -3.6895, 0.0, 3.00),
+    Estacion("ZARDE", "Zaragoza Delicias", "04040", "Zaragoza", "Zaragoza", "Aragón", 41.6590, -0.9120, 307.0, 0.56),   # antes 1.0
+    Estacion("TARRA", "Camp de Tarragona", "04104", "Perafort", "Tarragona", "Cataluña", 41.1690, 1.2020, 528.0, 0.22), # antes 0.4
+    Estacion("BCNSA", "Barcelona Sants", "71801", "Barcelona", "Barcelona", "Cataluña", 41.3792, 2.1400, 621.0, 2.60),
 )
 
+# DEMANDA BASE CALIBRADA (2026-10-17). Al pasar el grano a par origen-destino, `demanda_base` deja
+# de significar «viajeros/día por parada» y pasa a ser los VIAJES/día de todo el corredor, que es el
+# número que el modelo de gravedad reparte entre los seis pares. Y ese número sí está publicado:
+#
+#   CNMC, corredor Madrid-Barcelona, los cuatro trimestres más recientes del lake (2025-T3 a 2026-T2):
+#   13.221.072 viajeros / 365 días = 36.222 viajes al día
+#
+# Se toma el año completo y no el último trimestre (2026-T2 daría 37.631) porque `demanda_base` es la
+# base ANTES de los factores de mes y día de la semana: si se anclara a un trimestre, la
+# estacionalidad se contaría dos veces. Con cuatro trimestres son 365 días justos.
+#
+# Antes: 3200, inventado y por parada. Las dos cosas quedaban mal: ni el número salía de ninguna
+# fuente, ni la suma de las paradas era un número de viajes (el de Madrid a Barcelona contaba dos
+# veces). Se deja escrito porque es el valor con el que se generaron los datos hasta esta fecha.
 LINEAS = (
-    Linea("AVE-MAD-BCN", "AVE Madrid – Barcelona", "AVE", ("MADPA", "ZARDE", "TARRA", "BCNSA"), 3200),
+    Linea("AVE-MAD-BCN", "AVE Madrid – Barcelona", "AVE", ("MADPA", "ZARDE", "TARRA", "BCNSA"), 36222),  # antes 3200 (por parada)
 )
 
 # Operadores del corredor: cuotas que suman 1 y 28 servicios al día en total. Avlo es la marca low cost de Renfe.
@@ -394,34 +458,63 @@ def _con_meteo_real(simulada: pd.DataFrame, real: pd.DataFrame | None) -> pd.Dat
 def _viajeros(
     rng: np.random.Generator, fechas: pd.DatetimeIndex, meteo: pd.DataFrame, festivos: dict[date, str]
 ) -> pd.DataFrame:
+    """Viajes por día, PAR ORIGEN-DESTINO y operador.
+
+    **Por qué el grano es el par y no la estación.** Antes había una fila por estación, y un total
+    por estación no es un número de viajes: el que va de Madrid a Barcelona aparece en las dos
+    puntas. Esa suma no se reconcilia con nada —ni con el total del corredor, ni con la CNMC, ni con
+    la predicción diaria—, así que era un dato sintético y además incomprobable.
+
+    Con el par sí: la suma del día ES el número de viajes, y multiplicando por la distancia de cada
+    par (que sale de los puntos kilométricos) salen los **viajeros·km calculados desde abajo**, que
+    se pueden contrastar con los que publica la CNMC. La vista por estación no se pierde: se obtiene
+    sumando los pares que salen o llegan a ella; al revés no funcionaba.
+
+    **El reparto entre pares es un modelo de gravedad**: el flujo entre dos estaciones es
+    proporcional al producto de sus pesos. Con los del corredor, Madrid–Barcelona se lleva cerca de
+    la mitad de los viajes, que es lo que se espera de este eje. Sigue siendo un supuesto, pero uno
+    contrastable por su agregado.
+    """
     estaciones = {e.id: e for e in ESTACIONES}
-    pares = pd.DataFrame(
-        [
-            {
-                "linea_id": linea.id,
-                "linea_nombre": linea.nombre,
-                "tipo_tren": linea.tipo_tren,
-                "origen": estaciones[linea.paradas[0]].nombre,
-                "destino": estaciones[linea.paradas[-1]].nombre,
-                "estacion_id": est.id,
-                "estacion_nombre": est.nombre,
-                "provincia": est.provincia,
-                "comunidad": est.comunidad,
-                "latitud": est.latitud,
-                "longitud": est.longitud,
-                "operador_id": op.id,
-                "operador_nombre": op.nombre,
-                "operador_empresa": op.empresa,
-                "operador_segmento": op.segmento,
-                "factor_finde": op.factor_finde,
-                "demanda_base": linea.demanda_base * est.peso * op.cuota,
-            }
-            for linea in LINEAS
-            for est in (estaciones[parada] for parada in linea.paradas)
-            for op in OPERADORES
-        ]
-    )
+    filas = []
+    for linea in LINEAS:
+        paradas = [estaciones[p] for p in linea.paradas]
+        peso_total = sum(a.peso * b.peso for a in paradas for b in paradas if a.id != b.id)
+        for a in paradas:
+            for b in paradas:
+                if a.id == b.id:
+                    continue
+                cuota_par = (a.peso * b.peso) / peso_total
+                for op in OPERADORES:
+                    filas.append({
+                        "linea_id": linea.id,
+                        "linea_nombre": linea.nombre,
+                        "tipo_tren": linea.tipo_tren,
+                        "origen": paradas[0].nombre,
+                        "destino": paradas[-1].nombre,
+                        "longitud_km": paradas[-1].pk_km - paradas[0].pk_km,
+                        "estacion_origen_id": a.id,
+                        "estacion_origen_nombre": a.nombre,
+                        "estacion_destino_id": b.id,
+                        "estacion_destino_nombre": b.nombre,
+                        "distancia_km": abs(b.pk_km - a.pk_km),
+                        "codigo_adif": a.codigo_adif,
+                        "municipio": a.municipio,
+                        "provincia": a.provincia,
+                        "comunidad": a.comunidad,
+                        "latitud": a.latitud,
+                        "longitud": a.longitud,
+                        "operador_id": op.id,
+                        "operador_nombre": op.nombre,
+                        "operador_empresa": op.empresa,
+                        "operador_segmento": op.segmento,
+                        "factor_finde": op.factor_finde,
+                        "demanda_base": linea.demanda_base * cuota_par * op.cuota,
+                    })
+    pares = pd.DataFrame(filas)
+
     df = pd.merge(pd.DataFrame({"fecha": fechas}), pares, how="cross")
+    # La meteo es la de la provincia de ORIGEN: es donde se decide si se viaja.
     df = df.merge(meteo, on=["fecha", "provincia"], how="left")
     df["festivo_nombre"] = _festivo_nombre(df.fecha, festivos)
     df["es_festivo"] = df.festivo_nombre.notna()
@@ -439,7 +532,9 @@ def _viajeros(
         * rng.lognormal(0.0, 0.08, len(df))
     )
     df["viajeros"] = np.rint(df.demanda_base.to_numpy() * factor).astype("int64")
-    return df[list(VIAJEROS_COLUMNS)].sort_values(["fecha", "linea_id", "estacion_id", "operador_id"], ignore_index=True)
+    df["viajeros_km"] = df["viajeros"] * df["distancia_km"]
+    return df[list(VIAJEROS_COLUMNS)].sort_values(
+        ["fecha", "linea_id", "estacion_origen_id", "estacion_destino_id", "operador_id"], ignore_index=True)
 
 
 def _puntualidad(

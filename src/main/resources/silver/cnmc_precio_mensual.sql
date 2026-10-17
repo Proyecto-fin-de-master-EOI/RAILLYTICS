@@ -6,7 +6,7 @@ WITH base AS (
         try_cast(substr(`Mes`, 6, 2) AS INT)                                        AS mes,
         trim(`Trayecto`)                                                            AS trayecto,
         trim(`Empresa`)                                                             AS empresa,
-        try_cast(regexp_replace(trim(`Precio (€)`), ',', '.') AS DECIMAL(10, 2))    AS precio_medio_eur,
+        try_cast(regexp_replace(trim(`Precio (€)`), ',', '.') AS DECIMAL(10, 2))    AS precio_eur,
         _source_file
     FROM entrada
     WHERE trim(`Tipo de producto`) = 'LD AV' AND trim(`Tipo de servicio`) = 'Comercial'
@@ -34,7 +34,7 @@ SELECT
     trayecto,
     empresa,
     operador_id,
-    precio_medio_eur
+    precio_eur
 FROM deduplicada
 WHERE rn = 1
 ORDER BY anio, mes, trayecto, empresa

@@ -17,7 +17,7 @@ sql: "-- Fact_Ocupacion_Diaria ⋈ Dim_Fecha, con los trenes del día al lado pa
   \ que no pasan del 100 %. 21 de los 25 imposibles son fin de semana, y no es\n-- un fallo de la fuente: el NAP da trenes\
   \ y no plazas, así que las composiciones dobles no se ven.\nSELECT\n    f.fecha,\n    f.fecha_id,\n    f.corredor,\n   \
   \ f.ocupacion,\n    f.plausible,\n    f.festivo, f.vispera, f.puente, f.regreso, f.evento, f.junto_a_evento,\n    f.temperatura_media_mad,\
-  \ f.temperatura_media_bcn,\n    d.anio, d.trimestre, d.mes, d.nombre_mes, d.dia_semana, d.nombre_dia,\n    d.es_fin_de_semana,\
+  \ f.temperatura_media_bcn,\n    d.anio, d.trimestre, d.mes, d.nombre_mes, d.dia_semana, d.nombre_dia,\n    d.es_fin_semana,\
   \ d.festivo_nombre, d.festivo_ambito,\n    t.trenes,\n    d.anio || '-T' || d.trimestre                           AS trimestre_etiqueta\n\
   FROM read_parquet('s3://raillytics-gold/fact_ocupacion_diaria/*.parquet') AS f\nLEFT JOIN read_parquet('s3://raillytics-gold/dim_fecha/*.parquet')\
   \        AS d USING (fecha_id)\nLEFT JOIN (\n    SELECT fecha_id, sum(trenes) AS trenes\n    FROM read_parquet('s3://raillytics-gold/fact_oferta_diaria/*.parquet')\n\
@@ -189,7 +189,7 @@ columns:
   description: null
   python_date_format: null
   extra: null
-- column_name: es_fin_de_semana
+- column_name: es_fin_semana
   verbose_name: Fin de semana
   is_dttm: false
   is_active: true

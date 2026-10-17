@@ -1,7 +1,7 @@
 package raillytics.gold
 
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions.sum
+import org.apache.spark.sql.functions.{col, sum}
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -14,11 +14,16 @@ import java.time.{LocalDate, LocalDateTime}
 import scala.jdk.CollectionConverters._
 
 // Filas Silver con el contrato de columnas de raillytics/procesamiento/silver_sample.py.
+// El grano es el PAR origen-destino: los atributos de estación son los de la de origen y
+// `viajeros_km` es `viajeros * distancia_km`, como lo deja el generador.
 case class SilverViajeros(
-  fecha: LocalDate, estacion_id: String, estacion_nombre: String, provincia: String, comunidad: String,
+  fecha: LocalDate, estacion_origen_id: String, estacion_origen_nombre: String,
+  estacion_destino_id: String, estacion_destino_nombre: String, distancia_km: Double,
+  codigo_adif: String, municipio: String, provincia: String, comunidad: String,
   latitud: Double, longitud: Double, linea_id: String, linea_nombre: String, tipo_tren: String,
-  origen: String, destino: String, operador_id: String, operador_nombre: String, operador_empresa: String,
-  operador_segmento: String, viajeros: Long, temperatura_media: Double, precipitacion_mm: Double,
+  origen: String, destino: String, longitud_km: Double,
+  operador_id: String, operador_nombre: String, operador_empresa: String, operador_segmento: String,
+  viajeros: Long, viajeros_km: Double, temperatura_media: Double, precipitacion_mm: Double,
   condicion_meteo: String, es_festivo: Boolean, festivo_nombre: Option[String]
 )
 
@@ -36,11 +41,11 @@ case class SilverCnmcTrimestral(
 )
 case class SilverCnmcPrecioTrimestral(
   anio: Int, trimestre: Int, fecha_inicio: LocalDate, trayecto: String, empresa: String, operador_id: String,
-  precio_medio_eur: java.math.BigDecimal
+  precio_eur: java.math.BigDecimal
 )
 case class SilverCnmcPrecioMensual(
   anio: Int, mes: Int, fecha_inicio: LocalDate, trayecto: String, empresa: String, operador_id: String,
-  precio_medio_eur: java.math.BigDecimal
+  precio_eur: java.math.BigDecimal
 )
 
 class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
@@ -77,12 +82,15 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
   private val renfe = ("RENFE", "Renfe", "Renfe Viajeros", "Alta velocidad")
   private val ouigo = ("OUIGO", "Ouigo", "SNCF Voyageurs España", "Low cost")
 
-  private def viajeros(fecha: LocalDate, estacion: (String, String), n: Long, festivo: Option[String],
-                       operador: (String, String, String, String) = renfe) =
-    SilverViajeros(fecha, estacion._1, estacion._2, "Madrid", "Comunidad de Madrid", 40.4, -3.7,
-      "AVE-MAD-BCN", "AVE Madrid – Barcelona", "AVE", "Madrid Puerta de Atocha", "Barcelona Sants",
+  private val KM_PAR = 621.0   // la longitud del corredor: el par del ejemplo es de punta a punta
+
+  private def viajeros(fecha: LocalDate, desde: (String, String), hacia: (String, String), n: Long,
+                       festivo: Option[String], operador: (String, String, String, String) = renfe) =
+    SilverViajeros(fecha, desde._1, desde._2, hacia._1, hacia._2, KM_PAR,
+      "60000", "Madrid", "Madrid", "Comunidad de Madrid", 40.4, -3.7,
+      "AVE-MAD-BCN", "AVE Madrid – Barcelona", "AVE", "Madrid Puerta de Atocha", "Barcelona Sants", KM_PAR,
       operador._1, operador._2, operador._3, operador._4,
-      n, 18.5, 0.0, "despejado", festivo.isDefined, festivo)
+      n, n * KM_PAR, 18.5, 0.0, "despejado", festivo.isDefined, festivo)
 
   private val atocha = ("MADPA", "Madrid Puerta de Atocha")
   private val chamartin = ("MADCH", "Madrid Chamartín")
@@ -95,9 +103,10 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
 
   private def escribirSilver(settings: GoldBuilderSettings, puntualidad: Seq[SilverPuntualidad]): Unit = {
     val filasViajeros = Seq(
-      viajeros(jueves, atocha, 1000L, None), viajeros(jueves, chamartin, 500L, None),
-      viajeros(viernesSanto, atocha, 1500L, Some("Viernes Santo")), viajeros(viernesSanto, chamartin, 700L, Some("Viernes Santo")),
-      viajeros(jueves, atocha, 300L, None, ouigo)   // otro operador en la misma estación y día
+      viajeros(jueves, atocha, chamartin, 1000L, None), viajeros(jueves, chamartin, atocha, 500L, None),
+      viajeros(viernesSanto, atocha, chamartin, 1500L, Some("Viernes Santo")),
+      viajeros(viernesSanto, chamartin, atocha, 700L, Some("Viernes Santo")),
+      viajeros(jueves, atocha, chamartin, 300L, None, ouigo)   // otro operador en el mismo par y día
     )
     spark.createDataFrame(filasViajeros).write.parquet(settings.lake.silverTable("viajeros_enriquecidos"))
     spark.createDataFrame(puntualidad).write.parquet(settings.lake.silverTable("puntualidad_enriquecida"))
@@ -116,7 +125,7 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
 
   it should "derive the calendar attributes of dim_fecha" in {
     val fila = gold("dim_fecha").filter(s"fecha = DATE '$viernesSanto'")
-      .select("fecha_id", "anio", "trimestre", "mes", "nombre_mes", "dia_semana", "nombre_dia", "es_fin_de_semana",
+      .select("fecha_id", "anio", "trimestre", "mes", "nombre_mes", "dia_semana", "nombre_dia", "es_fin_semana",
               "es_festivo", "festivo_nombre", "estacion_anio")
       .collect().head.toSeq
     fila shouldBe Seq(20250418, 2025, 2, 4, "abril", 5, "viernes", false, true, "Viernes Santo", "primavera")
@@ -126,10 +135,14 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
 
   it should "resolve fact_viajeros against the dimensions" in {
     gold("fact_viajeros").join(gold("dim_fecha"), Seq("fecha_id"), "left_anti").count() shouldBe 0
-    gold("fact_viajeros").join(gold("dim_estacion"), Seq("estacion_id"), "left_anti").count() shouldBe 0
+    // Las dos puntas del par contra la dimensión: un destino colgado es tan roto como un origen.
+    gold("fact_viajeros").join(gold("dim_estacion"), col("estacion_origen_id") === col("id_estacion"), "left_anti").count() shouldBe 0
+    gold("fact_viajeros").join(gold("dim_estacion"), col("estacion_destino_id") === col("id_estacion"), "left_anti").count() shouldBe 0
     gold("fact_viajeros").agg(sum("viajeros")).collect().head.getLong(0) shouldBe 4000L
-    gold("dim_linea").select("nombre", "tipo_tren", "origen", "destino").collect().head.toSeq shouldBe
-      Seq("AVE Madrid – Barcelona", "AVE", "Madrid Puerta de Atocha", "Barcelona Sants")
+    // viajeros·km calculado desde abajo: 4.000 viajes de punta a punta del corredor.
+    gold("fact_viajeros").agg(sum("viajeros_km")).collect().head.getDouble(0) shouldBe 4000L * KM_PAR
+    gold("dim_linea").select("nombre", "tipo_tren", "origen", "destino", "longitud_km").collect().head.toSeq shouldBe
+      Seq("AVE Madrid – Barcelona", "AVE", "Madrid Puerta de Atocha", "Barcelona Sants", KM_PAR)
   }
 
   it should "build dim_operador from Silver with the company and segment of each operator" in {

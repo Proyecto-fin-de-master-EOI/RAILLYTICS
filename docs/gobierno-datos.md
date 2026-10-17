@@ -204,12 +204,18 @@ por día y el histórico se reconstruye pidiéndolos uno a uno.
 | Cuota de operador | **real** | CNMC, columna `Empresa` |
 | Reparto diario de la demanda | **derivado** | total real de CNMC repartido por reglas |
 | Coeficiente de ocupación diaria | **derivado** | reparto derivado ÷ oferta real |
-| `viajeros_enriquecidos` (detalle por estación y línea) | **sintético**, con la cuota de operador real | no existe como dato abierto |
+| Total diario del corredor | **real** | CNMC, viajeros del trimestre entre sus días |
+| `viajeros_enriquecidos` (reparto por par origen-destino) | **sintético**, sobre el total real del corredor y con la cuota de operador real | nadie publica viajeros por par |
 | `puntualidad_enriquecida` | **sintético** | el GTFS-RT se ingiere y nadie lo consume todavía |
 
 Las dos sintéticas no son un descuido: son el andamio que permitió desarrollar Gold y los cuadros de
 mandos antes de tener las fuentes. **Pero dos hechos de Gold se apoyan en ellas**, y eso hay que
-decirlo al presentar cualquier cifra por estación.
+decirlo al presentar cualquier cifra por estación o por trayecto.
+
+Lo que cambió el 17 de octubre de 2026 es **cuánto hay de andamio**: el total que se reparte es el de
+la CNMC y el grano es el par origen-destino, así que lo sintético se reduce al reparto entre pares.
+Y ese reparto deja una comprobación que antes no existía: los viajeros·km calculados desde abajo
+(viajes × distancia del par) contra los que publica la CNMC.
 
 ---
 

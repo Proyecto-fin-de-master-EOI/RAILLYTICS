@@ -5,9 +5,10 @@ SELECT
     trimestre,
     fecha_inicio,
     'AVE-MAD-BCN' AS linea_id,
+    trayecto,
     operador_id,
-    CAST(avg(precio_medio_eur) AS DECIMAL(10, 2)) AS precio_medio_eur
+    CAST(avg(precio_eur) AS DECIMAL(10, 2)) AS precio_medio_eur
 FROM silver_cnmc_precio_trimestral
 WHERE trayecto = 'Madrid-Barcelona'
-GROUP BY anio, trimestre, fecha_inicio, operador_id
+GROUP BY anio, trimestre, fecha_inicio, trayecto, operador_id
 ORDER BY fecha_inicio, operador_id

@@ -17,7 +17,7 @@ acotado al recorrido de precios real de ese operador en el trayecto.
 
 | pieza | de dónde | ¿real? |
 | --- | --- | --- |
-| precio base | `precio_medio_eur` de silver/cnmc_precio_trimestral | **sí, medido** |
+| precio base | `precio_eur` de silver/cnmc_precio_trimestral | **sí, medido** |
 | recorrido al que se acota | mínimo y máximo observados de ese operador | **sí, medido** |
 | ocupación prevista | gold/fact_ocupacion_franja | derivada (y con `base_franja` dentro) |
 | elasticidad | `precio_recomendado.elasticidad` de config/reglas_demanda.yml | **hipótesis** |
@@ -120,14 +120,14 @@ def construir(con, layout: LakeLayout, regla: Regla) -> pd.DataFrame:
         f"""
         WITH p AS (
             SELECT anio, trimestre, operador_id, empresa,
-                   CAST(avg(precio_medio_eur) AS DOUBLE) AS precio_base_eur
+                   CAST(avg(precio_eur) AS DOUBLE) AS precio_base_eur
             FROM read_parquet('{layout.silver_glob("cnmc_precio_trimestral")}')
             WHERE trayecto = ? AND operador_id <> ?
             GROUP BY 1, 2, 3, 4
         ), r AS (
             SELECT operador_id,
-                   CAST(min(precio_medio_eur) AS DOUBLE) AS precio_min_eur,
-                   CAST(max(precio_medio_eur) AS DOUBLE) AS precio_max_eur
+                   CAST(min(precio_eur) AS DOUBLE) AS precio_min_eur,
+                   CAST(max(precio_eur) AS DOUBLE) AS precio_max_eur
             FROM read_parquet('{layout.silver_glob("cnmc_precio_trimestral")}')
             WHERE trayecto = ? AND operador_id <> ?
             GROUP BY 1

@@ -52,11 +52,19 @@ tablas:
   # ---- Silver: contrato que Gold da por hecho (python/raillytics/procesamiento/silver_sample.py) ----
   silver_viajeros_enriquecidos:
     - {nombre: filas_minimas,               tipo: filas_min, minimo: 1, severidad: bloqueante}
-    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [fecha, estacion_id, linea_id, operador_id, viajeros], severidad: bloqueante}
-    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha, estacion_id, linea_id, operador_id], severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [fecha, estacion_origen_id, estacion_destino_id, linea_id, operador_id, viajeros], severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha, estacion_origen_id, estacion_destino_id, linea_id, operador_id], severidad: bloqueante}
     - {nombre: viajeros_no_negativos,       tipo: rango, columna: viajeros, minimo: 0, severidad: bloqueante}
-    - {nombre: atributos_estacion_sin_nulos, tipo: no_nulos, columnas: [estacion_nombre, provincia, comunidad, latitud, longitud], severidad: aviso}
-    - {nombre: atributos_linea_sin_nulos,   tipo: no_nulos, columnas: [linea_nombre, tipo_tren, origen, destino], severidad: aviso}
+    # Tres gates que solo se pueden escribir con el grano origen-destino, y son los que impiden que
+    # el par se degrade sin que nadie se entere: nadie viaja de una estación a sí misma, toda
+    # distancia es positiva, y viajeros·km tiene que ser viajeros por distancia.
+    - {nombre: par_con_dos_estaciones,      tipo: sql, severidad: bloqueante,
+       sql: "SELECT count(*) FROM silver_viajeros_enriquecidos WHERE estacion_origen_id = estacion_destino_id"}
+    - {nombre: distancia_positiva,          tipo: rango, columna: distancia_km, minimo: 1, severidad: bloqueante}
+    - {nombre: viajeros_km_coherente,       tipo: sql, severidad: bloqueante,
+       sql: "SELECT count(*) FROM silver_viajeros_enriquecidos WHERE abs(viajeros_km - viajeros * distancia_km) > 0.5"}
+    - {nombre: atributos_estacion_sin_nulos, tipo: no_nulos, columnas: [estacion_origen_nombre, estacion_destino_nombre, provincia, comunidad, latitud, longitud], severidad: aviso}
+    - {nombre: atributos_linea_sin_nulos,   tipo: no_nulos, columnas: [linea_nombre, tipo_tren, origen, destino, longitud_km], severidad: aviso}
     - {nombre: atributos_operador_sin_nulos, tipo: no_nulos, columnas: [operador_nombre, operador_empresa, operador_segmento], severidad: aviso}
     - {nombre: condicion_meteo_valida,      tipo: dominio, columna: condicion_meteo, valores: [despejado, nuboso, lluvia, tormenta], severidad: aviso}
     - {nombre: coordenadas_en_espana,       tipo: sql, severidad: aviso,
@@ -66,9 +74,9 @@ tablas:
 
   silver_puntualidad_enriquecida:
     - {nombre: filas_minimas,               tipo: filas_min, minimo: 1, severidad: bloqueante}
-    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [fecha, servicio_id, linea_id, operador_id, estacion_id, hora_prevista, estado], severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [fecha, servicio_id, linea_id, operador_id, estacion_id, hora_prevista, estado_servicio], severidad: bloqueante}
     - {nombre: servicio_unico,              tipo: unico, columnas: [servicio_id], severidad: bloqueante}
-    - {nombre: estado_valido,               tipo: dominio, columna: estado, valores: [realizado, cancelado], severidad: bloqueante}
+    - {nombre: estado_valido,               tipo: dominio, columna: estado_servicio, valores: [realizado, cancelado], severidad: bloqueante}
     - {nombre: retraso_no_negativo,         tipo: rango, columna: retraso_minutos, minimo: 0, severidad: bloqueante}
     - {nombre: cancelado_sin_retraso,       tipo: sql, severidad: bloqueante,
        sql: "SELECT count(*) FROM silver_puntualidad_enriquecida WHERE estado_servicio = 'cancelado' AND (retraso_minutos IS NOT NULL OR hora_real IS NOT NULL)"}
@@ -81,7 +89,9 @@ tablas:
     # Las dimensiones de Gold salen de viajeros: una línea o estación que solo
     # aparezca en puntualidad se perdería en los joins del dashboard.
     - {nombre: lineas_en_viajeros,          tipo: referencia, columnas: [linea_id], tabla: silver_viajeros_enriquecidos, severidad: bloqueante}
-    - {nombre: estaciones_en_viajeros,      tipo: referencia, columnas: [estacion_id], tabla: silver_viajeros_enriquecidos, severidad: aviso}
+    # La estación del servicio contra las del par: basta mirar los orígenes, porque están los doce
+    # pares en los dos sentidos y toda estación es origen en alguno.
+    - {nombre: estaciones_en_viajeros,      tipo: referencia, columnas: [estacion_id], columnas_destino: [estacion_origen_id], tabla: silver_viajeros_enriquecidos, severidad: aviso}
     - {nombre: operadores_en_viajeros,      tipo: referencia, columnas: [operador_id], tabla: silver_viajeros_enriquecidos, severidad: bloqueante}
 
   # ---- Silver real (make 04_silver): mercado del corredor según la CNMC. Datos reales: las tablas son OPCIONALES hasta
@@ -114,10 +124,10 @@ tablas:
 
   silver_cnmc_precio_trimestral:
     - {nombre: filas_minimas,               tipo: filas_min, minimo: 150, severidad: bloqueante}
-    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [anio, trimestre, fecha_inicio, trayecto, empresa, precio_medio_eur], severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [anio, trimestre, fecha_inicio, trayecto, empresa, precio_eur], severidad: bloqueante}
     - {nombre: grano_unico,                 tipo: unico, columnas: [anio, trimestre, trayecto, empresa], severidad: bloqueante}
     - {nombre: trimestre_valido,            tipo: rango, columna: trimestre, minimo: 1, maximo: 4, severidad: bloqueante}
-    - {nombre: precio_razonable,            tipo: rango, columna: precio_medio_eur, minimo: 0.01, maximo: 500, severidad: bloqueante}
+    - {nombre: precio_razonable,            tipo: rango, columna: precio_eur, minimo: 0.01, maximo: 500, severidad: bloqueante}
     - {nombre: madrid_barcelona_presente,   tipo: sql, severidad: bloqueante, minimo: 1, maximo: 1000000000,
        sql: "SELECT count(*) FROM silver_cnmc_precio_trimestral WHERE trayecto = 'Madrid-Barcelona' AND operador_id <> 'TOTAL'"}
     - {nombre: empresas_conocidas,          tipo: sql, severidad: aviso,
@@ -127,10 +137,10 @@ tablas:
 
   silver_cnmc_precio_mensual:
     - {nombre: filas_minimas,               tipo: filas_min, minimo: 500, severidad: bloqueante}
-    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [anio, mes, fecha_inicio, trayecto, empresa, precio_medio_eur], severidad: bloqueante}
+    - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [anio, mes, fecha_inicio, trayecto, empresa, precio_eur], severidad: bloqueante}
     - {nombre: grano_unico,                 tipo: unico, columnas: [anio, mes, trayecto, empresa], severidad: bloqueante}
     - {nombre: mes_valido,                  tipo: rango, columna: mes, minimo: 1, maximo: 12, severidad: bloqueante}
-    - {nombre: precio_razonable,            tipo: rango, columna: precio_medio_eur, minimo: 0.01, maximo: 500, severidad: bloqueante}
+    - {nombre: precio_razonable,            tipo: rango, columna: precio_eur, minimo: 0.01, maximo: 500, severidad: bloqueante}
     - {nombre: madrid_barcelona_presente,   tipo: sql, severidad: bloqueante, minimo: 1, maximo: 1000000000,
        sql: "SELECT count(*) FROM silver_cnmc_precio_mensual WHERE trayecto = 'Madrid-Barcelona' AND operador_id <> 'TOTAL'"}
     - {nombre: empresas_conocidas,          tipo: sql, severidad: aviso,
@@ -176,8 +186,8 @@ tablas:
 
   gold_dim_estacion:
     - {nombre: filas_minimas,               tipo: filas_min, minimo: 1, severidad: bloqueante}
-    - {nombre: clave_unica,                 tipo: unico, columnas: [estacion_id], severidad: bloqueante}
-    - {nombre: sin_nulos,                   tipo: no_nulos, columnas: [estacion_id, nombre], severidad: bloqueante}
+    - {nombre: clave_unica,                 tipo: unico, columnas: [id_estacion], severidad: bloqueante}
+    - {nombre: sin_nulos,                   tipo: no_nulos, columnas: [id_estacion, nombre], severidad: bloqueante}
 
   gold_dim_linea:
     - {nombre: filas_minimas,               tipo: filas_min, minimo: 1, severidad: bloqueante}
@@ -191,15 +201,20 @@ tablas:
 
   gold_fact_viajeros:
     - {nombre: filas_minimas,               tipo: filas_min, minimo: 1, severidad: bloqueante}
-    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha_id, estacion_id, linea_id, operador_id], severidad: bloqueante}
+    - {nombre: grano_unico,                 tipo: unico, columnas: [fecha_id, estacion_origen_id, estacion_destino_id, linea_id, operador_id], severidad: bloqueante}
     - {nombre: fechas_en_dim_fecha,         tipo: referencia, columnas: [fecha_id], tabla: gold_dim_fecha, severidad: bloqueante}
-    - {nombre: estaciones_en_dim_estacion,  tipo: referencia, columnas: [estacion_id], tabla: gold_dim_estacion, severidad: bloqueante}
+    # Las dos puntas del par se comprueban por separado: un destino que no esté en la dimensión es
+    # tan roto como un origen, y con un solo gate sobre el origen no se vería.
+    - {nombre: estaciones_en_dim_estacion,  tipo: referencia, columnas: [estacion_origen_id], columnas_destino: [id_estacion], tabla: gold_dim_estacion, severidad: bloqueante}
+    - {nombre: destinos_en_dim_estacion,    tipo: referencia, columnas: [estacion_destino_id], columnas_destino: [id_estacion], tabla: gold_dim_estacion, severidad: bloqueante}
     - {nombre: lineas_en_dim_linea,         tipo: referencia, columnas: [linea_id], tabla: gold_dim_linea, severidad: bloqueante}
     - {nombre: operadores_en_dim_operador,  tipo: referencia, columnas: [operador_id], tabla: gold_dim_operador, severidad: bloqueante}
     - {nombre: sin_perdida_desde_silver,    tipo: sql, severidad: bloqueante,
        sql: "SELECT abs((SELECT count(*) FROM gold_fact_viajeros) - (SELECT count(*) FROM silver_viajeros_enriquecidos))"}
     - {nombre: viajeros_conciliados,        tipo: sql, severidad: bloqueante,
        sql: "SELECT abs((SELECT coalesce(sum(viajeros), 0) FROM gold_fact_viajeros) - (SELECT coalesce(sum(viajeros), 0) FROM silver_viajeros_enriquecidos))"}
+    - {nombre: viajeros_km_conciliados,     tipo: sql, severidad: bloqueante,
+       sql: "SELECT abs((SELECT coalesce(sum(viajeros_km), 0) FROM gold_fact_viajeros) - (SELECT coalesce(sum(viajeros_km), 0) FROM silver_viajeros_enriquecidos))"}
 
   gold_fact_puntualidad:
     - {nombre: filas_minimas,               tipo: filas_min, minimo: 1, severidad: bloqueante}
@@ -207,7 +222,7 @@ tablas:
     - {nombre: fechas_en_dim_fecha,         tipo: referencia, columnas: [fecha_id], tabla: gold_dim_fecha, severidad: bloqueante}
     - {nombre: lineas_en_dim_linea,         tipo: referencia, columnas: [linea_id], tabla: gold_dim_linea, severidad: bloqueante}
     - {nombre: operadores_en_dim_operador,  tipo: referencia, columnas: [operador_id], tabla: gold_dim_operador, severidad: bloqueante}
-    - {nombre: estaciones_en_dim_estacion,  tipo: referencia, columnas: [estacion_id], tabla: gold_dim_estacion, severidad: aviso}
+    - {nombre: estaciones_en_dim_estacion,  tipo: referencia, columnas: [estacion_id], columnas_destino: [id_estacion], tabla: gold_dim_estacion, severidad: aviso}
     - {nombre: puntualidad_coherente,       tipo: sql, severidad: bloqueante,
        sql: "SELECT count(*) FROM gold_fact_puntualidad WHERE es_puntual IS NULL OR (cancelado AND es_puntual)"}
     - {nombre: sin_perdida_desde_silver,    tipo: sql, severidad: bloqueante,

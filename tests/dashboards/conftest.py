@@ -19,22 +19,25 @@ def gold(tmp_path):
         destino.mkdir(parents=True)
         con.execute(f"COPY ({select}) TO '{(destino / (nombre + '.parquet')).as_posix()}' (FORMAT PARQUET)")
 
-    tabla("dim_linea", f"""SELECT * FROM (VALUES ('{CORREDOR}', 'AVE Madrid – Barcelona', 'AVE', 'Madrid', 'Barcelona'),
-        ('C-MAD-C2', 'Cercanías Madrid C-2', 'Cercanías', 'Alcalá', 'Chamartín')) t(linea_id, nombre, tipo_tren, origen, destino)""")
+    tabla("dim_linea", f"""SELECT * FROM (VALUES ('{CORREDOR}', 'AVE Madrid – Barcelona', 'AVE', 'Madrid', 'Barcelona', 621.0),
+        ('C-MAD-C2', 'Cercanías Madrid C-2', 'Cercanías', 'Alcalá', 'Chamartín', 36.0)) t(linea_id, nombre, tipo_tren, origen, destino, longitud_km)""")
     tabla("dim_operador", """SELECT * FROM (VALUES ('RENFE', 'Renfe', 'Renfe Viajeros', 'Alta velocidad'),
         ('OUIGO', 'Ouigo', 'SNCF Voyageurs España', 'Low cost')) t(operador_id, nombre, empresa, segmento)""")
+    # La clave de la dimensión es `id_estacion`, que es como la declara config/data_catalog.yml.
     tabla("dim_estacion", """SELECT * FROM (VALUES ('MADPA', 'Madrid Puerta de Atocha', 'Madrid', 'Comunidad de Madrid', 40.4, -3.7),
-        ('ALCHE', 'Alcalá de Henares', 'Madrid', 'Comunidad de Madrid', 40.5, -3.4)) t(estacion_id, nombre, provincia, comunidad, latitud, longitud)""")
-    tabla("dim_fecha", """SELECT * FROM (VALUES (20261003, DATE '2026-10-03', 2026, 4, 10, 'octubre', 6, 'sábado', true, false, NULL::VARCHAR, 'otoño'),
-        (20261005, DATE '2026-10-05', 2026, 4, 10, 'octubre', 1, 'lunes', false, false, NULL::VARCHAR, 'otoño'))
-        t(fecha_id, fecha, anio, trimestre, mes, nombre_mes, dia_semana, nombre_dia, es_fin_de_semana, es_festivo, festivo_nombre, estacion_anio)""")
+        ('BCNSA', 'Barcelona Sants', 'Barcelona', 'Cataluña', 41.4, 2.1),
+        ('ALCHE', 'Alcalá de Henares', 'Madrid', 'Comunidad de Madrid', 40.5, -3.4)) t(id_estacion, nombre, provincia, comunidad, latitud, longitud)""")
+    tabla("dim_fecha", """SELECT * FROM (VALUES (20261003, DATE '2026-10-03', 2026, 4, 10, 3, 'octubre', 6, 'sábado', true, false, NULL::VARCHAR, 'otoño'),
+        (20261005, DATE '2026-10-05', 2026, 4, 10, 5, 'octubre', 1, 'lunes', false, false, NULL::VARCHAR, 'otoño'))
+        t(fecha_id, fecha, anio, trimestre, mes, dia, nombre_mes, dia_semana, nombre_dia, es_fin_semana, es_festivo, festivo_nombre, estacion_anio)""")
+    # El grano es el par origen-destino, y `viajeros_km` es viajeros × distancia_km.
     tabla("fact_viajeros", f"""SELECT * FROM (VALUES
-        (20261003, DATE '2026-10-03', 'MADPA', '{CORREDOR}', 'RENFE', 600, 15.0, 0.0, 'despejado'),
-        (20261003, DATE '2026-10-03', 'MADPA', '{CORREDOR}', 'OUIGO', 400, 15.0, 0.0, 'despejado'),
-        (20261005, DATE '2026-10-05', 'MADPA', '{CORREDOR}', 'RENFE', 2000, 14.0, 0.0, 'despejado'),
-        (20261005, DATE '2026-10-05', 'MADPA', '{CORREDOR}', 'OUIGO', 1000, 14.0, 0.0, 'despejado'),
-        (20261003, DATE '2026-10-03', 'ALCHE', 'C-MAD-C2', 'RENFE', 9999, 15.0, 0.0, 'despejado'))
-        t(fecha_id, fecha, estacion_id, linea_id, operador_id, viajeros, temperatura_media, precipitacion_mm, condicion_meteo)""")
+        (20261003, DATE '2026-10-03', 'MADPA', 'BCNSA', 621.0, '{CORREDOR}', 'RENFE', 600, 372600.0, 15.0, 0.0, 'despejado'),
+        (20261003, DATE '2026-10-03', 'MADPA', 'BCNSA', 621.0, '{CORREDOR}', 'OUIGO', 400, 248400.0, 15.0, 0.0, 'despejado'),
+        (20261005, DATE '2026-10-05', 'MADPA', 'BCNSA', 621.0, '{CORREDOR}', 'RENFE', 2000, 1242000.0, 14.0, 0.0, 'despejado'),
+        (20261005, DATE '2026-10-05', 'MADPA', 'BCNSA', 621.0, '{CORREDOR}', 'OUIGO', 1000, 621000.0, 14.0, 0.0, 'despejado'),
+        (20261003, DATE '2026-10-03', 'ALCHE', 'MADPA', 36.0, 'C-MAD-C2', 'RENFE', 9999, 359964.0, 15.0, 0.0, 'despejado'))
+        t(fecha_id, fecha, estacion_origen_id, estacion_destino_id, distancia_km, linea_id, operador_id, viajeros, viajeros_km, temperatura_media, precipitacion_mm, condicion_meteo)""")
     tabla("fact_puntualidad", f"""SELECT * FROM (VALUES
         (20261003, DATE '2026-10-03', '{CORREDOR}', 'RENFE', 'MADPA', 's1', TIMESTAMP '2026-10-03 08:00:00', TIMESTAMP '2026-10-03 08:03:00', 8, 3, 'realizado', false, true, 'despejado', 15.0, 0.0),
         (20261003, DATE '2026-10-03', '{CORREDOR}', 'OUIGO', 'MADPA', 's2', TIMESTAMP '2026-10-03 09:00:00', TIMESTAMP '2026-10-03 09:10:00', 9, 10, 'realizado', false, false, 'despejado', 15.0, 0.0),

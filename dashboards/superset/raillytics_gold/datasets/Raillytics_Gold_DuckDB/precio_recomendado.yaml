@@ -12,7 +12,7 @@ cache_timeout: null
 schema: null
 catalog: null
 sql: "-- Precio recomendado por dia, franja horaria y operador del corredor.\n--\n-- QUE ES DATO Y QUE ES HIPOTESIS, porque\
-  \ esta tabla mezcla las dos:\n--   precio base         MEDIDO: `precio_medio_eur` de la CNMC, por trayecto, trimestre y\
+  \ esta tabla mezcla las dos:\n--   precio base         MEDIDO: `precio_eur` de la CNMC, por trayecto, trimestre y\
   \ operador\n--   rango min/max       MEDIDO: el recorrido de precios observado de ese operador en el corredor\n--   ocupacion\
   \ prevista  derivada, y con la hipotesis `base_franja` dentro\n--   elasticidad         HIPOTESIS declarada en config/reglas_demanda.yml\n\
   --\n-- La regla:  precio_base x (ocupacion / referencia) ** (1/|elasticidad|),  acotado al rango observado.\n--\n-- Por\

@@ -459,11 +459,11 @@ locales (así corren los tests, sin MinIO).
 
 | Tabla | Grano | Columnas principales |
 | --- | --- | --- |
-| `dim_fecha` | día | `fecha_id` (AAAAMMDD), `fecha`, `anio`, `trimestre`, `mes`, `nombre_mes`, `dia_semana` (1 = lunes), `nombre_dia`, `es_fin_de_semana`, `es_festivo`, `festivo_nombre`, `estacion_anio` |
-| `dim_estacion` | estación | `estacion_id`, `nombre`, `provincia`, `comunidad`, `latitud`, `longitud` |
-| `dim_linea` | línea | `linea_id`, `nombre`, `tipo_tren`, `origen`, `destino` |
+| `dim_fecha` | día | `fecha_id` (AAAAMMDD), `fecha`, `anio`, `trimestre`, `mes`, `nombre_mes`, `dia_semana` (1 = lunes), `nombre_dia`, `es_fin_semana`, `es_festivo`, `festivo_nombre`, `estacion_anio` |
+| `dim_estacion` | estación | `id_estacion`, `nombre`, `codigo_adif` (el real, del GTFS de Renfe), `municipio`, `provincia`, `comunidad`, `latitud`, `longitud` |
+| `dim_linea` | línea | `linea_id`, `nombre`, `tipo_tren`, `origen`, `destino`, `longitud_km` |
 | `dim_operador` | operador | `operador_id`, `nombre`, `empresa`, `segmento` (alta velocidad o low cost) |
-| `fact_viajeros` | día × estación × línea × operador | `fecha_id`, `fecha`, `estacion_id`, `linea_id`, `operador_id`, `viajeros`, `temperatura_media`, `precipitacion_mm`, `condicion_meteo` |
+| `fact_viajeros` | día × par origen-destino × línea × operador | `fecha_id`, `fecha`, `estacion_origen_id`, `estacion_destino_id`, `distancia_km`, `linea_id`, `operador_id`, `viajeros`, `viajeros_km`, `temperatura_media`, `precipitacion_mm`, `condicion_meteo` |
 | `fact_puntualidad` | servicio (tren) | `fecha_id`, `fecha`, `linea_id`, `operador_id`, `estacion_id`, `servicio_id`, `hora_prevista`, `hora_real`, `hora`, `retraso_min`, `estado`, `cancelado`, `es_puntual` (retraso ≤ 5 min), meteo |
 | `fact_mercado_trimestral` (*) | trimestre × corredor × operador | `anio`, `trimestre`, `fecha_inicio`, `linea_id`, `operador_id`, `viajeros`, `plazas_ofertadas`, `plazas_km`, `tren_km`, `viajeros_km`, `ingresos_eur` |
 | `fact_precio_trimestral` (*) | trimestre × corredor × operador | `anio`, `trimestre`, `fecha_inicio`, `linea_id`, `operador_id`, `precio_medio_eur` |

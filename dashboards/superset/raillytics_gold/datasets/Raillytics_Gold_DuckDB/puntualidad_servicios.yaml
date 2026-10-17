@@ -22,11 +22,11 @@ sql: |-
       d.dia_semana,
       d.nombre_dia,
       d.dia_semana || '. ' || d.nombre_dia AS dia_semana_etiqueta,
-      d.es_fin_de_semana,
+      d.es_fin_semana,
       d.es_festivo,
       CASE
           WHEN d.es_festivo THEN 'festivo'
-          WHEN d.es_fin_de_semana THEN 'fin de semana'
+          WHEN d.es_fin_semana THEN 'fin de semana'
           ELSE 'laborable'
       END AS tipo_dia,
       e.nombre AS estacion,
@@ -46,7 +46,7 @@ sql: |-
       p.precipitacion_mm
   FROM read_parquet('s3://raillytics-gold/fact_puntualidad/*.parquet') AS p
   JOIN read_parquet('s3://raillytics-gold/dim_fecha/*.parquet') AS d USING (fecha_id)
-  LEFT JOIN read_parquet('s3://raillytics-gold/dim_estacion/*.parquet') AS e USING (estacion_id)
+  LEFT JOIN read_parquet('s3://raillytics-gold/dim_estacion/*.parquet') AS e ON e.id_estacion = p.estacion_id
   JOIN read_parquet('s3://raillytics-gold/dim_linea/*.parquet') AS l USING (linea_id)
   JOIN read_parquet('s3://raillytics-gold/dim_operador/*.parquet') AS o USING (operador_id)
   WHERE l.linea_id = 'AVE-MAD-BCN'
@@ -244,7 +244,7 @@ columns:
   description: null
   python_date_format: null
   extra: null
-- column_name: es_fin_de_semana
+- column_name: es_fin_semana
   verbose_name: Fin de semana
   is_dttm: false
   is_active: true

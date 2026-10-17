@@ -14,7 +14,7 @@ sql: "-- Fact_Oferta_Diaria ⋈ Dim_Fecha ⋈ Dim_Operador, leído con DuckDB de
   \ los viajes que el NAP publica en el GTFS de cada operador, contados por día.\n-- AVISO que hay que arrastrar a cualquier\
   \ lectura: son TRENES, no plazas. Una composición doble cuenta\n-- como un tren. Y falta Iryo, que no publica horarios en\
   \ el NAP.\nSELECT\n    f.fecha,\n    f.fecha_id,\n    f.corredor,\n    f.operador_id,\n    coalesce(o.nombre, f.operador_id)\
-  \                       AS operador,\n    d.anio, d.trimestre, d.mes, d.nombre_mes, d.dia_semana, d.nombre_dia,\n    d.es_fin_de_semana,\
+  \                       AS operador,\n    d.anio, d.trimestre, d.mes, d.nombre_mes, d.dia_semana, d.nombre_dia,\n    d.es_fin_semana,\
   \ d.es_festivo, d.festivo_nombre, d.festivo_ambito,\n    f.trenes,\n    f.trenes_todos,\n    f.cobertura_completa,\n   \
   \ f.corredor = 'Madrid-Barcelona'                         AS es_corredor_del_proyecto\nFROM read_parquet('s3://raillytics-gold/fact_oferta_diaria/*.parquet')\
   \ AS f\nLEFT JOIN read_parquet('s3://raillytics-gold/dim_fecha/*.parquet')     AS d USING (fecha_id)\nLEFT JOIN read_parquet('s3://raillytics-gold/dim_operador/*.parquet')\
@@ -181,7 +181,7 @@ columns:
   description: null
   python_date_format: null
   extra: null
-- column_name: es_fin_de_semana
+- column_name: es_fin_semana
   verbose_name: Fin de semana
   is_dttm: false
   is_active: true
