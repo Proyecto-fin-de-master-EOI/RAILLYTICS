@@ -31,10 +31,10 @@ terminos:
   - termino: Viajeros·km
     dominio: Negocio Ferroviario
     tipo: Negocio
-    definicion: "Unidad compuesta de producción y demanda que representa el transporte de un viajero a lo largo de un kilómetro de distancia. OJO: no se calcula aquí. La CNMC lo publica ya agregado por trimestre, así que el proyecto lo suma tal cual; no hay ninguna tabla con la distancia de cada trayecto."
+    definicion: "Unidad compuesta de producción y demanda que representa el transporte de un viajero a lo largo de un kilómetro de distancia. Llega por dos caminos: la CNMC lo publica ya agregado por trimestre (fact_mercado_trimestral), y desde el cambio al grano origen-destino fact_viajeros lo calcula desde abajo, viaje a viaje por la distancia de su par de estaciones. Los dos caminos se pueden contrastar, que es para lo que sirve tenerlos."
     formula: SUM(viajeros_km)
     sinonimos: Pasajeros-kilómetro, Tráfico de viajeros
-    tablas_relacionadas: cnmc_trimestral, fact_mercado_trimestral
+    tablas_relacionadas: cnmc_trimestral, fact_mercado_trimestral, fact_viajeros
     dashboards_relacionados: [mercado-corredor]
     quality_gates: [volumenes_no_negativos, filas_minimas]
     terminos_relacionados: [Viajeros (Pax), Plazas·km Ofertadas, Ocupación (Factor de Carga)]
@@ -45,7 +45,7 @@ terminos:
     definicion: "Capacidad nominal máxima de asientos comercializados por los operadores ferroviarios en las circulaciones puestas a disposición del público."
     formula: SUM(plazas_ofertadas)
     sinonimos: Capacidad, Asientos disponibles
-    tablas_relacionadas: fact_viajeros, fact_mercado_trimestral, cnmc_viajeros_corredor
+    tablas_relacionadas: fact_mercado_trimestral, cnmc_viajeros_corredor
     dashboards_relacionados: [mercado-corredor, demanda-ferroviaria]
     quality_gates: [volumenes_no_negativos, filas_minimas]
     terminos_relacionados: [Viajeros (Pax), Plazas·km Ofertadas, Ocupación (Factor de Carga)]
@@ -153,7 +153,7 @@ terminos:
     dominio: Negocio Ferroviario
     tipo: Negocio
     definicion: "Importe promedio del billete abonado por viajero para un par origen-destino determinado en el periodo de análisis."
-    formula: AVG(precio_eur)
+    formula: AVG(precio_medio_eur)   # en Gold; en Silver la columna se llama precio_eur
     sinonimos: Tarifa media, Average Fare
     tablas_relacionadas: fact_precio_mensual, fact_precio_trimestral
     dashboards_relacionados: [mercado-corredor]

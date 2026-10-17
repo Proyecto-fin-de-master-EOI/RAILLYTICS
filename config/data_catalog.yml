@@ -49,13 +49,22 @@ tablas:
     upstream: [silver:viajeros_enriquecidos, gold:dim_linea, gold:dim_estacion, gold:dim_operador]
     downstream: [dataset:viajeros_diarios, dashboard:demanda-ferroviaria]
     columnas:
+      - {nombre: fecha_id, tipo: INT, descripcion: "Clave de Dim_Fecha en formato AAAAMMDD", es_clave: true}
       - {nombre: fecha, tipo: DATE, descripcion: "Fecha del servicio de transporte", es_clave: true}
       - {nombre: linea_id, tipo: VARCHAR, descripcion: "Identificador de la línea ferroviaria", es_clave: true}
       - {nombre: operador_id, tipo: VARCHAR, descripcion: "Identificador del operador comercial", es_clave: true}
       - {nombre: estacion_origen_id, tipo: VARCHAR, descripcion: "Identificador de la estación de salida", es_clave: true}
       - {nombre: estacion_destino_id, tipo: VARCHAR, descripcion: "Identificador de la estación de llegada", es_clave: true}
-      - {nombre: viajeros, tipo: BIGINT, descripcion: "Número de pasajeros transportados", es_clave: false, termino_glosario: "Viajeros (Pax)"}
-      - {nombre: plazas_ofertadas, tipo: BIGINT, descripcion: "Capacidad de plazas comercializadas", es_clave: false, termino_glosario: "Plazas Ofertadas"}
+      - {nombre: distancia_km, tipo: DOUBLE, descripcion: "Distancia entre las dos estaciones, la resta de sus puntos kilométricos", es_clave: false}
+      - {nombre: viajeros, tipo: BIGINT, descripcion: "Número de viajes entre esas dos estaciones ese día", es_clave: false, termino_glosario: "Viajeros (Pax)"}
+      - {nombre: viajeros_km, tipo: DOUBLE, descripcion: "Viajeros por la distancia de su par: el viajeros·km calculado desde abajo", es_clave: false, termino_glosario: "Viajeros·km"}
+      - {nombre: temperatura_media, tipo: DOUBLE, descripcion: "Temperatura media del día en la provincia de origen (AEMET)", es_clave: false}
+      - {nombre: precipitacion_mm, tipo: DOUBLE, descripcion: "Precipitación acumulada del día en la provincia de origen (AEMET)", es_clave: false}
+      - {nombre: condicion_meteo, tipo: VARCHAR, descripcion: "Condición meteorológica derivada: despejado, nuboso, lluvia o tormenta", es_clave: false}
+      # `plazas_ofertadas` no está aquí a propósito: una plaza es de un tren, no de un par de
+      # estaciones, así que repartirla entre los pares que recorre el tren la contaría varias veces.
+      # La oferta vive en fact_oferta_diaria, con el grano al que de verdad se mide (día, línea y
+      # operador), y la ocupación se calcula allí.
 
   - tabla: fact_puntualidad
     nombre: Hecho de Puntualidad de Servicios
@@ -142,6 +151,247 @@ tablas:
       - {nombre: modelo, tipo: VARCHAR, descripcion: "Identificador del modelo de inferencia", es_clave: false}
       - {nombre: version, tipo: VARCHAR, descripcion: "Versión de prompt y parámetros", es_clave: true}
 
+  # ------------------------------------------------------------------------------------------------
+  # Las tablas que siguen las construye Python, no Spark (ver `proceso`), y son las que faltaban en el
+  # catálogo: el lago tiene 18 tablas en Gold y aquí se declaraban 10. Están para que el catálogo
+  # describa el lago entero, no solo la parte que mueve Spark.
+  # ------------------------------------------------------------------------------------------------
+  - tabla: fact_oferta_diaria
+    nombre: Hecho de Oferta Diaria
+    capa: Gold
+    orden_capa: 6
+    dominio: Oferta y Capacidad
+    descripcion: Trenes puestos en circulación por día, corredor y operador, contados de los horarios publicados en el NAP.
+    grano: Un día, corredor y operador
+    claves: [fecha, corredor, operador_id]
+    formato: Parquet
+    proceso: gold_build
+    frecuencia: Diario (Batch)
+    quality_gates: [filas_minimas, grano_unico, sin_nulos, fecha_en_la_dimension, operador_en_la_dimension, cuadra_con_silver]
+    upstream: [silver:oferta_diaria, gold:dim_fecha, gold:dim_operador]
+    downstream: [dataset:oferta_diaria, dataset:ocupacion_diaria, dashboard:demanda-ferroviaria]
+    columnas:
+      - {nombre: fecha_id, tipo: INT, descripcion: "Clave de Dim_Fecha en formato AAAAMMDD", es_clave: true}
+      - {nombre: fecha, tipo: DATE, descripcion: "Fecha de circulación", es_clave: true}
+      - {nombre: corredor, tipo: VARCHAR, descripcion: "Corredor ferroviario", es_clave: true, termino_glosario: "Corredor Ferroviario"}
+      - {nombre: operador_id, tipo: VARCHAR, descripcion: "Identificador del operador comercial", es_clave: true}
+      - {nombre: linea_id, tipo: VARCHAR, descripcion: "Identificador de la línea ferroviaria", es_clave: false}
+      - {nombre: trenes, tipo: BIGINT, descripcion: "Trenes del día en el corredor, los que cuentan para la oferta", es_clave: false}
+      - {nombre: trenes_todos, tipo: BIGINT, descripcion: "Trenes del día del operador en toda su red, para contrastar la cobertura", es_clave: false}
+      - {nombre: cobertura_completa, tipo: BOOLEAN, descripcion: "Cierto cuando el snapshot del NAP cubre el día entero", es_clave: false}
+      - {nombre: snapshot, tipo: VARCHAR, descripcion: "Snapshot del NAP del que sale el dato", es_clave: false}
+
+  - tabla: fact_ocupacion_diaria
+    nombre: Hecho de Ocupación Diaria
+    capa: Gold
+    orden_capa: 6
+    dominio: Demanda y Tráfico
+    descripcion: Ocupación diaria implicada del corredor con las variables de calendario y meteorología que la explican; es la tabla con la que se entrena el modelo.
+    grano: Un día y corredor
+    claves: [fecha, corredor]
+    formato: Parquet
+    proceso: gold_build
+    frecuencia: Diario (Batch)
+    quality_gates: [filas_minimas, grano_unico, sin_nulos, fecha_en_la_dimension, cuadra_con_silver]
+    upstream: [silver:ml_ocupacion_diaria, gold:dim_fecha]
+    downstream: [dataset:ocupacion_diaria, dataset:kpi_plan, dashboard:prediccion-demanda, dashboard:panel-direccion]
+    columnas:
+      - {nombre: fecha_id, tipo: INT, descripcion: "Clave de Dim_Fecha en formato AAAAMMDD", es_clave: true}
+      - {nombre: fecha, tipo: DATE, descripcion: "Fecha del dato", es_clave: true}
+      - {nombre: corredor, tipo: VARCHAR, descripcion: "Corredor ferroviario", es_clave: true, termino_glosario: "Corredor Ferroviario"}
+      - {nombre: linea_id, tipo: VARCHAR, descripcion: "Identificador de la línea ferroviaria", es_clave: false}
+      - {nombre: ocupacion, tipo: DOUBLE, descripcion: "Ocupación implicada del día: la demanda repartida entre la oferta real", es_clave: false, termino_glosario: "Ocupación (Factor de Carga)"}
+      - {nombre: plausible, tipo: BOOLEAN, descripcion: "Cierto cuando la ocupación cae en un rango creíble: la marca de calidad del dato derivado", es_clave: false}
+      - {nombre: festivo, tipo: BOOLEAN, descripcion: "Día festivo en alguna de las dos cabeceras", es_clave: false}
+      - {nombre: festivo_solo_madrid, tipo: BOOLEAN, descripcion: "Festivo solo en Madrid", es_clave: false}
+      - {nombre: festivo_solo_cataluna, tipo: BOOLEAN, descripcion: "Festivo solo en Cataluña", es_clave: false}
+      - {nombre: vispera, tipo: BOOLEAN, descripcion: "Víspera de festivo", es_clave: false}
+      - {nombre: puente, tipo: BOOLEAN, descripcion: "Día dentro de un puente", es_clave: false}
+      - {nombre: regreso, tipo: BOOLEAN, descripcion: "Día de regreso de puente o festivo", es_clave: false}
+      - {nombre: evento, tipo: BOOLEAN, descripcion: "Día con un evento del corredor (congresos y ferias)", es_clave: false}
+      - {nombre: junto_a_evento, tipo: BOOLEAN, descripcion: "Día contiguo a un evento", es_clave: false}
+      - {nombre: temperatura_media_mad, tipo: DOUBLE, descripcion: "Temperatura media del día en Madrid (AEMET)", es_clave: false}
+      - {nombre: temperatura_media_bcn, tipo: DOUBLE, descripcion: "Temperatura media del día en Barcelona (AEMET)", es_clave: false}
+      - {nombre: precipitacion_mm_mad, tipo: DOUBLE, descripcion: "Precipitación del día en Madrid (AEMET)", es_clave: false}
+      - {nombre: precipitacion_mm_bcn, tipo: DOUBLE, descripcion: "Precipitación del día en Barcelona (AEMET)", es_clave: false}
+
+  - tabla: fact_ocupacion_franja
+    nombre: Hecho de Ocupación por Franja Horaria
+    capa: Gold
+    orden_capa: 6
+    dominio: Demanda y Tráfico
+    descripcion: Ocupación estimada por día y franja horaria, con la marca de hora punta; reparte la ocupación diaria entre franjas según la oferta de cada una.
+    grano: Un día y franja horaria
+    claves: [fecha, franja]
+    formato: Parquet
+    proceso: ml_franja
+    frecuencia: Diario (Batch)
+    quality_gates: []   # la construye Python y aún no pasa por los quality gates de Spark;
+                        # lo que trae es su propia columna `plausible` fila a fila
+    upstream: [silver:oferta_franja, silver:ml_ocupacion_diaria]
+    downstream: [dataset:ocupacion_franja, dataset:kpi_plan, gold:fact_precio_recomendado, dashboard:panel-direccion]
+    columnas:
+      - {nombre: fecha, tipo: DATE, descripcion: "Fecha del dato", es_clave: true}
+      - {nombre: franja, tipo: VARCHAR, descripcion: "Franja horaria de salida del tren", es_clave: true}
+      - {nombre: es_punta, tipo: BOOLEAN, descripcion: "Cierto si la franja es hora punta", es_clave: false}
+      - {nombre: trenes, tipo: DOUBLE, descripcion: "Trenes de la franja", es_clave: false}
+      - {nombre: cuota_oferta, tipo: DOUBLE, descripcion: "Parte de la oferta del día que está en esta franja", es_clave: false}
+      - {nombre: cuota_demanda, tipo: DOUBLE, descripcion: "Parte de la demanda del día atribuida a esta franja", es_clave: false}
+      - {nombre: ocupacion, tipo: DOUBLE, descripcion: "Ocupación estimada de la franja", es_clave: false, termino_glosario: "Ocupación (Factor de Carga)"}
+      - {nombre: plazas_vacias, tipo: DOUBLE, descripcion: "Plazas sin vender estimadas en la franja", es_clave: false}
+      - {nombre: plausible, tipo: BOOLEAN, descripcion: "Marca de calidad del dato derivado", es_clave: false}
+
+  - tabla: fact_precio_recomendado
+    nombre: Hecho de Precio Recomendado
+    capa: Gold
+    orden_capa: 6
+    dominio: Mercado y Tarifas
+    descripcion: Precio recomendado por día, franja horaria y operador. Sale del precio real de la CNMC y de la ocupación estimada, por una regla de elasticidad, y se acota al rango de precios que ese operador ha practicado de verdad.
+    grano: Un día, franja horaria y operador
+    claves: [fecha, franja, operador_id]
+    formato: Parquet
+    proceso: precio_recomendado
+    frecuencia: Diario (Batch)
+    quality_gates: []   # la construye Python y aún no pasa por los quality gates de Spark;
+                        # lo que trae es su propia columna `plausible` fila a fila
+    upstream: [gold:fact_ocupacion_franja, silver:cnmc_precio_trimestral]
+    downstream: [dataset:precio_recomendado, dataset:kpi_plan, dashboard:panel-direccion]
+    columnas:
+      - {nombre: fecha, tipo: DATE, descripcion: "Fecha del precio recomendado", es_clave: true}
+      - {nombre: franja, tipo: VARCHAR, descripcion: "Franja horaria de salida", es_clave: true}
+      - {nombre: es_punta, tipo: BOOLEAN, descripcion: "Cierto si la franja es hora punta", es_clave: false}
+      - {nombre: operador_id, tipo: VARCHAR, descripcion: "Identificador del operador comercial", es_clave: true}
+      - {nombre: empresa, tipo: VARCHAR, descripcion: "Empresa ferroviaria, como la nombra la CNMC", es_clave: false}
+      - {nombre: precio_base_eur, tipo: DOUBLE, descripcion: "Precio medio real del trimestre, el punto de partida (CNMC)", es_clave: false, termino_glosario: "Precio Medio por Trayecto"}
+      - {nombre: precio_min_eur, tipo: DOUBLE, descripcion: "Precio mínimo que ese operador ha practicado de verdad", es_clave: false}
+      - {nombre: precio_max_eur, tipo: DOUBLE, descripcion: "Precio máximo que ese operador ha practicado de verdad", es_clave: false}
+      - {nombre: ocupacion, tipo: DOUBLE, descripcion: "Ocupación estimada de la franja", es_clave: false, termino_glosario: "Ocupación (Factor de Carga)"}
+      - {nombre: ocupacion_referencia, tipo: DOUBLE, descripcion: "Ocupación de referencia sobre la que se mide el exceso de demanda", es_clave: false}
+      - {nombre: elasticidad, tipo: DOUBLE, descripcion: "Elasticidad precio-demanda declarada en config/reglas_demanda.yml", es_clave: false}
+      - {nombre: factor, tipo: DOUBLE, descripcion: "Factor que se aplica al precio base", es_clave: false}
+      - {nombre: precio_sin_acotar_eur, tipo: DOUBLE, descripcion: "Precio antes de acotarlo al rango observado", es_clave: false}
+      - {nombre: precio_recomendado_eur, tipo: DOUBLE, descripcion: "Precio recomendado final", es_clave: false}
+      - {nombre: variacion, tipo: DOUBLE, descripcion: "Variación sobre el precio base", es_clave: false}
+      - {nombre: recortado, tipo: BOOLEAN, descripcion: "Cierto cuando el rango observado ha recortado la recomendación", es_clave: false}
+      - {nombre: en_rango_observado, tipo: BOOLEAN, descripcion: "Cierto cuando la recomendación cae dentro de lo que ese operador ya ha cobrado", es_clave: false}
+      - {nombre: plausible, tipo: BOOLEAN, descripcion: "Marca de calidad del dato derivado", es_clave: false}
+      - {nombre: version_regla, tipo: VARCHAR, descripcion: "Firma de la regla con la que se calculó, para poder reproducirlo", es_clave: false}
+
+  - tabla: fact_turismo_mensual
+    nombre: Hecho de Turismo Mensual
+    capa: Gold
+    orden_capa: 6
+    dominio: Demanda y Tráfico
+    descripcion: Turistas mensuales entre Madrid y Barcelona del INE, con la parte de cada mes dentro de su trimestre; es lo que da el perfil mensual del reparto de la demanda.
+    grano: Un mes y par de provincias
+    claves: [anio, mes, origen, destino]
+    formato: Parquet
+    proceso: gold_build
+    frecuencia: Mensual
+    quality_gates: [filas_minimas, grano_unico, sin_nulos, mes_valido, la_cuota_suma_uno_por_trimestre]
+    upstream: [silver:turismo_mensual, gold:dim_fecha]
+    downstream: [dataset:turismo_mensual, dashboard:prediccion-demanda]
+    columnas:
+      - {nombre: anio, tipo: INT, descripcion: "Año del dato", es_clave: true}
+      - {nombre: mes, tipo: INT, descripcion: "Mes del dato", es_clave: true}
+      - {nombre: primer_dia_mes, tipo: DATE, descripcion: "Primer día del mes, para usarlo como eje temporal", es_clave: false}
+      - {nombre: nombre_mes, tipo: VARCHAR, descripcion: "Nombre del mes en castellano", es_clave: false}
+      - {nombre: trimestre, tipo: INT, descripcion: "Trimestre al que pertenece el mes", es_clave: false}
+      - {nombre: origen, tipo: VARCHAR, descripcion: "Provincia de origen del viaje turístico", es_clave: true}
+      - {nombre: destino, tipo: VARCHAR, descripcion: "Provincia de destino del viaje turístico", es_clave: true}
+      - {nombre: turistas, tipo: DOUBLE, descripcion: "Turistas del mes entre las dos provincias (INE, operación TMOV)", es_clave: false}
+      - {nombre: tipo_dato, tipo: VARCHAR, descripcion: "Si el valor es definitivo o provisional, como lo publica el INE", es_clave: false}
+      - {nombre: cuota_del_trimestre, tipo: DOUBLE, descripcion: "Parte del trimestre que corresponde a este mes: el perfil mensual medido", es_clave: false}
+
+  - tabla: fact_metricas_modelo
+    nombre: Hecho de Métricas del Modelo
+    capa: Gold
+    orden_capa: 6
+    dominio: Plataforma y Calidad
+    descripcion: Métricas de cada entrenamiento del modelo de ocupación diaria (MAPE, MAE, R² y la comparación contra la referencia), una fila por ejecución.
+    grano: Una ejecución de entrenamiento
+    claves: [run_id]
+    formato: Parquet
+    proceso: ml_modelo
+    frecuencia: Por ejecución
+    quality_gates: []   # la construye Python y aún no pasa por los quality gates de Spark;
+                        # lo que trae es su propia columna `plausible` fila a fila
+    upstream: [silver:ml_ocupacion_diaria]
+    downstream: [dataset:metricas_modelo, dataset:kpi_plan, dashboard:prediccion-demanda, dashboard:panel-direccion]
+    columnas:
+      - {nombre: run_id, tipo: VARCHAR, descripcion: "Identificador de la ejecución, el mismo de la trazabilidad de cargas", es_clave: true}
+      - {nombre: generado_en, tipo: TIMESTAMP, descripcion: "Momento del entrenamiento", es_clave: false}
+      - {nombre: corredor, tipo: VARCHAR, descripcion: "Corredor ferroviario", es_clave: false, termino_glosario: "Corredor Ferroviario"}
+      - {nombre: modelo, tipo: VARCHAR, descripcion: "Algoritmo y variante entrenada", es_clave: false}
+      - {nombre: objetivo, tipo: VARCHAR, descripcion: "Variable que predice el modelo", es_clave: false}
+      - {nombre: dias_entrenamiento, tipo: BIGINT, descripcion: "Días usados para entrenar", es_clave: false}
+      - {nombre: dias_test, tipo: BIGINT, descripcion: "Días reservados para medir", es_clave: false}
+      - {nombre: variables, tipo: BIGINT, descripcion: "Número de variables de entrada", es_clave: false}
+      - {nombre: mape, tipo: DOUBLE, descripcion: "Error porcentual absoluto medio sobre el test", es_clave: false}
+      - {nombre: mae_puntos, tipo: DOUBLE, descripcion: "Error absoluto medio en puntos de ocupación", es_clave: false}
+      - {nombre: r2, tipo: DOUBLE, descripcion: "Coeficiente de determinación sobre el test", es_clave: false}
+      - {nombre: desde, tipo: DATE, descripcion: "Primer día del periodo de entrenamiento", es_clave: false}
+      - {nombre: hasta, tipo: DATE, descripcion: "Último día del periodo de entrenamiento", es_clave: false}
+      - {nombre: vt_tramos, tipo: BIGINT, descripcion: "Tramos de la validación temporal", es_clave: false}
+      - {nombre: vt_mape, tipo: DOUBLE, descripcion: "MAPE medio de la validación temporal", es_clave: false}
+      - {nombre: vt_mape_referencia, tipo: DOUBLE, descripcion: "MAPE de la referencia con la que se compara", es_clave: false}
+      - {nombre: vt_r2, tipo: DOUBLE, descripcion: "R² medio de la validación temporal", es_clave: false}
+      - {nombre: vt_tramos_en_que_gana, tipo: BIGINT, descripcion: "Tramos en los que el modelo bate a la referencia", es_clave: false}
+      - {nombre: mejora_sobre_referencia, tipo: DOUBLE, descripcion: "Mejora del modelo sobre la referencia", es_clave: false}
+
+  - tabla: fact_cobertura_ingesta
+    nombre: KPI de Cobertura de la Ingesta
+    capa: Gold
+    orden_capa: 6
+    dominio: Plataforma y Calidad
+    descripcion: Qué parte de las fuentes declaradas se descargó con éxito cada día, calculado del registro de cargas; es uno de los KPI técnicos del plan.
+    grano: Un día
+    claves: [fecha]
+    formato: Parquet
+    proceso: cobertura_ingesta
+    frecuencia: Diario (Batch)
+    quality_gates: []   # la construye Python y aún no pasa por los quality gates de Spark;
+                        # lo que trae es su propia columna `plausible` fila a fila
+    upstream: [trazabilidad:cargas]
+    downstream: [dataset:cobertura_ingesta, dataset:kpi_plan, dashboard:panel-direccion]
+    columnas:
+      - {nombre: fecha, tipo: DATE, descripcion: "Día medido", es_clave: true}
+      - {nombre: fuentes_intentadas, tipo: BIGINT, descripcion: "Fuentes que se intentaron descargar ese día", es_clave: false}
+      - {nombre: fuentes_ok, tipo: BIGINT, descripcion: "Fuentes descargadas con éxito", es_clave: false}
+      - {nombre: cargas, tipo: BIGINT, descripcion: "Cargas registradas ese día", es_clave: false}
+      - {nombre: ok_del_registro, tipo: INT, descripcion: "Cargas del registro terminadas sin error", es_clave: false}
+      - {nombre: fuentes_esperadas, tipo: BIGINT, descripcion: "Fuentes declaradas en config/data_sources.yml", es_clave: false}
+      - {nombre: cobertura, tipo: DOUBLE, descripcion: "Fuentes con éxito entre las esperadas", es_clave: false}
+      - {nombre: umbral, tipo: DOUBLE, descripcion: "Umbral que el plan pide cumplir", es_clave: false}
+      - {nombre: cumple_umbral, tipo: BOOLEAN, descripcion: "Cierto cuando la cobertura llega al umbral", es_clave: false}
+
+  - tabla: fact_completitud_silver
+    nombre: KPI de Completitud de Silver
+    capa: Gold
+    orden_capa: 6
+    dominio: Plataforma y Calidad
+    descripcion: Qué parte de las filas de cada tabla de Silver no tiene huecos, distinguiendo el hueco de verdad del nulo que es un estado del negocio; es el otro KPI técnico del plan.
+    grano: Una tabla de Silver
+    claves: [tabla]
+    formato: Parquet
+    proceso: completitud_silver
+    frecuencia: Diario (Batch)
+    quality_gates: []   # la construye Python y aún no pasa por los quality gates de Spark;
+                        # lo que trae es su propia columna `plausible` fila a fila
+    upstream: [silver:viajeros_enriquecidos, silver:puntualidad_enriquecida, silver:cnmc_trimestral, silver:oferta_diaria, silver:festivos, silver:meteo, silver:turismo_mensual, silver:ml_ocupacion_diaria]
+    downstream: [dataset:kpi_plan, dashboard:panel-direccion]
+    columnas:
+      - {nombre: tabla, tipo: VARCHAR, descripcion: "Tabla de Silver medida", es_clave: true}
+      - {nombre: filas, tipo: BIGINT, descripcion: "Filas de la tabla", es_clave: false}
+      - {nombre: filas_limpias, tipo: BIGINT, descripcion: "Filas sin ningún hueco", es_clave: false}
+      - {nombre: filas_con_hueco, tipo: BIGINT, descripcion: "Filas con al menos un hueco", es_clave: false}
+      - {nombre: completitud, tipo: DOUBLE, descripcion: "Filas limpias entre el total", es_clave: false}
+      - {nombre: umbral, tipo: DOUBLE, descripcion: "Umbral que el plan pide cumplir", es_clave: false}
+      - {nombre: cumple_umbral, tipo: BOOLEAN, descripcion: "Cierto cuando la completitud llega al umbral", es_clave: false}
+      - {nombre: columnas_vigiladas, tipo: BIGINT, descripcion: "Columnas que se miran en esa tabla", es_clave: false}
+      - {nombre: columnas_con_nulos_controlados, tipo: BIGINT, descripcion: "Columnas cuyo nulo es un estado del negocio y está justificado por escrito", es_clave: false}
+      - {nombre: columnas_con_huecos, tipo: VARCHAR, descripcion: "Columnas con huecos de verdad, las que hay que mirar", es_clave: false}
+
   - tabla: dim_estacion
     nombre: Dimensión Estación
     capa: Gold
@@ -162,6 +412,7 @@ tablas:
       - {nombre: codigo_adif, tipo: VARCHAR, descripcion: "Código técnico de Adif", es_clave: false}
       - {nombre: municipio, tipo: VARCHAR, descripcion: "Municipio de localización", es_clave: false}
       - {nombre: provincia, tipo: VARCHAR, descripcion: "Provincia geográfica", es_clave: false}
+      - {nombre: comunidad, tipo: VARCHAR, descripcion: "Comunidad autónoma", es_clave: false}
       - {nombre: latitud, tipo: DOUBLE, descripcion: "Coordenada latitud WGS84", es_clave: false}
       - {nombre: longitud, tipo: DOUBLE, descripcion: "Coordenada longitud WGS84", es_clave: false}
 
@@ -219,8 +470,8 @@ tablas:
     formato: Parquet
     proceso: gold_build
     frecuencia: Maestro
-    quality_gates: [grano_unico]
-    upstream: [silver:crtm]
+    quality_gates: [filas_minimas, clave_unica, sin_nulos]
+    upstream: [silver:viajeros_enriquecidos]
     downstream: [fact_viajeros, fact_puntualidad]
     columnas:
       - {nombre: linea_id, tipo: VARCHAR, descripcion: "Identificador unívoco de la línea", es_clave: true}
@@ -340,19 +591,30 @@ tablas:
     capa: Silver
     orden_capa: 4
     dominio: Demanda y Tráfico
-    descripcion: Datos de viajeros por servicio con normalización de estaciones e imputación de variables meteorológicas y de calendario.
-    grano: Un servicio ferroviario y fecha
-    claves: [servicio_id, fecha]
+    descripcion: Viajes diarios por par origen-destino, línea y operador, con normalización de estaciones e imputación de variables meteorológicas y de calendario.
+    # El grano NO es el servicio: nadie publica viajeros por tren, así que la tabla no puede llevar
+    # servicio_id. Ese grano sí existe, pero en puntualidad_enriquecida, que viene del GTFS-RT.
+    # Este es además el grano que necesita el fact_viajeros declarado arriba.
+    grano: Un día, línea, operador, estación de origen y estación de destino
+    claves: [fecha, linea_id, operador_id, estacion_origen_id, estacion_destino_id]
     formato: Delta Lake
     proceso: silver_sample / silver_builder
     frecuencia: Streaming / Batch
-    quality_gates: [filas_minimas, claves_validas]
+    quality_gates: [filas_minimas, claves_sin_nulos, grano_unico, par_con_dos_estaciones, distancia_positiva, viajeros_km_coherente]
     upstream: [l2:renfe_trip_updates, l2:crtm]
-    downstream: [gold:fact_viajeros, gold:dim_estacion]
+    downstream: [gold:fact_viajeros, gold:dim_estacion, gold:dim_linea]
     columnas:
-      - {nombre: servicio_id, tipo: VARCHAR, descripcion: "Identificador del servicio", es_clave: true}
       - {nombre: fecha, tipo: DATE, descripcion: "Fecha de operación", es_clave: true}
-      - {nombre: viajeros, tipo: BIGINT, descripcion: "Pasajeros registrados", es_clave: false}
+      - {nombre: estacion_origen_id, tipo: VARCHAR, descripcion: "Estación de salida del viaje", es_clave: true}
+      - {nombre: estacion_destino_id, tipo: VARCHAR, descripcion: "Estación de llegada del viaje", es_clave: true}
+      - {nombre: linea_id, tipo: VARCHAR, descripcion: "Identificador de la línea ferroviaria", es_clave: true}
+      - {nombre: operador_id, tipo: VARCHAR, descripcion: "Identificador del operador comercial", es_clave: true}
+      - {nombre: distancia_km, tipo: DOUBLE, descripcion: "Distancia entre las dos estaciones, la resta de sus puntos kilométricos", es_clave: false}
+      - {nombre: viajeros, tipo: BIGINT, descripcion: "Viajes entre esas dos estaciones ese día con ese operador", es_clave: false, termino_glosario: "Viajeros (Pax)"}
+      - {nombre: viajeros_km, tipo: DOUBLE, descripcion: "Viajeros por la distancia de su par", es_clave: false, termino_glosario: "Viajeros·km"}
+      - {nombre: longitud_km, tipo: DOUBLE, descripcion: "Longitud de la línea, de su primera a su última parada", es_clave: false}
+      - {nombre: condicion_meteo, tipo: VARCHAR, descripcion: "Condición meteorológica del día en la provincia de origen", es_clave: false}
+      - {nombre: meteo_imputada, tipo: BOOLEAN, descripcion: "Cierto cuando la meteo de ese día y provincia no viene de AEMET y se ha simulado", es_clave: false}
 
   - tabla: puntualidad_enriquecida
     nombre: Silver Puntualidad Enriquecida
