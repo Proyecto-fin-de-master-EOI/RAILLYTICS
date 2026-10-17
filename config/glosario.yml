@@ -31,8 +31,8 @@ terminos:
   - termino: Viajeros·km
     dominio: Negocio Ferroviario
     tipo: Negocio
-    definicion: "Unidad compuesta de producción y demanda que representa el transporte de un viajero a lo largo de un kilómetro de distancia."
-    formula: SUM(viajeros * distancia_km)
+    definicion: "Unidad compuesta de producción y demanda que representa el transporte de un viajero a lo largo de un kilómetro de distancia. OJO: no se calcula aquí. La CNMC lo publica ya agregado por trimestre, así que el proyecto lo suma tal cual; no hay ninguna tabla con la distancia de cada trayecto."
+    formula: SUM(viajeros_km)
     sinonimos: Pasajeros-kilómetro, Tráfico de viajeros
     tablas_relacionadas: cnmc_trimestral, fact_mercado_trimestral
     dashboards_relacionados: [mercado-corredor]
@@ -53,8 +53,8 @@ terminos:
   - termino: Plazas·km Ofertadas
     dominio: Negocio Ferroviario
     tipo: Negocio
-    definicion: "Medida de oferta total de capacidad obtenida multiplicando el número de plazas ofertadas de cada tren por los kilómetros de su recorrido."
-    formula: SUM(plazas_ofertadas * distancia_km)
+    definicion: "Medida de oferta total de capacidad: las plazas ofertadas de cada tren por los kilómetros de su recorrido. Como viajeros·km, la CNMC la publica ya agregada por trimestre y el proyecto la suma tal cual."
+    formula: SUM(plazas_km)
     sinonimos: Asientos-kilómetro ofertados (AKO)
     tablas_relacionadas: cnmc_trimestral, fact_mercado_trimestral
     dashboards_relacionados: [mercado-corredor]
@@ -65,7 +65,7 @@ terminos:
     dominio: Negocio Ferroviario
     tipo: Negocio
     definicion: "Porcentaje de aprovechamiento de la capacidad disponible, calculado como el cociente entre viajeros·km y plazas·km ofertadas (o viajeros entre plazas ofertadas)."
-    formula: "round(100.0 * viajeros_km / plazas_km_ofertadas, 2)"
+    formula: "round(100.0 * SUM(viajeros_km) / SUM(plazas_km), 2)"
     sinonimos: Load Factor, Factor de ocupación
     tablas_relacionadas: fact_mercado_trimestral, cnmc_trimestral
     dashboards_relacionados: [mercado-corredor]

@@ -27,6 +27,10 @@ tablas:
       - {nombre: viajeros, tipo: BIGINT, descripcion: "Total de viajeros transportados", es_clave: false, termino_glosario: "Viajeros (Pax)"}
       - {nombre: plazas_ofertadas, tipo: BIGINT, descripcion: "Total de plazas comerciales ofertadas", es_clave: false, termino_glosario: "Plazas Ofertadas"}
       - {nombre: tren_km, tipo: DOUBLE, descripcion: "Kilómetros totales recorridos por las composiciones", es_clave: false, termino_glosario: "Tren·km"}
+      # Las publica la CNMC ya agregadas por trimestre: el proyecto no multiplica por ninguna
+      # distancia, no hay tabla con la longitud de cada trayecto.
+      - {nombre: viajeros_km, tipo: DOUBLE, descripcion: "Viajeros por kilómetro recorrido, tal y como los publica la CNMC", es_clave: false, termino_glosario: "Viajeros·km"}
+      - {nombre: plazas_km, tipo: DOUBLE, descripcion: "Plazas ofertadas por kilómetro recorrido, tal y como las publica la CNMC", es_clave: false, termino_glosario: "Plazas·km Ofertadas"}
       - {nombre: ingresos_eur, tipo: DOUBLE, descripcion: "Ingresos comerciales brutos por venta de billetes", es_clave: false}
       - {nombre: cuota_viajeros_pct, tipo: DOUBLE, descripcion: "Porcentaje de cuota de mercado en volumen de viajeros", es_clave: false, termino_glosario: "Cuota de Mercado (Market Share)"}
 
