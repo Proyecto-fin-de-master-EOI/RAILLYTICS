@@ -145,7 +145,7 @@ RAILLYTICS/
 │   └── ingesta_data_sources.py # DAG Airflow: descarga por fuente (dynamic task mapping sobre el YAML)
 │
 ├── dashboards/
-│   └── superset/raillytics_gold/  # Dashboards de Superset como código (Demanda, Puntualidad, Trazabilidad de cargas, Predicción de demanda); se importan al arrancar
+│   └── superset/raillytics_gold/  # Dashboards de Superset como código (Demanda, Puntualidad, Trazabilidad de cargas, Lineage de cargas, Catálogo de datos y Glosario, Predicción de demanda); se importan al arrancar
 │
 ├── data/                       # Data Lake local — NO se versiona en git
 │   ├── bronze/                 # Staging local por fuente — aquí escribe la descarga Python
@@ -266,7 +266,9 @@ typo como `optons` no se ignora en silencio.
 
 Cada formato admite sus propias `options` (`delimiter` y `encoding` en csv, `rowTag` en xml), y declarar una que el formato no
 reconoce es un error. `checks` solo se evalúa en `csv`, y una tabla Silver no puede declararla más de una fuente. Ejemplo
-(la fuente de indicadores de la CNMC, CSV con `;` y BOM):
+(la fuente de indicadores de la CNMC, CSV con `;` y BOM; hay además dos fuentes de demanda trimestral, cada una con su tabla Silver:
+`cnmc_viajeros_producto`, total nacional por tipo de producto, y `cnmc_viajeros_corredor`, LD AV por corredor y empresa, que concuerda con
+`cnmc_indicadores`):
 
 ```yaml
   - id: cnmc_indicadores
@@ -414,7 +416,9 @@ Para **añadir una tabla**: una entrada `silver:` en su fuente, `src/main/resour
 `config/quality_gates.yml` y, si puede no existir aún, su nombre en `opcionales:`. No hay que tocar código Scala.
 
 El Silver sintético (`03_silver-sample`) y el real **conviven** en el mismo bucket con tablas distintas: el sintético aporta el detalle diario
-y el real, los indicadores trimestrales del corredor (viajeros, plazas, tren·km, ingresos y precio medio por operador) de la CNMC. Como L2 lee
+y el real, los indicadores trimestrales del corredor (viajeros, plazas, tren·km, ingresos y precio medio por operador) de la CNMC, más dos
+tablas de demanda en **millones** (`cnmc_viajeros_producto`, total nacional por tipo de producto, y `cnmc_viajeros_corredor`, LD AV por corredor
+y empresa; Gold todavía no las usa). Como L2 lee
 las fuentes del YAML al arrancar, hay que **reiniciar `make 02_parquet-converter` una vez** tras añadir una fuente.
 
 ---
@@ -552,13 +556,68 @@ Cargas.registrar("silver_viajeros", "silver", settings.cargasDir, Map("particion
 El registro se escribe al terminar, también si la carga falla (el error queda en la fila y la
 excepción se propaga); si el registro no se puede escribir, se avisa en el log pero la carga no
 falla por eso. `make cargas` lista las últimas ejecuciones desde la terminal, y el dashboard
-*Trazabilidad de cargas* de Superset muestra ejecuciones, errores, filas cargadas por día y
-tabla, duración por proceso, la última carga de cada tabla (en rojo si hace más de 24 h), los
-quality gates de cada carga y el historial completo. `TRAZABILIDAD_ROOT` cambia la ubicación
-del registro (por defecto, dentro del bucket Gold).
+*Trazabilidad de cargas* de Superset muestra ejecuciones, errores, anomalías de volumen detectadas
+(comparativa frente a la media histórica de la tabla), filas cargadas por día y tabla, duración por proceso,
+la última carga de cada tabla (en rojo si hace más de 24 h), los quality gates de cada carga y el historial completo.
+`TRAZABILIDAD_ROOT` cambia la ubicación del registro (por defecto, dentro del bucket Gold).
 
 Junto a `cargas/` vive `_trazabilidad/calidad/`, con una fila por quality gate evaluado y el
 **mismo `run_id`** que la carga a la que pertenece (ver [Quality Gates](#quality-gates)).
+
+### Lineage de cargas (dashboard organizado por pestañas)
+
+El dashboard *Lineage de cargas* (`/superset/dashboard/lineage-cargas/`) dibuja el recorrido de los datos **de la fuente al dashboard**:
+fuente → staging → Bronze L1 → L2 → Silver → Gold → dataset → dashboard, más los generadores sintéticos y la predicción con su LLM.
+La interfaz está organizada en **pestañas temáticas** para una navegación ágil sin scroll excesivo:
+
+- **Visión Global y Flujo**: **Sankey** (flujo de izquierda a derecha, grosor según las filas de la última carga) y **grafo** interactivo de fuerzas (un color por capa, nodos arrastrables, leyenda para ocultar capas); cada salto lleva su proceso y transformación (`silver/<tabla>.sql`, `gold/<tabla>.sql`, descarga del DAG, copia a MinIO…).
+- **Nodos y Calidad**: el estado de cada nodo (ok, aviso, error, sin ejecutar, no aplica) y las **reglas de calidad** con su último resultado evaluado (filtrable interactivamente por nodo).
+- **Zoom por Ejecución**: vista detallada por carga con el grafo del recorrido de los `run_id` seleccionados, las **ejecuciones con su error y los enlaces directos al log de la tarea de Airflow** (solo las descargas pasan por Airflow).
+
+Dos capas de información, que se cruzan en el SQL de los datasets:
+
+- **Declarada** (qué debería existir): se **genera del repositorio** (`raillytics.lineage.grafo`): `config/data_sources.yml`, la clave `silver:` de
+  cada fuente y su SQL, las tablas `silver_*`/`gold_*` que cita cada `src/main/resources/gold/*.sql` (la trazabilidad solo guarda
+  `origen = s3a://raillytics-silver`, sin decir de qué tablas), `config/prediccion.yml`, `config/quality_gates.yml` y los datasets y dashboards de
+  `dashboards/superset/`. Un nodo declarado que nunca se ha ejecutado figura como **sin ejecutar**.
+- **Observada** (qué se cargó): `_trazabilidad/cargas/` y `_trazabilidad/calidad/`. Cada app registra sus tablas a su manera (`crtm/stops`,
+  `silver_cnmc_trimestral`…) y `raillytics.lineage.datasets` las lleva al nodo que les corresponde.
+
+Estado de un nodo: **error** si su última carga falló o falla un gate bloqueante, **aviso** si solo falla un gate de aviso, **ok**, **sin ejecutar**
+o **no aplica** (fuentes, datasets y dashboards no se cargan).
+
+```bash
+make lineage                 # regenera los datasets lineage_*.yaml desde el repo (hazlo al cambiar fuentes, SQL, gates o dashboards)
+make 06_superset-import      # y reimporta el dashboard
+```
+
+Un test (`tests/lineage/test_sincronia.py`) falla si los YAML versionados no coinciden con lo que generaría `make lineage`. Los enlaces al log usan
+`http://localhost:8080` (la UI de Airflow del compose); `AIRFLOW_UI_URL` en el `.env` lo cambia. Para esos enlaces la descarga guarda su
+referencia de Airflow (`dag_id`, `run_id`, `task_id`, `map_index`) en `parametros.airflow` de su fila de trazabilidad.
+
+### Catálogo de Datos y Glosario de Términos
+
+El dashboard *Catálogo de datos y Glosario de términos* (`/superset/dashboard/catalogo-datos-glosario/`) actúa como centro de gobernanza y documentación viva de Raillytics, conectando el modelo de datos con el negocio y la calidad:
+
+- **Catálogo de Datos**: inventario interactivo de todos los datasets de las capas Bronze (L1 y L2), Silver, Gold y Metadatos. Detalla para cada tabla su dominio funcional, granularidad/grano, claves primarias, formato (Delta Lake, Parquet, CSV, JSON), proceso productor, frecuencia de refresco, dependencias (upstream/downstream), quality gates asociados, términos de glosario relacionados y diccionario de columnas tipadas con su mapeo al glosario.
+- **Glosario de Términos**: diccionario formal con términos de negocio ferroviario (Corredor, Plazas Ofertadas, Plazas·km, Viajeros, Viajeros·km, Tren·km, Cuota de Mercado, Factor de Ocupación, Puntualidad Comercial, Retraso Medio, OSP, Servicios Liberalizados) y términos técnicos de plataforma (Arquitectura Medallion, Bronze L1/L2, Silver, Gold, Quality Gate Bloqueante/Aviso, Trazabilidad, Linaje, Frescura, Run ID), junto con sus fórmulas de cálculo y:
+  - **Tablas y datos relacionados**: datasets donde se almacena o calcula cada concepto.
+  - **Dashboards relacionados**: tableros de Superset donde se explota visualmente (`mercado-corredor`, `demanda-ferroviaria`, `puntualidad`, `trazabilidad-cargas`, `lineage-cargas`, etc.).
+  - **Quality Gates asociados**: reglas de calidad (`quality_gates.yml`) que velan por la veracidad de la métrica.
+  - **Red de términos relacionados**: vínculos cruzados conceptuales y jerárquicos entre términos del glosario.
+- **Red de Gobernanza (Grafo interactivo y Ficha de Concepto)**: visualización relacional en grafo de fuerzas (ECharts) que mapea de forma integral la red de relaciones entre conceptos, tablas, reglas de calidad y dashboards. Incluye:
+  - **Grafo interactivo**: nodos arrastrables y diferenciados por categoría cromática con filtrado cruzado nativo (`emit_filter: true`).
+  - **Ficha del Concepto**: panel detallado que expone la definición formal, fórmula de cálculo, sinónimos y badges interactivos con enlaces directos a dashboards y tablas.
+  - **Sincronización bidireccional**: seleccionar un concepto en el grafo o en el filtro nativo *Término de glosario* aísla automáticamente su subgrafo relacional y actualiza su ficha de gobernanza al instante.
+
+La información se define en `config/data_catalog.yml` y `config/glosario.yml`, y se genera como datasets de DuckDB para Superset (`data_catalog`, `catalogo_columnas`, `glosario_terminos`, `catalogo_relaciones`):
+
+```bash
+make metadata                # regenera tanto lineage como catálogo/glosario (o individualmente: make catalog / make lineage)
+make 06_superset-import      # y reimporta los dashboards en Superset
+```
+
+Los tests unitarios (`tests/catalog/test_catalog.py` y `tests/dashboards/test_dashboards_catalog.py`) comprueban la integridad referencial completa (que ningún término, regla o dashboard apunte a identificadores inexistentes), verifican la consistencia de los 13 gráficos y aseguran que los datasets versionados coinciden exactamente con lo declarado.
 
 ---
 
@@ -618,6 +677,8 @@ Reglas de las tablas reales de la CNMC (B = bloqueante, A = aviso):
 | --- | --- |
 | `silver_cnmc_trimestral` | filas mínimas B; claves sin nulos B; grano único B; `operador_id` en {RENFE, IRYO, OUIGO, TOTAL, OTRO} B; trimestre en [1, 4] B; volúmenes ≥ 0 B; **Madrid–Barcelona presente** B; sin empresas desconocidas (`OTRO`) A; volúmenes solo en operadores e ingresos solo en `TOTAL` A; serie del corredor sin huecos A; serie actualizada (último trimestre a ≤ 3 del actual) A; viajeros por plaza en [0, 2] A |
 | `silver_cnmc_precio_*` | filas mínimas B; claves sin nulos B; grano único B; operador válido (incluye `AVLO`) B; precio en (0, 500] B; Madrid–Barcelona presente B; serie actualizada A |
+| `silver_cnmc_viajeros_producto` | filas mínimas B; claves sin nulos B; grano único B; trimestre en [1, 4] B; volúmenes ≥ 0 B; **LD AV presente** B; tipo de producto conocido A; serie actualizada A |
+| `silver_cnmc_viajeros_corredor` | filas mínimas B; claves sin nulos B; grano único B; trimestre en [1, 4] B; volúmenes ≥ 0 B; **Madrid–Barcelona presente** B; sin empresas desconocidas (`OTRO`) A; serie actualizada A |
 | `gold_fact_mercado_trimestral`, `gold_fact_precio_*` | grano único B; integridad referencial a `dim_linea` y `dim_operador` (tolera `TOTAL` y `OTRO`) B; **conciliación con Silver** (filas y suma de viajeros del corredor) B; claves sin nulos B |
 
 Los resultados se guardan en `s3://raillytics-gold/_trazabilidad/calidad/` (Parquet: `run_id`,
@@ -691,6 +752,14 @@ make 07_prediccion TRIMESTRE=2026-T4 PRED_ARGS="--total-esperado 4200000" # fija
 make 07_prediccion TRIMESTRE=2026-T4 PRED_PROMPT=demanda_v2 PRED_ARGS="--mostrar-prompt"   # imprime el prompt y termina (sin LLM)
 make llm-down
 ```
+
+**Datos de la CNMC.** Antes de predecir, `make 07_prediccion` comprueba que Silver tiene los datos de la CNMC que exige el trimestre
+(`python -m raillytics.prediccion.cnmc`): el mismo trimestre del año anterior, el último publicado y su gemelo, con el último a **2 trimestres
+o menos** del objetivo (la CNMC publica con ~1 trimestre de retraso). Si los hay, los usa. Si no, **los descarga primero**
+(`scripts/carga_e2e.py --asegurar-cnmc`: DAG de descarga → L1 → L2 → Silver, levantando el stack si está parado) y vuelve a comprobar.
+Si tras descargar la CNMC sigue sin cubrir el trimestre (aún no ha publicado más), avisa y deja que el predictor decida con lo que haya
+(calcula el nivel hasta 4 trimestres de distancia; más allá pide `--total-esperado`). `PRED_CNMC=no` se salta la comprobación (p. ej. con
+`--total-esperado` y sin Docker).
 
 `--solo-nivel` (calcula el total y termina) y `--mostrar-prompt` (imprime el prompt exacto y termina) no llaman al LLM: sirven para iterar sin gastar minutos de GPU. Si el trimestre ya está
 publicado, se relanza como **backtest** (el nivel nunca mira al propio trimestre) y se informa de cuánto se
@@ -873,6 +942,19 @@ sobre un día corriente del mismo día de la semana, v3 → v4; n/d = el trimest
   un festivo que además es regreso (6 de enero) sale como día laborable. Es decir, el modelo ve el contexto pero no
   siempre hace la suma: lo robusto sería que el código calcule el valor base y los ajustes fijos y el LLM solo valore
   los eventos.
+
+**`cnmc_v1.md`**. Es `demanda_v4` con un bloque de **datos reales de la CNMC** en `<contexto>` (`{{datos_cnmc}}`, que construye
+`raillytics.prediccion.contexto_cnmc`): para los 8 últimos trimestres publicados, viajeros, plazas ofertadas, relación viajeros/plazas,
+variación interanual y cuotas por operador, y para el trimestre objetivo la relación esperada y un **techo de los picos**. Lo calcula el
+código; el LLM solo lo interpreta (los criterios le dicen cómo). Sale del origen opcional `cnmc` de `config/prediccion.yml`
+(`silver/cnmc_trimestral` por operador); sin él, el bloque avisa de que no hay datos y el prompt funciona igual. Se elige con
+`PRED_PROMPT=cnmc_v1` (no es la plantilla por defecto).
+
+La relación viajeros/plazas **no es una ocupación**: la CNMC cuenta viajeros y plazas con criterios distintos y supera el 100 % en varios
+trimestres (Renfe llega al 115 %; el corredor, 104–106 % en 2025-T2/T3 y 2026-T2). Por eso el techo no es `1/ocupación`: es la **máxima
+relación ya publicada** dividida entre la esperada (con las mismas plazas ya se movió hasta esa relación; en 2026-T4, 1,33 veces la demanda
+media diaria). El modelo lo trata como orientación, no como límite: en la prueba con `mistral-nemo` 4 de 92 días lo superaron (con
+`eventos_v1`, 5), todos vísperas de tramo festivo.
 
 ### Modo eventos: reglas en código y el LLM solo para los eventos
 

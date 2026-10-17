@@ -10,7 +10,7 @@
 #       make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo turismo calibrar perfil-mensual cuotas-operador contraste-trends cobertura-ingesta ml-dataset ml-modelo ml-franja precio-recomendado 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import superset-sync 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e cargas calidad clean
+.PHONY: help up down install-dev-env install-hooks test test-python test-scala 00_ingest nap-historico nap-oferta festivos meteo turismo calibrar perfil-mensual cuotas-operador contraste-trends cobertura-ingesta ml-dataset ml-modelo ml-franja precio-recomendado 01_raw-uploader 02_parquet-converter 03_silver-sample 04_silver 05_gold 06_superset-import superset-sync 07_prediccion prediccion-sample llm-up llm-down quality-gates carga-e2e lineage catalog metadata cargas calidad clean
 
 # .env está en formato KEY=value, que es sintaxis de Makefile válida — así no
 # hace falta `source .env` (no funciona igual en Windows) y las variables se
@@ -86,6 +86,7 @@ help:
 	@echo "  superset-sync         Manda a Superset el SQL y la descripción de los datasets que ya existen (el import no los toca)"
 	@echo "  07_prediccion         Predicción diaria de demanda AVE Madrid-Barcelona con un LLM (make 07_prediccion TRIMESTRE=2026-T4)"
 	@echo "                        (PRED_PROMPT=demanda_v2 elige la plantilla; PRED_ARGS=\"--solo-nivel\", \"--sin-cache\" o \"--total-esperado N\" pasan opciones)"
+	@echo "                        (antes comprueba los datos de la CNMC del trimestre y los descarga si faltan; PRED_CNMC=no lo omite)"
 	@echo "  prediccion-sample     Genera fuentes SINTETICAS de la prediccion (demanda trimestral, festivos, eventos y meteo) en Bronze L2"
 	@echo "  llm-up                Levanta Ollama (perfil llm del compose) y descarga OLLAMA_MODEL (LLM_GPU=1 reserva la GPU NVIDIA)"
 	@echo "  llm-down              Para y elimina los contenedores de Ollama (los modelos se conservan en su volumen)"
@@ -93,6 +94,7 @@ help:
 	@echo "                     (make quality-gates QG_ARGS=silver | gold | <tabla> para acotar)"
 	@echo "  carga-e2e          Carga end-to-end: sube el stack, descarga, L1, L2, Silver, Gold, métricas y predicción, parando cada stream al acabar"
 	@echo "                     (TRIMESTRE=2026-T4 fija el trimestre a predecir; E2E_ARGS=\"--sin-prediccion\" o \"--desde silver\" para acotar)"
+	@echo "  lineage            Regenera los datasets del dashboard de lineage desde el repo (luego: make 06_superset-import)"
 	@echo "  cargas             Muestra las últimas cargas registradas (trazabilidad del lake)"
 	@echo "  calidad            Muestra los últimos resultados de quality gates registrados"
 	@echo "  clean              Borra directorios de staging/checkpoints generados"
@@ -287,8 +289,14 @@ MUESTRA_ARGS ?=
 prediccion-sample: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.prediccion.muestra $(MUESTRA_ARGS)
 
+# Antes de predecir comprueba que Silver tiene los datos de la CNMC que exige el trimestre (el mismo trimestre del año
+# anterior, el último publicado y su gemelo) y, si faltan, los descarga (DAG de descarga -> L1 -> L2 -> Silver): usa el stack
+# de docker, así que lo levanta si está parado. PRED_CNMC=no se salta la comprobación (p. ej. con --total-esperado y sin Docker).
+PRED_CNMC ?= auto
+
 07_prediccion: $(VENV)/.deps-installed
 	$(if $(TRIMESTRE),,$(error Falta TRIMESTRE: make 07_prediccion TRIMESTRE=2026-T4))
+	$(if $(filter no,$(PRED_CNMC)),,$(VENV_PY) scripts/carga_e2e.py --make "$(E2E_MAKE)" --compose "$(COMPOSE)" --asegurar-cnmc --trimestre $(TRIMESTRE))
 	$(VENV_PY) -m raillytics.prediccion --trimestre $(TRIMESTRE) --prompt $(PRED_PROMPT) $(PRED_ARGS)
 
 
@@ -320,6 +328,17 @@ E2E_ARGS ?=
 E2E_MAKE := $(MAKE)
 carga-e2e: $(VENV)/.deps-installed
 	$(VENV_PY) scripts/carga_e2e.py --make "$(E2E_MAKE)" --compose "$(COMPOSE)" $(if $(TRIMESTRE),--trimestre $(TRIMESTRE)) $(E2E_ARGS)
+
+# Dashboard «Lineage de cargas»: sus datasets se GENERAN del repositorio (fuentes, SQL de Silver y Gold, gates, predicción y dashboards),
+# así que al cambiar cualquiera de ellos hay que regenerarlos; un test comprueba que lo versionado está al día.
+# AIRFLOW_UI_URL (en el .env) fija la dirección de Airflow que usan los enlaces a los logs (por defecto http://localhost:8080).
+lineage: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.lineage
+
+catalog: $(VENV)/.deps-installed
+	$(VENV_PY) -m raillytics.catalog
+
+metadata: lineage catalog
 
 cargas: $(VENV)/.deps-installed
 	$(VENV_PY) -m raillytics.utils.cargas

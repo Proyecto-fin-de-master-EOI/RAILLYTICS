@@ -1,0 +1,538 @@
+table_name: lineage_cargas
+main_dttm_col: inicio
+description: Cada salto de cada ejecución observada (zoom por run_id), con su error y el enlace al log de Airflow.
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: null
+catalog: null
+sql: |-
+  -- Lineage · cada salto de cada ejecución observada, con su error y, si la hizo Airflow, el enlace al log de su tarea.
+  -- Un proceso que registra una tabla (p. ej. Gold) se expande en un salto por cada tabla de la que depende.
+  -- Se genera con `make lineage` (raillytics.lineage): no lo edites a mano.
+  WITH nodos(nodo, capa, orden_capa, nombre, descripcion, ruta, trazable) AS (VALUES
+      ('fuente:aemet_barcelona_prat', 'Fuente', 0, 'aemet_barcelona_prat', 'AEMET - Valores climatológicos diarios, Barcelona-El Prat (estación 0076)', 'https://opendata.aemet.es/opendata/api/valores/climatologicos/diarios/datos/fechaini/{fecha_ini}T00:00:00UTC/fechafin/{fecha_fin}T23:59:59UTC/estacion/0076', false),
+      ('fuente:aemet_madrid_barajas', 'Fuente', 0, 'aemet_madrid_barajas', 'AEMET - Valores climatológicos diarios, Madrid-Barajas (estación 3195)', 'https://opendata.aemet.es/opendata/api/valores/climatologicos/diarios/datos/fechaini/{fecha_ini}T00:00:00UTC/fechafin/{fecha_fin}T23:59:59UTC/estacion/3195', false),
+      ('fuente:boe_calendario_laboral_2025', 'Fuente', 0, 'boe_calendario_laboral_2025', 'BOE - Calendario laboral de 2025 (festivos nacionales y por comunidad autónoma)', 'https://www.boe.es/diario_boe/xml.php?id=BOE-A-2024-21316', false),
+      ('fuente:boe_calendario_laboral_2026', 'Fuente', 0, 'boe_calendario_laboral_2026', 'BOE - Calendario laboral de 2026 (festivos nacionales y por comunidad autónoma)', 'https://www.boe.es/diario_boe/xml.php?id=BOE-A-2025-21667', false),
+      ('fuente:cnmc_indicadores', 'Fuente', 0, 'cnmc_indicadores', 'CNMC - Indicadores trimestrales del transporte ferroviario de viajeros (viajeros, plazas, tren·km, ingresos por corredor y empresa)', 'https://catalogodatos.cnmc.es/dataset/e608b7b2-0b3a-4816-a4f2-54eb3d913790/resource/611667a1-b294-45e3-9283-6e49ea2f9bbc/download/ds_24406_1.csv', false),
+      ('fuente:cnmc_precio_mensual', 'Fuente', 0, 'cnmc_precio_mensual', 'CNMC - Indicador del precio medio mensual por trayecto', 'https://catalogodatos.cnmc.es/dataset/e880b3ca-6b78-4b84-ad93-6e645e6938d0/resource/de217355-6f5d-48f6-8c72-31cd86eefe00/download/ds_24410_1.csv', false),
+      ('fuente:cnmc_precio_trimestral', 'Fuente', 0, 'cnmc_precio_trimestral', 'CNMC - Indicador del precio medio trimestral por trayecto', 'https://catalogodatos.cnmc.es/dataset/ed44fc19-79d5-4222-b724-81e430c29a36/resource/97a05b72-874d-493f-88d8-90b850dcdc66/download/ds_24409_1.csv', false),
+      ('fuente:cnmc_viajeros_corredor', 'Fuente', 0, 'cnmc_viajeros_corredor', 'CNMC - Viajeros y plazas trimestrales de larga distancia alta velocidad por corredor y empresa', 'https://catalogodatos.cnmc.es/dataset/361af21a-b03a-4194-ae58-449a49456b1a/resource/1005487a-3c01-4807-bff7-dceb2a5d6bfc/download/ds_24408_1.csv', false),
+      ('fuente:cnmc_viajeros_producto', 'Fuente', 0, 'cnmc_viajeros_producto', 'CNMC - Viajeros y plazas trimestrales por tipo de producto (Cercanías, MD y LD; total nacional)', 'https://catalogodatos.cnmc.es/dataset/1e30c002-296b-43ac-a543-83a2409ca2c0/resource/10834ee7-55ea-466d-8d42-ce2f109c785d/download/ds_24407_1.csv', false),
+      ('fuente:crtm', 'Fuente', 0, 'crtm', 'CRTM - Consorcio Regional de Transportes de Madrid (GTFS estático)', 'https://crtm.maps.arcgis.com/sharing/rest/content/items/1a25440bf66f499bae2657ec7fb40144/data', false),
+      ('fuente:ine_turismo_madrid_barcelona', 'Fuente', 0, 'ine_turismo_madrid_barcelona', 'INE - Turistas de Madrid a Barcelona, mensual (operación TMOV, tabla 53267)', 'https://servicios.ine.es/wstempus/js/ES/DATOS_TABLA/53267?tv=96:29&tv=115:9&nult=100', false),
+      ('fuente:nap_gtfs_ouigo', 'Fuente', 0, 'nap_gtfs_ouigo', 'NAP - GTFS de OUIGO, último snapshot del histórico', 'https://nap.transportes.gob.es/api/v2/conjunto-dato/1515/historico', false),
+      ('fuente:nap_gtfs_renfe', 'Fuente', 0, 'nap_gtfs_renfe', 'NAP - GTFS de Renfe (Media, Larga Distancia y AVE), último snapshot del histórico', 'https://nap.transportes.gob.es/api/v2/conjunto-dato/897/historico', false),
+      ('fuente:renfe_trip_updates', 'Fuente', 0, 'renfe_trip_updates', 'Renfe GTFS-RT - Actualizaciones de viaje (Larga Distancia)', 'https://gtfsrt.renfe.com/trip_updates_LD.json', false),
+      ('fuente:renfe_vehicle_positions', 'Fuente', 0, 'renfe_vehicle_positions', 'Renfe GTFS-RT - Posiciones de vehículos (Larga Distancia)', 'https://gtfsrt.renfe.com/vehicle_positions_LD.json', false),
+      ('gen:muestra_prediccion', 'Generador sintético', 0, 'muestra_prediccion', 'Festivos, eventos, meteo y demanda sintéticos para probar la predicción sin datos reales', '', false),
+      ('gen:silver_sample', 'Generador sintético', 0, 'silver_sample', 'Silver sintético y determinista del corredor (no son datos reales)', '', false),
+      ('modelo:ollama', 'Modelo LLM', 0, 'ollama', 'LLM local (Ollama) que reparte el total del trimestre entre los días', '', false),
+      ('staging:aemet_barcelona_prat', 'Staging', 1, 'aemet_barcelona_prat', 'Fichero descargado, a la espera de L1', '', true),
+      ('staging:aemet_madrid_barajas', 'Staging', 1, 'aemet_madrid_barajas', 'Fichero descargado, a la espera de L1', '', true),
+      ('staging:boe_calendario_laboral_2025', 'Staging', 1, 'boe_calendario_laboral_2025', 'Fichero descargado, a la espera de L1', '', true),
+      ('staging:boe_calendario_laboral_2026', 'Staging', 1, 'boe_calendario_laboral_2026', 'Fichero descargado, a la espera de L1', '', true),
+      ('staging:cnmc_indicadores', 'Staging', 1, 'cnmc_indicadores', 'Fichero descargado, a la espera de L1', '', true),
+      ('staging:cnmc_precio_mensual', 'Staging', 1, 'cnmc_precio_mensual', 'Fichero descargado, a la espera de L1', '', true),
+      ('staging:cnmc_precio_trimestral', 'Staging', 1, 'cnmc_precio_trimestral', 'Fichero descargado, a la espera de L1', '', true),
+      ('staging:cnmc_viajeros_corredor', 'Staging', 1, 'cnmc_viajeros_corredor', 'Fichero descargado, a la espera de L1', '', true),
+      ('staging:cnmc_viajeros_producto', 'Staging', 1, 'cnmc_viajeros_producto', 'Fichero descargado, a la espera de L1', '', true),
+      ('staging:crtm', 'Staging', 1, 'crtm', 'Fichero descargado, a la espera de L1', '', true),
+      ('staging:ine_turismo_madrid_barcelona', 'Staging', 1, 'ine_turismo_madrid_barcelona', 'Fichero descargado, a la espera de L1', '', true),
+      ('staging:nap_gtfs_ouigo', 'Staging', 1, 'nap_gtfs_ouigo', 'Fichero descargado, a la espera de L1', '', true),
+      ('staging:nap_gtfs_renfe', 'Staging', 1, 'nap_gtfs_renfe', 'Fichero descargado, a la espera de L1', '', true),
+      ('staging:renfe_trip_updates', 'Staging', 1, 'renfe_trip_updates', 'Fichero descargado, a la espera de L1', '', true),
+      ('staging:renfe_vehicle_positions', 'Staging', 1, 'renfe_vehicle_positions', 'Fichero descargado, a la espera de L1', '', true),
+      ('l1:aemet_barcelona_prat', 'Bronze L1', 2, 'aemet_barcelona_prat', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l1:aemet_madrid_barajas', 'Bronze L1', 2, 'aemet_madrid_barajas', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l1:boe_calendario_laboral_2025', 'Bronze L1', 2, 'boe_calendario_laboral_2025', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l1:boe_calendario_laboral_2026', 'Bronze L1', 2, 'boe_calendario_laboral_2026', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l1:cnmc_indicadores', 'Bronze L1', 2, 'cnmc_indicadores', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l1:cnmc_precio_mensual', 'Bronze L1', 2, 'cnmc_precio_mensual', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l1:cnmc_precio_trimestral', 'Bronze L1', 2, 'cnmc_precio_trimestral', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l1:cnmc_viajeros_corredor', 'Bronze L1', 2, 'cnmc_viajeros_corredor', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l1:cnmc_viajeros_producto', 'Bronze L1', 2, 'cnmc_viajeros_producto', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l1:crtm', 'Bronze L1', 2, 'crtm', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l1:ine_turismo_madrid_barcelona', 'Bronze L1', 2, 'ine_turismo_madrid_barcelona', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l1:nap_gtfs_ouigo', 'Bronze L1', 2, 'nap_gtfs_ouigo', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l1:nap_gtfs_renfe', 'Bronze L1', 2, 'nap_gtfs_renfe', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l1:renfe_trip_updates', 'Bronze L1', 2, 'renfe_trip_updates', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l1:renfe_vehicle_positions', 'Bronze L1', 2, 'renfe_vehicle_positions', 'Copia literal en MinIO (l1-raw)', '', true),
+      ('l2:aemet_barcelona_prat', 'Bronze L2', 3, 'aemet_barcelona_prat', 'Parquet en MinIO (l2)', '', true),
+      ('l2:aemet_madrid_barajas', 'Bronze L2', 3, 'aemet_madrid_barajas', 'Parquet en MinIO (l2)', '', true),
+      ('l2:boe_calendario_laboral_2025', 'Bronze L2', 3, 'boe_calendario_laboral_2025', 'Parquet en MinIO (l2)', '', true),
+      ('l2:boe_calendario_laboral_2026', 'Bronze L2', 3, 'boe_calendario_laboral_2026', 'Parquet en MinIO (l2)', '', true),
+      ('l2:cnmc_indicadores', 'Bronze L2', 3, 'cnmc_indicadores', 'Parquet en MinIO (l2)', '', true),
+      ('l2:cnmc_precio_mensual', 'Bronze L2', 3, 'cnmc_precio_mensual', 'Parquet en MinIO (l2)', '', true),
+      ('l2:cnmc_precio_trimestral', 'Bronze L2', 3, 'cnmc_precio_trimestral', 'Parquet en MinIO (l2)', '', true),
+      ('l2:cnmc_viajeros_corredor', 'Bronze L2', 3, 'cnmc_viajeros_corredor', 'Parquet en MinIO (l2)', '', true),
+      ('l2:cnmc_viajeros_producto', 'Bronze L2', 3, 'cnmc_viajeros_producto', 'Parquet en MinIO (l2)', '', true),
+      ('l2:crtm', 'Bronze L2', 3, 'crtm', 'Parquet en MinIO (l2)', '', true),
+      ('l2:ine_turismo_madrid_barcelona', 'Bronze L2', 3, 'ine_turismo_madrid_barcelona', 'Parquet en MinIO (l2)', '', true),
+      ('l2:muestra_aemet', 'Bronze L2', 3, 'muestra_aemet', 'Muestra sintética en Bronze L2', '', true),
+      ('l2:muestra_demanda_trimestral', 'Bronze L2', 3, 'muestra_demanda_trimestral', 'Muestra sintética en Bronze L2', '', true),
+      ('l2:muestra_eventos', 'Bronze L2', 3, 'muestra_eventos', 'Muestra sintética en Bronze L2', '', true),
+      ('l2:muestra_festivos', 'Bronze L2', 3, 'muestra_festivos', 'Muestra sintética en Bronze L2', '', true),
+      ('l2:nap_gtfs_ouigo', 'Bronze L2', 3, 'nap_gtfs_ouigo', 'Parquet en MinIO (l2)', '', true),
+      ('l2:nap_gtfs_renfe', 'Bronze L2', 3, 'nap_gtfs_renfe', 'Parquet en MinIO (l2)', '', true),
+      ('l2:renfe_trip_updates', 'Bronze L2', 3, 'renfe_trip_updates', 'Parquet en MinIO (l2)', '', true),
+      ('l2:renfe_vehicle_positions', 'Bronze L2', 3, 'renfe_vehicle_positions', 'Parquet en MinIO (l2)', '', true),
+      ('silver:cnmc_precio_mensual', 'Silver', 4, 'cnmc_precio_mensual', 'Silver cnmc_precio_mensual: precio medio mensual por trayecto y empresa de la CNMC (LD AV, servicio comercial).', 'src/main/resources/silver/cnmc_precio_mensual.sql', true),
+      ('silver:cnmc_precio_trimestral', 'Silver', 4, 'cnmc_precio_trimestral', 'Silver cnmc_precio_trimestral: precio medio trimestral por trayecto y empresa de la CNMC (LD AV, servicio comercial).', 'src/main/resources/silver/cnmc_precio_trimestral.sql', true),
+      ('silver:cnmc_trimestral', 'Silver', 4, 'cnmc_trimestral', 'Silver cnmc_trimestral: indicadores trimestrales del transporte ferroviario de viajeros de la CNMC (LD AV, servicio comercial).', 'src/main/resources/silver/cnmc_trimestral.sql', true),
+      ('silver:cnmc_viajeros_corredor', 'Silver', 4, 'cnmc_viajeros_corredor', 'Silver cnmc_viajeros_corredor: viajeros y plazas ofertadas trimestrales de larga distancia alta velocidad por corredor y', 'src/main/resources/silver/cnmc_viajeros_corredor.sql', true),
+      ('silver:cnmc_viajeros_producto', 'Silver', 4, 'cnmc_viajeros_producto', 'Silver cnmc_viajeros_producto: viajeros y plazas ofertadas trimestrales por tipo de producto de la CNMC (Cercanías, Media', 'src/main/resources/silver/cnmc_viajeros_producto.sql', true),
+      ('silver:festivos', 'Silver', 4, 'festivos', 'Festivos de Madrid o Cataluña del calendario laboral del BOE', 'python/raillytics/ingesta/boe_festivos.py', true),
+      ('silver:meteo', 'Silver', 4, 'meteo', 'Temperatura media y precipitación diarias de AEMET en las dos cabeceras del corredor', 'python/raillytics/ingesta/aemet_historico.py', true),
+      ('silver:ml_ocupacion_diaria', 'Silver', 4, 'ml_ocupacion_diaria', 'Tabla de entrenamiento: ocupación diaria implicada con sus variables de calendario y meteo', 'python/raillytics/ml/dataset.py', true),
+      ('silver:oferta_diaria', 'Silver', 4, 'oferta_diaria', 'Trenes por día, corredor y operador del histórico GTFS del NAP', 'python/raillytics/ingesta/nap_oferta.py', true),
+      ('silver:oferta_franja', 'Silver', 4, 'oferta_franja', 'Trenes por día, corredor y franja horaria del histórico GTFS del NAP', 'python/raillytics/ingesta/nap_oferta.py', true),
+      ('silver:puntualidad_enriquecida', 'Silver', 4, 'puntualidad_enriquecida', '', '', true),
+      ('silver:turismo_mensual', 'Silver', 4, 'turismo_mensual', 'Turistas mensuales entre Madrid y Barcelona del INE', 'python/raillytics/ingesta/ine_turismo.py', true),
+      ('silver:viajeros_enriquecidos', 'Silver', 4, 'viajeros_enriquecidos', '', '', true),
+      ('pred:prediccion_demanda_ave_mad_bcn', 'Predicción', 5, 'prediccion_demanda_ave_mad_bcn', 'Predicción diaria de demanda del corredor (CSV versionado)', '', true),
+      ('gold:dim_estacion', 'Gold', 6, 'dim_estacion', 'Dim_Estacion: catálogo de estaciones con los atributos', 'src/main/resources/gold/dim_estacion.sql', true),
+      ('gold:dim_fecha', 'Gold', 6, 'dim_fecha', 'Dim_Fecha: una fila por día presente en Silver (viajeros o puntualidad); fecha_id', 'src/main/resources/gold/dim_fecha.sql', true),
+      ('gold:dim_fecha_corredor', 'Gold', 6, 'dim_fecha_corredor', 'Dim_Fecha, versión del grupo «corredor»: la misma dimensión que dim_fecha.sql pero con dos arreglos que', 'src/main/resources/gold/dim_fecha_corredor.sql', true),
+      ('gold:dim_linea', 'Gold', 6, 'dim_linea', 'Dim_Linea: catálogo de líneas (tipo de tren, origen y destino).', 'src/main/resources/gold/dim_linea.sql', true),
+      ('gold:dim_operador', 'Gold', 6, 'dim_operador', 'Dim_Operador: catálogo de operadores del corredor (empresa y segmento: alta velocidad o low cost).', 'src/main/resources/gold/dim_operador.sql', true),
+      ('gold:fact_cobertura_ingesta', 'Gold', 6, 'fact_cobertura_ingesta', 'KPI de cobertura de la ingesta, calculado del registro de cargas', 'python/raillytics/calidad/cobertura_ingesta.py', true),
+      ('gold:fact_completitud_silver', 'Gold', 6, 'fact_completitud_silver', 'KPI de completitud de las tablas de Silver', 'python/raillytics/calidad/completitud_silver.py', true),
+      ('gold:fact_mercado_trimestral', 'Gold', 6, 'fact_mercado_trimestral', 'Fact_Mercado_Trimestral: demanda, oferta e ingresos trimestrales del corredor AVE Madrid–Barcelona por operador (CNMC, datos reales).', 'src/main/resources/gold/fact_mercado_trimestral.sql', true),
+      ('gold:fact_metricas_modelo', 'Gold', 6, 'fact_metricas_modelo', 'Métricas del modelo de ocupación diaria (MAPE, R², intervalo)', 'python/raillytics/ml/modelo.py', true),
+      ('gold:fact_ocupacion_diaria', 'Gold', 6, 'fact_ocupacion_diaria', 'Fact_Ocupacion_Diaria: coeficiente de ocupación diaria del corredor AVE Madrid–Barcelona.', 'src/main/resources/gold/fact_ocupacion_diaria.sql', true),
+      ('gold:fact_ocupacion_franja', 'Gold', 6, 'fact_ocupacion_franja', 'Ocupación estimada por día, operador y franja horaria', 'python/raillytics/ml/franja.py', true),
+      ('gold:fact_oferta_diaria', 'Gold', 6, 'fact_oferta_diaria', 'Fact_Oferta_Diaria: trenes que circulan cada día por corredor y operador, desde el histórico de horarios del NAP (datos reales).', 'src/main/resources/gold/fact_oferta_diaria.sql', true),
+      ('gold:fact_precio_mensual', 'Gold', 6, 'fact_precio_mensual', 'Fact_Precio_Mensual: precio medio por trayecto del corredor AVE Madrid–Barcelona por operador y mes (CNMC, datos reales).', 'src/main/resources/gold/fact_precio_mensual.sql', true),
+      ('gold:fact_precio_recomendado', 'Gold', 6, 'fact_precio_recomendado', 'Precio recomendado por día, franja y operador', 'python/raillytics/prediccion/precio.py', true),
+      ('gold:fact_precio_trimestral', 'Gold', 6, 'fact_precio_trimestral', 'Fact_Precio_Trimestral: precio medio por trayecto del corredor AVE Madrid–Barcelona por operador y trimestre (CNMC, datos reales).', 'src/main/resources/gold/fact_precio_trimestral.sql', true),
+      ('gold:fact_prediccion_demanda', 'Gold', 6, 'fact_prediccion_demanda', 'Predicción publicada en Gold para el dashboard', '', true),
+      ('gold:fact_puntualidad', 'Gold', 6, 'fact_puntualidad', 'Fact_Puntualidad: un servicio (tren) por fila con su', 'src/main/resources/gold/fact_puntualidad.sql', true),
+      ('gold:fact_turismo_mensual', 'Gold', 6, 'fact_turismo_mensual', 'Fact_Turismo_Mensual: turistas que se mueven de Madrid a cada provincia destino, mes a mes (INE, datos reales).', 'src/main/resources/gold/fact_turismo_mensual.sql', true),
+      ('gold:fact_viajeros', 'Gold', 6, 'fact_viajeros', 'Fact_Viajeros: viajeros diarios por estación, línea y operador.', 'src/main/resources/gold/fact_viajeros.sql', true),
+      ('dataset:backtest_nivel', 'Dataset de Superset', 7, 'backtest_nivel', 'Backtest de la regla de nivel de la predicción con los trimestres reales de la CNMC. Datos REALES de la CNMC (no sintéticos), solo el corredor AVE Madrid–Barcelona. En la demanda Avlo va dentro de Renfe (la CNMC no la separa); en los precios aparece por separado hasta 2025-T4. «Viajeros por plaza ofertada» no es ocupación: un asiento sirve a varios tramos.', '', false),
+      ('dataset:cobertura_ingesta', 'Dataset de Superset', 7, 'cobertura_ingesta', 'KPI de completitud de la ingesta que pide el plan del Sprint 2: fuentes del registro descargadas correctamente sobre el total de fuentes declaradas, con umbral del 98 %. No confundir con el «% de quality gates OK»: aquel mide cuántas reglas se cumplen y este cuánto dato falta. Se pueden tener todos los gates en verde y faltar meses de datos. El denominador es el registro de HOY, así que un día anterior al alta de una fuente nueva sale por debajo del 100 %: compara «fuentes intentadas» con «esperadas» para distinguir un fallo real de un registro que ha crecido.', '', false),
+      ('dataset:mercado_trimestral', 'Dataset de Superset', 7, 'mercado_trimestral', 'Mercado trimestral del corredor AVE Madrid–Barcelona por operador. Datos REALES de la CNMC (no sintéticos), solo el corredor AVE Madrid–Barcelona. En la demanda Avlo va dentro de Renfe (la CNMC no la separa); en los precios aparece por separado hasta 2025-T4. «Viajeros por plaza ofertada» no es ocupación: un asiento sirve a varios tramos, y por eso llega a pasar del 100%. La ocupación real es «Coeficiente de ocupación», que pondera por distancia (viajeros·km / plazas·km).', '', false),
+      ('dataset:metricas_modelo', 'Dataset de Superset', 7, 'metricas_modelo', 'Métricas de cada entrenamiento del modelo de ocupación diaria. Lo que hay que mirar NO es el MAPE de partición única (8,0 %, que cumple el umbral del plan pero depende de qué semanas tocaron): es el de validación temporal frente a su referencia trivial. Hoy: 10,1 % contra 10,3 %, es decir que empata con predecir la media de lo ya visto. El intervalo del 90 % cubre el 78 % y mide 24,6 puntos de ocupación, o sea que es ancho Y se queda corto: el modelo es genuinamente incierto. Y el aviso de fondo: el objetivo lo generan las reglas de reparto del propio proyecto, así que esto mide reproducir nuestras reglas, no acertar la demanda real.', '', false),
+      ('dataset:ocupacion_diaria', 'Dataset de Superset', 7, 'ocupacion_diaria', 'Coeficiente de ocupación diaria del corredor AVE Madrid–Barcelona: viajeros·km / plazas·km. MITAD REAL — el total del trimestre es de la CNMC, pero el reparto entre los días lo hacen las reglas del proyecto, así que la ocupación de un día concreto NO es una medición. No es «viajeros por plaza»: un asiento se vende por tramos, así que el ratio de cabezas pasa del 100 % legítimamente; medido en km, el 100 % sí es un techo real. «Plausible» marca los días que no lo pasan, y 21 de los 25 imposibles son fin de semana porque el NAP da trenes y no plazas y las composiciones dobles no se ven: cualquier media debería filtrar por plausible o decir que no lo hace.', '', false),
+      ('dataset:ocupacion_franja', 'Dataset de Superset', 7, 'ocupacion_franja', 'Ocupación por franja horaria. Los TRENES por franja son dato medido —la hora de salida del GTFS del NAP— pero el reparto de la demanda entre franjas es una HIPÓTESIS declarada en config/reglas_demanda.yml: dentro del día el operador elige libremente el horario, así que la oferta sigue a la demanda y no queda señal con la que medir el diferencial de ocupación. Los KPI de hora punta y hora valle heredan esa condición. El perfil de oferta sí es real y tiene un dato interesante: Renfe concentra en las puntas y OUIGO reparte casi plano.', '', false),
+      ('dataset:oferta_diaria', 'Dataset de Superset', 7, 'oferta_diaria', 'Trenes que circulan cada día en el corredor, por operador (NAP, datos REALES). Es la única serie diaria medida del proyecto, y con ella se calibró el coeficiente por día de la semana del reparto de la predicción. AVISO: son TRENES, no plazas — una composición doble cuenta como un tren, así que esto es servicio y no capacidad. Y falta Iryo, que no publica horarios en el NAP, así que la oferta cubre Renfe y OUIGO pero no el corredor completo. Filtrar por «cobertura completa» o decir que no se filtra: un día al que le falta un operador no es menos servicio, es dato incompleto.', '', false),
+      ('dataset:precio_medio_mensual', 'Dataset de Superset', 7, 'precio_medio_mensual', 'Precio medio mensual por trayecto del corredor AVE Madrid–Barcelona por operador. Datos REALES de la CNMC (no sintéticos), solo el corredor AVE Madrid–Barcelona. En la demanda Avlo va dentro de Renfe (la CNMC no la separa); en los precios aparece por separado hasta 2025-T4. «Viajeros por plaza ofertada» no es ocupación: un asiento sirve a varios tramos.', '', false),
+      ('dataset:precio_medio_trimestral', 'Dataset de Superset', 7, 'precio_medio_trimestral', 'Precio medio trimestral por trayecto del corredor AVE Madrid–Barcelona por operador. Datos REALES de la CNMC (no sintéticos), solo el corredor AVE Madrid–Barcelona. En la demanda Avlo va dentro de Renfe (la CNMC no la separa); en los precios aparece por separado hasta 2025-T4. «Viajeros por plaza ofertada» no es ocupación: un asiento sirve a varios tramos.', '', false),
+      ('dataset:precio_recomendado', 'Dataset de Superset', 7, 'precio_recomendado', 'Precio recomendado por día, franja y operador. El precio base y el rango al que se acota la recomendación son DATO MEDIDO de la CNMC; la elasticidad es una HIPÓTESIS declarada en config/reglas_demanda.yml, donde está el intento de estimarla (−0,299 con error estándar 0,453: ruido) y por qué no se puede con estas fuentes. Con la referencia medida la regla es neutra en promedio: lo que señala es qué días y franjas van por encima o por debajo de la media, no que el nivel de precios del corredor esté mal. El ratio de aceptación del plan NO está aquí porque mide un proceso humano —qué recomendaciones adopta un revenue manager— que el proyecto no tiene; lo que sí queda montado es el mecanismo que lo haría calculable.', '', false),
+      ('dataset:prediccion_demanda', 'Dataset de Superset', 7, 'prediccion_demanda', 'Predicción diaria de demanda del corredor AVE Madrid–Barcelona (raillytics.prediccion): una fila por día y ejecución, leída de s3://raillytics-gold/fact_prediccion_demanda/.', '', false),
+      ('dataset:puntualidad_servicios', 'Dataset de Superset', 7, 'puntualidad_servicios', 'Un servicio (tren) del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN) por fila con su operador y su retraso en llegada: Fact_Puntualidad ⋈ dimensiones, leído con DuckDB del Parquet de Gold en MinIO. Solo se muestra el corredor.', '', false),
+      ('dataset:turismo_mensual', 'Dataset de Superset', 7, 'turismo_mensual', 'Turistas que se mueven de Madrid a cada provincia destino, mes a mes (INE, operación TMOV, tabla 53267, datos REALES estimados por posición de teléfonos móviles). Es el único dato de nivel MENSUAL del proyecto, y de él sale el coeficiente «base_mes» del reparto diario de la predicción. QUÉ NO SE PUEDE CONCLUIR: son viajes en TODOS los medios de transporte, no solo en tren, y «turista» implica pernoctación, así que la ida y vuelta en el día no entra. Se usa la FORMA (cuota del mes dentro de su trimestre), no el nivel. Atribución obligatoria: «Elaboración propia con datos extraídos del sitio web del INE: www.ine.es».', '', false),
+      ('dataset:viajeros_diarios', 'Dataset de Superset', 7, 'viajeros_diarios', 'Viajeros diarios del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN) por estación y operador: Fact_Viajeros ⋈ Dim_Fecha, Dim_Estacion, Dim_Linea y Dim_Operador, leídos con DuckDB del Parquet de Gold en MinIO. Solo se muestra el corredor.', '', false),
+      ('dashboard:demanda-ferroviaria', 'Dashboard', 8, 'demanda-ferroviaria', 'Demanda ferroviaria · AVE Madrid–Barcelona', '', false),
+      ('dashboard:mercado-corredor', 'Dashboard', 8, 'mercado-corredor', 'Mercado del corredor · AVE Madrid–Barcelona', '', false),
+      ('dashboard:panel-direccion', 'Dashboard', 8, 'panel-direccion', 'Panel de dirección · Corredor Madrid–Barcelona', '', false),
+      ('dashboard:prediccion-demanda', 'Dashboard', 8, 'prediccion-demanda', 'Predicción de demanda · AVE Madrid–Barcelona', '', false),
+      ('dashboard:puntualidad', 'Dashboard', 8, 'puntualidad', 'Puntualidad · AVE Madrid–Barcelona', '', false)),
+  aristas(origen, destino, proceso, transformacion, ruta) AS (VALUES
+      ('dataset:backtest_nivel', 'dashboard:mercado-corredor', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:backtest_nivel', 'dashboard:panel-direccion', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:mercado_trimestral', 'dashboard:mercado-corredor', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:mercado_trimestral', 'dashboard:panel-direccion', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:metricas_modelo', 'dashboard:panel-direccion', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:ocupacion_diaria', 'dashboard:panel-direccion', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:ocupacion_franja', 'dashboard:panel-direccion', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:oferta_diaria', 'dashboard:panel-direccion', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:precio_medio_mensual', 'dashboard:mercado-corredor', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:precio_medio_trimestral', 'dashboard:mercado-corredor', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:precio_medio_trimestral', 'dashboard:panel-direccion', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:precio_recomendado', 'dashboard:panel-direccion', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:prediccion_demanda', 'dashboard:panel-direccion', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:prediccion_demanda', 'dashboard:prediccion-demanda', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:puntualidad_servicios', 'dashboard:puntualidad', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:turismo_mensual', 'dashboard:panel-direccion', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('dataset:viajeros_diarios', 'dashboard:demanda-ferroviaria', 'superset', 'Gráficos del dashboard sobre el dataset', ''),
+      ('fuente:aemet_barcelona_prat', 'silver:meteo', 'referencia_meteo', 'Temperatura media y precipitación diarias de AEMET en las dos cabeceras del corredor (python -m raillytics.ingesta.aemet_historico)', 'python/raillytics/ingesta/aemet_historico.py'),
+      ('fuente:aemet_barcelona_prat', 'staging:aemet_barcelona_prat', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('fuente:aemet_madrid_barajas', 'silver:meteo', 'referencia_meteo', 'Temperatura media y precipitación diarias de AEMET en las dos cabeceras del corredor (python -m raillytics.ingesta.aemet_historico)', 'python/raillytics/ingesta/aemet_historico.py'),
+      ('fuente:aemet_madrid_barajas', 'staging:aemet_madrid_barajas', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('fuente:boe_calendario_laboral_2025', 'silver:festivos', 'referencia_festivos', 'Festivos de Madrid o Cataluña del calendario laboral del BOE (python -m raillytics.ingesta.boe_festivos)', 'python/raillytics/ingesta/boe_festivos.py'),
+      ('fuente:boe_calendario_laboral_2025', 'staging:boe_calendario_laboral_2025', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('fuente:boe_calendario_laboral_2026', 'silver:festivos', 'referencia_festivos', 'Festivos de Madrid o Cataluña del calendario laboral del BOE (python -m raillytics.ingesta.boe_festivos)', 'python/raillytics/ingesta/boe_festivos.py'),
+      ('fuente:boe_calendario_laboral_2026', 'staging:boe_calendario_laboral_2026', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('fuente:cnmc_indicadores', 'staging:cnmc_indicadores', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('fuente:cnmc_precio_mensual', 'staging:cnmc_precio_mensual', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('fuente:cnmc_precio_trimestral', 'staging:cnmc_precio_trimestral', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('fuente:cnmc_viajeros_corredor', 'staging:cnmc_viajeros_corredor', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('fuente:cnmc_viajeros_producto', 'staging:cnmc_viajeros_producto', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('fuente:crtm', 'staging:crtm', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('fuente:ine_turismo_madrid_barcelona', 'silver:turismo_mensual', 'referencia_turismo_mensual', 'Turistas mensuales entre Madrid y Barcelona del INE (python -m raillytics.ingesta.ine_turismo)', 'python/raillytics/ingesta/ine_turismo.py'),
+      ('fuente:ine_turismo_madrid_barcelona', 'staging:ine_turismo_madrid_barcelona', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('fuente:nap_gtfs_ouigo', 'silver:oferta_diaria', 'referencia_oferta_diaria', 'Trenes por día, corredor y operador del histórico GTFS del NAP (python -m raillytics.ingesta.nap_oferta)', 'python/raillytics/ingesta/nap_oferta.py'),
+      ('fuente:nap_gtfs_ouigo', 'silver:oferta_franja', 'referencia_oferta_franja', 'Trenes por día, corredor y franja horaria del histórico GTFS del NAP (python -m raillytics.ingesta.nap_oferta)', 'python/raillytics/ingesta/nap_oferta.py'),
+      ('fuente:nap_gtfs_ouigo', 'staging:nap_gtfs_ouigo', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('fuente:nap_gtfs_renfe', 'silver:oferta_diaria', 'referencia_oferta_diaria', 'Trenes por día, corredor y operador del histórico GTFS del NAP (python -m raillytics.ingesta.nap_oferta)', 'python/raillytics/ingesta/nap_oferta.py'),
+      ('fuente:nap_gtfs_renfe', 'silver:oferta_franja', 'referencia_oferta_franja', 'Trenes por día, corredor y franja horaria del histórico GTFS del NAP (python -m raillytics.ingesta.nap_oferta)', 'python/raillytics/ingesta/nap_oferta.py'),
+      ('fuente:nap_gtfs_renfe', 'staging:nap_gtfs_renfe', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('fuente:renfe_trip_updates', 'staging:renfe_trip_updates', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('fuente:renfe_vehicle_positions', 'staging:renfe_vehicle_positions', 'bronze_download', 'Descarga HTTP del DAG ingesta_data_sources (Airflow) con quality gates de fichero', ''),
+      ('gen:muestra_prediccion', 'l2:muestra_aemet', 'prediccion_muestra', 'Generador determinista (python -m raillytics.prediccion.muestra)', ''),
+      ('gen:muestra_prediccion', 'l2:muestra_demanda_trimestral', 'prediccion_muestra', 'Generador determinista (python -m raillytics.prediccion.muestra)', ''),
+      ('gen:muestra_prediccion', 'l2:muestra_eventos', 'prediccion_muestra', 'Generador determinista (python -m raillytics.prediccion.muestra)', ''),
+      ('gen:muestra_prediccion', 'l2:muestra_festivos', 'prediccion_muestra', 'Generador determinista (python -m raillytics.prediccion.muestra)', ''),
+      ('gen:silver_sample', 'silver:puntualidad_enriquecida', 'silver_sample', 'Generador determinista (python -m raillytics.procesamiento.silver_sample)', ''),
+      ('gen:silver_sample', 'silver:viajeros_enriquecidos', 'silver_sample', 'Generador determinista (python -m raillytics.procesamiento.silver_sample)', ''),
+      ('gold:dim_estacion', 'dataset:puntualidad_servicios', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:dim_estacion', 'dataset:viajeros_diarios', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:dim_fecha', 'dataset:ocupacion_diaria', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:dim_fecha', 'dataset:oferta_diaria', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:dim_fecha', 'dataset:puntualidad_servicios', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:dim_fecha', 'dataset:viajeros_diarios', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:dim_linea', 'dataset:puntualidad_servicios', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:dim_linea', 'dataset:viajeros_diarios', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:dim_operador', 'dataset:mercado_trimestral', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:dim_operador', 'dataset:oferta_diaria', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:dim_operador', 'dataset:precio_medio_mensual', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:dim_operador', 'dataset:precio_medio_trimestral', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:dim_operador', 'dataset:puntualidad_servicios', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:dim_operador', 'dataset:viajeros_diarios', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_cobertura_ingesta', 'dataset:cobertura_ingesta', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_mercado_trimestral', 'dataset:backtest_nivel', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_mercado_trimestral', 'dataset:mercado_trimestral', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_metricas_modelo', 'dataset:metricas_modelo', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_ocupacion_diaria', 'dataset:ocupacion_diaria', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_ocupacion_franja', 'dataset:ocupacion_franja', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_ocupacion_franja', 'gold:fact_precio_recomendado', 'precio_recomendado', 'Precio recomendado por día, franja y operador (python -m raillytics.prediccion.precio)', 'python/raillytics/prediccion/precio.py'),
+      ('gold:fact_oferta_diaria', 'dataset:ocupacion_diaria', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_oferta_diaria', 'dataset:oferta_diaria', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_precio_mensual', 'dataset:precio_medio_mensual', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_precio_recomendado', 'dataset:precio_recomendado', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_precio_trimestral', 'dataset:precio_medio_trimestral', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_prediccion_demanda', 'dataset:prediccion_demanda', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_puntualidad', 'dataset:puntualidad_servicios', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_turismo_mensual', 'dataset:turismo_mensual', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('gold:fact_viajeros', 'dataset:viajeros_diarios', 'superset', 'SQL del dataset (DuckDB sobre el Parquet de Gold)', ''),
+      ('l1:aemet_barcelona_prat', 'l2:aemet_barcelona_prat', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l1:aemet_madrid_barajas', 'l2:aemet_madrid_barajas', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l1:boe_calendario_laboral_2025', 'l2:boe_calendario_laboral_2025', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l1:boe_calendario_laboral_2026', 'l2:boe_calendario_laboral_2026', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l1:cnmc_indicadores', 'l2:cnmc_indicadores', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l1:cnmc_precio_mensual', 'l2:cnmc_precio_mensual', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l1:cnmc_precio_trimestral', 'l2:cnmc_precio_trimestral', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l1:cnmc_viajeros_corredor', 'l2:cnmc_viajeros_corredor', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l1:cnmc_viajeros_producto', 'l2:cnmc_viajeros_producto', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l1:crtm', 'l2:crtm', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l1:ine_turismo_madrid_barcelona', 'l2:ine_turismo_madrid_barcelona', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l1:nap_gtfs_ouigo', 'l2:nap_gtfs_ouigo', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l1:nap_gtfs_renfe', 'l2:nap_gtfs_renfe', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l1:renfe_trip_updates', 'l2:renfe_trip_updates', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l1:renfe_vehicle_positions', 'l2:renfe_vehicle_positions', 'bronze_l2_parquet_converter', 'CSV, JSON o ZIP a Parquet (Spark Streaming · ParquetConverter)', ''),
+      ('l2:cnmc_indicadores', 'silver:cnmc_trimestral', 'silver_builder', 'silver/cnmc_trimestral.sql (snapshot) · Spark Structured Streaming · SilverBuilder', 'src/main/resources/silver/cnmc_trimestral.sql'),
+      ('l2:cnmc_precio_mensual', 'silver:cnmc_precio_mensual', 'silver_builder', 'silver/cnmc_precio_mensual.sql (snapshot) · Spark Structured Streaming · SilverBuilder', 'src/main/resources/silver/cnmc_precio_mensual.sql'),
+      ('l2:cnmc_precio_trimestral', 'silver:cnmc_precio_trimestral', 'silver_builder', 'silver/cnmc_precio_trimestral.sql (snapshot) · Spark Structured Streaming · SilverBuilder', 'src/main/resources/silver/cnmc_precio_trimestral.sql'),
+      ('l2:cnmc_viajeros_corredor', 'silver:cnmc_viajeros_corredor', 'silver_builder', 'silver/cnmc_viajeros_corredor.sql (snapshot) · Spark Structured Streaming · SilverBuilder', 'src/main/resources/silver/cnmc_viajeros_corredor.sql'),
+      ('l2:cnmc_viajeros_producto', 'silver:cnmc_viajeros_producto', 'silver_builder', 'silver/cnmc_viajeros_producto.sql (snapshot) · Spark Structured Streaming · SilverBuilder', 'src/main/resources/silver/cnmc_viajeros_producto.sql'),
+      ('modelo:ollama', 'pred:prediccion_demanda_ave_mad_bcn', 'prediccion_demanda', 'El LLM reparte el total esperado entre los días (raillytics.prediccion)', ''),
+      ('pred:prediccion_demanda_ave_mad_bcn', 'gold:fact_prediccion_demanda', 'prediccion_demanda', 'Publicación en Gold de la predicción (raillytics.prediccion.publicacion)', ''),
+      ('silver:cnmc_precio_mensual', 'gold:fact_completitud_silver', 'calidad_completitud_silver', 'KPI de completitud de las tablas de Silver (python -m raillytics.calidad.completitud_silver)', 'python/raillytics/calidad/completitud_silver.py'),
+      ('silver:cnmc_precio_mensual', 'gold:fact_precio_mensual', 'gold_build', 'gold/fact_precio_mensual.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/fact_precio_mensual.sql'),
+      ('silver:cnmc_precio_trimestral', 'gold:fact_completitud_silver', 'calidad_completitud_silver', 'KPI de completitud de las tablas de Silver (python -m raillytics.calidad.completitud_silver)', 'python/raillytics/calidad/completitud_silver.py'),
+      ('silver:cnmc_precio_trimestral', 'gold:fact_precio_recomendado', 'precio_recomendado', 'Precio recomendado por día, franja y operador (python -m raillytics.prediccion.precio)', 'python/raillytics/prediccion/precio.py'),
+      ('silver:cnmc_precio_trimestral', 'gold:fact_precio_trimestral', 'gold_build', 'gold/fact_precio_trimestral.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/fact_precio_trimestral.sql'),
+      ('silver:cnmc_trimestral', 'gold:fact_completitud_silver', 'calidad_completitud_silver', 'KPI de completitud de las tablas de Silver (python -m raillytics.calidad.completitud_silver)', 'python/raillytics/calidad/completitud_silver.py'),
+      ('silver:cnmc_trimestral', 'gold:fact_mercado_trimestral', 'gold_build', 'gold/fact_mercado_trimestral.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/fact_mercado_trimestral.sql'),
+      ('silver:cnmc_trimestral', 'pred:prediccion_demanda_ave_mad_bcn', 'prediccion_demanda', 'Origen «cnmc» de config/prediccion.yml', ''),
+      ('silver:cnmc_trimestral', 'silver:ml_ocupacion_diaria', 'referencia_ml_ocupacion_diaria', 'Tabla de entrenamiento: ocupación diaria implicada con sus variables de calendario y meteo (python -m raillytics.ml.dataset)', 'python/raillytics/ml/dataset.py'),
+      ('silver:festivos', 'gold:dim_fecha_corredor', 'gold_build', 'gold/dim_fecha_corredor.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/dim_fecha_corredor.sql'),
+      ('silver:festivos', 'gold:fact_completitud_silver', 'calidad_completitud_silver', 'KPI de completitud de las tablas de Silver (python -m raillytics.calidad.completitud_silver)', 'python/raillytics/calidad/completitud_silver.py'),
+      ('silver:festivos', 'pred:prediccion_demanda_ave_mad_bcn', 'prediccion_demanda', 'Origen «festivos» de config/prediccion.yml', ''),
+      ('silver:festivos', 'silver:ml_ocupacion_diaria', 'referencia_ml_ocupacion_diaria', 'Tabla de entrenamiento: ocupación diaria implicada con sus variables de calendario y meteo (python -m raillytics.ml.dataset)', 'python/raillytics/ml/dataset.py'),
+      ('silver:meteo', 'gold:dim_fecha_corredor', 'gold_build', 'gold/dim_fecha_corredor.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/dim_fecha_corredor.sql'),
+      ('silver:meteo', 'gold:fact_completitud_silver', 'calidad_completitud_silver', 'KPI de completitud de las tablas de Silver (python -m raillytics.calidad.completitud_silver)', 'python/raillytics/calidad/completitud_silver.py'),
+      ('silver:meteo', 'pred:prediccion_demanda_ave_mad_bcn', 'prediccion_demanda', 'Origen «meteo» de config/prediccion.yml', ''),
+      ('silver:meteo', 'silver:ml_ocupacion_diaria', 'referencia_ml_ocupacion_diaria', 'Tabla de entrenamiento: ocupación diaria implicada con sus variables de calendario y meteo (python -m raillytics.ml.dataset)', 'python/raillytics/ml/dataset.py'),
+      ('silver:ml_ocupacion_diaria', 'gold:dim_fecha_corredor', 'gold_build', 'gold/dim_fecha_corredor.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/dim_fecha_corredor.sql'),
+      ('silver:ml_ocupacion_diaria', 'gold:fact_completitud_silver', 'calidad_completitud_silver', 'KPI de completitud de las tablas de Silver (python -m raillytics.calidad.completitud_silver)', 'python/raillytics/calidad/completitud_silver.py'),
+      ('silver:ml_ocupacion_diaria', 'gold:fact_metricas_modelo', 'ml_metricas', 'Métricas del modelo de ocupación diaria (MAPE, R², intervalo) (python -m raillytics.ml.modelo)', 'python/raillytics/ml/modelo.py'),
+      ('silver:ml_ocupacion_diaria', 'gold:fact_ocupacion_diaria', 'gold_build', 'gold/fact_ocupacion_diaria.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/fact_ocupacion_diaria.sql'),
+      ('silver:ml_ocupacion_diaria', 'gold:fact_ocupacion_franja', 'ml_ocupacion_franja', 'Ocupación estimada por día, operador y franja horaria (python -m raillytics.ml.franja)', 'python/raillytics/ml/franja.py'),
+      ('silver:oferta_diaria', 'gold:dim_fecha_corredor', 'gold_build', 'gold/dim_fecha_corredor.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/dim_fecha_corredor.sql'),
+      ('silver:oferta_diaria', 'gold:fact_completitud_silver', 'calidad_completitud_silver', 'KPI de completitud de las tablas de Silver (python -m raillytics.calidad.completitud_silver)', 'python/raillytics/calidad/completitud_silver.py'),
+      ('silver:oferta_diaria', 'gold:fact_oferta_diaria', 'gold_build', 'gold/fact_oferta_diaria.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/fact_oferta_diaria.sql'),
+      ('silver:oferta_diaria', 'silver:ml_ocupacion_diaria', 'referencia_ml_ocupacion_diaria', 'Tabla de entrenamiento: ocupación diaria implicada con sus variables de calendario y meteo (python -m raillytics.ml.dataset)', 'python/raillytics/ml/dataset.py'),
+      ('silver:oferta_franja', 'gold:fact_ocupacion_franja', 'ml_ocupacion_franja', 'Ocupación estimada por día, operador y franja horaria (python -m raillytics.ml.franja)', 'python/raillytics/ml/franja.py'),
+      ('silver:puntualidad_enriquecida', 'gold:dim_fecha', 'gold_build', 'gold/dim_fecha.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/dim_fecha.sql'),
+      ('silver:puntualidad_enriquecida', 'gold:dim_fecha_corredor', 'gold_build', 'gold/dim_fecha_corredor.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/dim_fecha_corredor.sql'),
+      ('silver:puntualidad_enriquecida', 'gold:fact_completitud_silver', 'calidad_completitud_silver', 'KPI de completitud de las tablas de Silver (python -m raillytics.calidad.completitud_silver)', 'python/raillytics/calidad/completitud_silver.py'),
+      ('silver:puntualidad_enriquecida', 'gold:fact_puntualidad', 'gold_build', 'gold/fact_puntualidad.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/fact_puntualidad.sql'),
+      ('silver:turismo_mensual', 'gold:fact_completitud_silver', 'calidad_completitud_silver', 'KPI de completitud de las tablas de Silver (python -m raillytics.calidad.completitud_silver)', 'python/raillytics/calidad/completitud_silver.py'),
+      ('silver:turismo_mensual', 'gold:fact_turismo_mensual', 'gold_build', 'gold/fact_turismo_mensual.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/fact_turismo_mensual.sql'),
+      ('silver:viajeros_enriquecidos', 'gold:dim_estacion', 'gold_build', 'gold/dim_estacion.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/dim_estacion.sql'),
+      ('silver:viajeros_enriquecidos', 'gold:dim_fecha', 'gold_build', 'gold/dim_fecha.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/dim_fecha.sql'),
+      ('silver:viajeros_enriquecidos', 'gold:dim_fecha_corredor', 'gold_build', 'gold/dim_fecha_corredor.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/dim_fecha_corredor.sql'),
+      ('silver:viajeros_enriquecidos', 'gold:dim_linea', 'gold_build', 'gold/dim_linea.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/dim_linea.sql'),
+      ('silver:viajeros_enriquecidos', 'gold:dim_operador', 'gold_build', 'gold/dim_operador.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/dim_operador.sql'),
+      ('silver:viajeros_enriquecidos', 'gold:fact_completitud_silver', 'calidad_completitud_silver', 'KPI de completitud de las tablas de Silver (python -m raillytics.calidad.completitud_silver)', 'python/raillytics/calidad/completitud_silver.py'),
+      ('silver:viajeros_enriquecidos', 'gold:fact_viajeros', 'gold_build', 'gold/fact_viajeros.sql · Spark batch · GoldBuilder', 'src/main/resources/gold/fact_viajeros.sql'),
+      ('staging:aemet_barcelona_prat', 'l1:aemet_barcelona_prat', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', ''),
+      ('staging:aemet_madrid_barajas', 'l1:aemet_madrid_barajas', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', ''),
+      ('staging:boe_calendario_laboral_2025', 'l1:boe_calendario_laboral_2025', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', ''),
+      ('staging:boe_calendario_laboral_2026', 'l1:boe_calendario_laboral_2026', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', ''),
+      ('staging:cnmc_indicadores', 'l1:cnmc_indicadores', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', ''),
+      ('staging:cnmc_precio_mensual', 'l1:cnmc_precio_mensual', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', ''),
+      ('staging:cnmc_precio_trimestral', 'l1:cnmc_precio_trimestral', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', ''),
+      ('staging:cnmc_viajeros_corredor', 'l1:cnmc_viajeros_corredor', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', ''),
+      ('staging:cnmc_viajeros_producto', 'l1:cnmc_viajeros_producto', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', ''),
+      ('staging:crtm', 'l1:crtm', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', ''),
+      ('staging:ine_turismo_madrid_barcelona', 'l1:ine_turismo_madrid_barcelona', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', ''),
+      ('staging:nap_gtfs_ouigo', 'l1:nap_gtfs_ouigo', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', ''),
+      ('staging:nap_gtfs_renfe', 'l1:nap_gtfs_renfe', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', ''),
+      ('staging:renfe_trip_updates', 'l1:renfe_trip_updates', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', ''),
+      ('staging:renfe_vehicle_positions', 'l1:renfe_vehicle_positions', 'bronze_l1_raw_uploader', 'Copia el fichero tal cual a MinIO (Spark Streaming · RawUploader)', '')),
+  carga AS (
+      SELECT CASE proceso
+      WHEN 'bronze_download' THEN 'staging:' || tabla
+      WHEN 'bronze_l1_raw_uploader' THEN 'l1:' || tabla
+      WHEN 'bronze_l2_parquet_converter' THEN 'l2:' || split_part(tabla, '/', 1)
+      WHEN 'silver_builder' THEN 'silver:' || tabla
+      WHEN 'silver_sample' THEN 'silver:' || tabla
+      WHEN 'gold_build' THEN 'gold:' || tabla
+      WHEN 'prediccion_muestra' THEN 'l2:muestra_' || tabla
+      WHEN 'prediccion_demanda' THEN CASE WHEN tabla = 'fact_prediccion_demanda' THEN 'gold:' ELSE 'pred:' END || tabla
+      WHEN 'referencia_festivos' THEN 'silver:' || tabla
+      WHEN 'referencia_meteo' THEN 'silver:' || tabla
+      WHEN 'referencia_turismo_mensual' THEN 'silver:' || tabla
+      WHEN 'referencia_oferta_diaria' THEN 'silver:' || tabla
+      WHEN 'referencia_oferta_franja' THEN 'silver:' || tabla
+      WHEN 'referencia_ml_ocupacion_diaria' THEN 'silver:' || tabla
+      WHEN 'ml_metricas' THEN 'gold:' || tabla
+      WHEN 'ml_ocupacion_franja' THEN 'gold:' || tabla
+      WHEN 'precio_recomendado' THEN 'gold:' || tabla
+      WHEN 'calidad_completitud_silver' THEN 'gold:' || tabla
+      WHEN 'calidad_cobertura_ingesta' THEN 'gold:' || tabla
+    END AS nodo, run_id, proceso, estado, filas, duracion_s, error, parametros,
+             timezone('Europe/Madrid', timezone('UTC', inicio)) AS inicio
+      FROM read_parquet('s3://raillytics-gold/_trazabilidad/cargas/*.parquet', union_by_name = true)
+  ),
+  -- Una fila por (nodo, ejecución): un ZIP de L2 registra un fichero por fila y se suman sus filas.
+  por_run AS (
+      SELECT nodo, run_id, any_value(proceso) AS proceso, min(inicio) AS inicio, sum(filas) AS filas, sum(duracion_s) AS duracion_s,
+             CASE WHEN bool_or(estado = 'error') THEN 'error' ELSE 'ok' END AS estado,
+             string_agg(DISTINCT error, ' | ') AS error, any_value(parametros) AS parametros
+      FROM carga WHERE nodo IS NOT NULL GROUP BY nodo, run_id
+  ),
+  ultimo AS (SELECT * FROM por_run QUALIFY row_number() OVER (PARTITION BY nodo ORDER BY inicio DESC) = 1),
+  ultimo_proceso AS (SELECT * FROM por_run QUALIFY row_number() OVER (PARTITION BY nodo, proceso ORDER BY inicio DESC) = 1),
+  historico AS (
+      SELECT nodo, count(*) AS n_cargas, sum(CASE WHEN estado = 'error' THEN 1 ELSE 0 END) AS n_errores FROM por_run GROUP BY nodo
+  )
+  SELECT
+      r.run_id, r.proceso, a.origen, a.destino, o.capa AS categoria_origen, d.capa AS categoria_destino, a.transformacion,
+      r.estado, r.filas, r.inicio, r.duracion_s, r.error,
+      CASE WHEN regexp_full_match(json_extract_string(r.parametros, '$.airflow.run_id'), '[A-Za-z0-9_.:+-]+') AND regexp_full_match(json_extract_string(r.parametros, '$.airflow.dag_id'), '[A-Za-z0-9_.-]+') AND regexp_full_match(json_extract_string(r.parametros, '$.airflow.task_id'), '[A-Za-z0-9_.-]+') THEN '<a href="http://localhost:8080/dags/' || json_extract_string(r.parametros, '$.airflow.dag_id') || '/runs/' || replace(replace(json_extract_string(r.parametros, '$.airflow.run_id'), '+', '%2B'), ':', '%3A') || '/tasks/' || json_extract_string(r.parametros, '$.airflow.task_id') || CASE WHEN try_cast(json_extract_string(r.parametros, '$.airflow.map_index') AS INTEGER) >= 0 THEN '/mapped/' || CAST(try_cast(json_extract_string(r.parametros, '$.airflow.map_index') AS INTEGER) AS VARCHAR) ELSE '' END || '" target="_blank" rel="noopener noreferrer">log de Airflow</a>' END AS enlace_log,
+      round(1 + ln(1 + coalesce(r.filas, 0)), 3) AS peso
+  FROM por_run r
+  JOIN aristas a ON a.destino = r.nodo AND a.proceso = r.proceso
+  JOIN nodos o ON o.nodo = a.origen
+  JOIN nodos d ON d.nodo = a.destino
+  ORDER BY r.inicio DESC, a.destino, a.origen
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: 45d4e157-5b7d-575e-bcf0-3b007373d7a4
+metrics:
+- metric_name: n_saltos
+  verbose_name: Saltos
+  metric_type: null
+  expression: COUNT(*)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: peso_total
+  verbose_name: Grosor
+  metric_type: null
+  expression: SUM(peso)
+  description: null
+  d3format: ',.2f'
+  extra: null
+  warning_text: null
+- metric_name: n_errores
+  verbose_name: Saltos con error
+  metric_type: null
+  expression: SUM(CASE WHEN estado = 'error' THEN 1 ELSE 0 END)
+  description: null
+  d3format: ',d'
+  extra: null
+  warning_text: null
+columns:
+- column_name: run_id
+  verbose_name: Ejecución
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: proceso
+  verbose_name: Proceso
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: origen
+  verbose_name: Origen
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: destino
+  verbose_name: Destino
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: categoria_origen
+  verbose_name: Capa de origen
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: categoria_destino
+  verbose_name: Capa de destino
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: transformacion
+  verbose_name: Transformación
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: estado
+  verbose_name: Estado
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: filas
+  verbose_name: Filas
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: inicio
+  verbose_name: Inicio
+  is_dttm: true
+  is_active: true
+  type: TIMESTAMP
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: duracion_s
+  verbose_name: Duración (s)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: error
+  verbose_name: Error
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: enlace_log
+  verbose_name: Log
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: peso
+  verbose_name: Grosor
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: c34b683c-9913-5c2c-b6a6-7d986acb824b
