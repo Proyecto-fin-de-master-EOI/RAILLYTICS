@@ -39,7 +39,7 @@ def gold(tmp_path):
         (20261003, DATE '2026-10-03', '{CORREDOR}', 'RENFE', 'MADPA', 's1', TIMESTAMP '2026-10-03 08:00:00', TIMESTAMP '2026-10-03 08:03:00', 8, 3, 'realizado', false, true, 'despejado', 15.0, 0.0),
         (20261003, DATE '2026-10-03', '{CORREDOR}', 'OUIGO', 'MADPA', 's2', TIMESTAMP '2026-10-03 09:00:00', TIMESTAMP '2026-10-03 09:10:00', 9, 10, 'realizado', false, false, 'despejado', 15.0, 0.0),
         (20261003, DATE '2026-10-03', 'C-MAD-C2', 'RENFE', 'ALCHE', 's3', TIMESTAMP '2026-10-03 09:00:00', TIMESTAMP '2026-10-03 09:30:00', 9, 30, 'realizado', false, false, 'despejado', 15.0, 0.0))
-        t(fecha_id, fecha, linea_id, operador_id, estacion_id, servicio_id, hora_prevista, hora_real, hora, retraso_min, estado, cancelado, es_puntual, condicion_meteo, temperatura_media, precipitacion_mm)""")
+        t(fecha_id, fecha, linea_id, operador_id, estacion_id, servicio_id, hora_prevista, hora_real, hora, retraso_minutos, estado_servicio, cancelado, es_puntual, condicion_meteo, temperatura_media, precipitacion_mm)""")
 
     # Mercado (CNMC): 7 trimestres seguidos (2024-T4 … 2026-T2), Renfe y Ouigo + la fila TOTAL con ingresos. Con 7 trimestres
     # hay variación interanual (LAG 4) y un único punto de backtest (LAG 6) en 2026-T2.

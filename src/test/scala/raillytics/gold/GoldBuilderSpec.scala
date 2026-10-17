@@ -24,7 +24,7 @@ case class SilverViajeros(
 
 case class SilverPuntualidad(
   fecha: LocalDate, servicio_id: String, linea_id: String, operador_id: String, estacion_id: String,
-  hora_prevista: LocalDateTime, hora_real: Option[LocalDateTime], retraso_min: Option[Int], estado: String,
+  hora_prevista: LocalDateTime, hora_real: Option[LocalDateTime], retraso_minutos: Option[Int], estado_servicio: String,
   temperatura_media: Double, precipitacion_mm: Double, condicion_meteo: String, es_festivo: Boolean
 )
 
@@ -149,10 +149,10 @@ class GoldBuilderSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
 
   it should "flag punctuality and cancellations in fact_puntualidad" in {
     val filas = gold("fact_puntualidad").orderBy("servicio_id")
-      .select("servicio_id", "hora", "retraso_min", "es_puntual", "cancelado", "hora_real")
+      .select("servicio_id", "hora", "retraso_minutos", "es_puntual", "cancelado", "hora_real")
       .collect().map(_.toSeq)
     filas.map(f => (f(0), f(1), f(3), f(4))) shouldBe Array(("s1", 9, true, false), ("s2", 11, false, false), ("s3", 13, false, true))
-    Option(filas(2)(2)) shouldBe None  // retraso_min del cancelado
+    Option(filas(2)(2)) shouldBe None  // retraso_minutos del cancelado
     Option(filas(2)(5)) shouldBe None  // hora_real del cancelado
   }
 

@@ -106,7 +106,7 @@ def test_each_operator_runs_its_own_number_of_services_per_day(sample):
 
 
 def test_operators_differ_in_punctuality(sample):
-    retraso = sample.puntualidad.groupby("operador_id").retraso_min.mean()
+    retraso = sample.puntualidad.groupby("operador_id").retraso_minutos.mean()
 
     assert retraso["OUIGO"] > retraso["IRYO"]  # el más lento y el más puntual del modelo
 
@@ -126,15 +126,15 @@ def test_puntualidad_follows_the_silver_contract(sample):
 
     assert tuple(puntualidad.columns) == PUNTUALIDAD_COLUMNS
     assert puntualidad.servicio_id.is_unique
-    assert set(puntualidad.estado) == set(ESTADOS)
+    assert set(puntualidad.estado_servicio) == set(ESTADOS)
     assert (puntualidad.hora_prevista.dt.date == puntualidad.fecha.dt.date).all()
 
-    cancelados = puntualidad[puntualidad.estado == "cancelado"]
-    realizados = puntualidad[puntualidad.estado == "realizado"]
+    cancelados = puntualidad[puntualidad.estado_servicio == "cancelado"]
+    realizados = puntualidad[puntualidad.estado_servicio == "realizado"]
     assert len(cancelados) > 0
-    assert cancelados.retraso_min.isna().all() and cancelados.hora_real.isna().all()
-    assert (realizados.retraso_min >= 0).all()
-    esperado = realizados.hora_prevista + pd.to_timedelta(realizados.retraso_min.astype("int64"), unit="m")
+    assert cancelados.retraso_minutos.isna().all() and cancelados.hora_real.isna().all()
+    assert (realizados.retraso_minutos >= 0).all()
+    esperado = realizados.hora_prevista + pd.to_timedelta(realizados.retraso_minutos.astype("int64"), unit="m")
     assert (realizados.hora_real == esperado).all()
 
 

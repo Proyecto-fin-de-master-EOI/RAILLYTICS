@@ -17,7 +17,7 @@ params:
   - trimestre
   - datos
   - modelo
-  - version_prompt
+  - version
   metrics:
   - viajeros_previstos
   - indice_medio

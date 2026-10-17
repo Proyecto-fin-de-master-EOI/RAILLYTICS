@@ -22,7 +22,7 @@ params:
   x_axis_sort_series_ascending: true
   metrics:
   - expressionType: SQL
-    sqlExpression: AVG(viajeros_min)
+    sqlExpression: AVG(cota_inferior)
     label: mínimo del IC
     hasCustomLabel: true
     optionName: metric_ic_min
@@ -36,7 +36,7 @@ params:
     aggregate: null
     column: null
   - expressionType: SQL
-    sqlExpression: AVG(viajeros_max)
+    sqlExpression: AVG(cota_superior)
     label: máximo del IC
     hasCustomLabel: true
     optionName: metric_ic_max

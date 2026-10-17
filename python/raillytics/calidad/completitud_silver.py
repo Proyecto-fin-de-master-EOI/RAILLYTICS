@@ -61,7 +61,7 @@ NULOS_CONTROLADOS: dict[str, dict[str, str]] = {
     },
     "puntualidad_enriquecida": {
         "hora_real": "un servicio cancelado no tiene hora de llegada",
-        "retraso_min": "sin hora real no hay retraso que calcular",
+        "retraso_minutos": "sin hora real no hay retraso que calcular",
     },
     "cnmc_trimestral": {
         "viajeros": "CNMC pone los volúmenes en las filas de operador, no en la del total",

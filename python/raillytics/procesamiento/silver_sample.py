@@ -63,7 +63,7 @@ VIAJEROS_COLUMNS = (
     "meteo_imputada",
 )
 PUNTUALIDAD_COLUMNS = (
-    "fecha", "servicio_id", "linea_id", "operador_id", "estacion_id", "hora_prevista", "hora_real", "retraso_min", "estado",
+    "fecha", "servicio_id", "linea_id", "operador_id", "estacion_id", "hora_prevista", "hora_real", "retraso_minutos", "estado_servicio",
     "temperatura_media", "precipitacion_mm", "condicion_meteo", "es_festivo",
 )
 
@@ -494,11 +494,11 @@ def _puntualidad(
     p_cancelacion = df.p_cancelacion_op.to_numpy() * np.where(df.condicion_meteo == "tormenta", 6.0, 1.0)
     cancelado = rng.random(n) < p_cancelacion
 
-    df["retraso_min"] = pd.array(retraso, dtype="Int64")
-    df.loc[cancelado, "retraso_min"] = pd.NA
+    df["retraso_minutos"] = pd.array(retraso, dtype="Int64")
+    df.loc[cancelado, "retraso_minutos"] = pd.NA
     df["hora_real"] = df.hora_prevista + pd.to_timedelta(retraso, unit="m")
     df.loc[cancelado, "hora_real"] = pd.NaT
-    df["estado"] = np.where(cancelado, "cancelado", "realizado")
+    df["estado_servicio"] = np.where(cancelado, "cancelado", "realizado")
     return df[list(PUNTUALIDAD_COLUMNS)].sort_values(["fecha", "hora_prevista", "linea_id", "operador_id"], ignore_index=True)
 
 

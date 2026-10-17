@@ -152,7 +152,7 @@ sql: |-
       ('silver:puntualidad_enriquecida', 'lineas_en_viajeros', 'referencia', 'bloqueante', 'linea_id existen en silver_viajeros_enriquecidos'),
       ('silver:puntualidad_enriquecida', 'operadores_en_viajeros', 'referencia', 'bloqueante', 'operador_id existen en silver_viajeros_enriquecidos'),
       ('silver:puntualidad_enriquecida', 'realizado_con_retraso', 'sql', 'bloqueante', 'consulta SQL · realizado con retraso'),
-      ('silver:puntualidad_enriquecida', 'retraso_no_negativo', 'rango', 'bloqueante', 'retraso_min ≥ 0'),
+      ('silver:puntualidad_enriquecida', 'retraso_no_negativo', 'rango', 'bloqueante', 'retraso_minutos ≥ 0'),
       ('silver:puntualidad_enriquecida', 'servicio_unico', 'unico', 'bloqueante', 'sin duplicados por servicio_id'),
       ('silver:turismo_mensual', 'claves_sin_nulos', 'no_nulos', 'bloqueante', 'sin nulos en fecha, origen, destino, turistas'),
       ('silver:turismo_mensual', 'destino_barcelona_presente', 'sql', 'bloqueante', 'consulta SQL · destino barcelona presente'),

@@ -37,8 +37,8 @@ sql: |-
       o.nombre AS operador,
       o.empresa AS operador_empresa,
       o.segmento AS operador_segmento,
-      p.retraso_min,
-      p.estado,
+      p.retraso_minutos,
+      p.estado_servicio,
       p.es_puntual,
       p.cancelado,
       p.condicion_meteo,
@@ -70,7 +70,7 @@ metrics:
 - metric_name: retraso_medio
   verbose_name: Retraso medio (min)
   metric_type: null
-  expression: AVG(retraso_min)
+  expression: AVG(retraso_minutos)
   description: null
   d3format: .1f
   extra: null
@@ -78,7 +78,7 @@ metrics:
 - metric_name: retraso_p90
   verbose_name: Retraso p90 (min)
   metric_type: null
-  expression: quantile_cont(retraso_min, 0.9)
+  expression: quantile_cont(retraso_minutos, 0.9)
   description: null
   d3format: .0f
   extra: null
@@ -376,7 +376,7 @@ columns:
   description: null
   python_date_format: null
   extra: null
-- column_name: retraso_min
+- column_name: retraso_minutos
   verbose_name: Retraso (min)
   is_dttm: false
   is_active: true
@@ -388,7 +388,7 @@ columns:
   description: null
   python_date_format: null
   extra: null
-- column_name: estado
+- column_name: estado_servicio
   verbose_name: Estado
   is_dttm: false
   is_active: true

@@ -19,14 +19,17 @@ from raillytics.utils.lake import LakeLayout, ensure_parent_dir
 
 GOLD_TABLA = "fact_prediccion_demanda"
 COLUMNAS_GOLD = (
-    "run_id", "generado_en", "trimestre", "corredor", "modelo", "version_prompt", "datos_sinteticos", "total_esperado",
+    # Los nombres los fija el catalogo de datos (config/data_catalog.yml), que es el modelo de
+    # gobierno del proyecto: `version` y no `version_prompt`, `cota_inferior`/`cota_superior` y no
+    # `viajeros_min`/`viajeros_max`.
+    "run_id", "generado_en", "trimestre", "corredor", "modelo", "version", "datos_sinteticos", "total_esperado",
     "fecha", "dia_semana", "festivo", "eventos", "viajeros_previstos", "indice", "motivo",
     "vispera", "puente", "regreso", "junto_a_evento", "exceso",
     # Banda de confianza del NIVEL, repartida entre los días con los mismos índices. Va vacía cuando
     # el total se fija a mano o cuando no hay bastantes trimestres de backtest. Se guardan como
     # DOUBLE aunque sean viajeros: el esquema del Parquet tiene que ser idéntico en todas las
     # ejecuciones, y una con banda y otra sin ella darían tipos distintos si fueran enteros.
-    "viajeros_min", "viajeros_max", "ic_confianza", "ic_cobertura",
+    "cota_inferior", "cota_superior", "ic_confianza", "ic_cobertura",
 )
 
 
@@ -49,7 +52,7 @@ def construir_gold(df: pd.DataFrame, calendario: Calendario, *, total_esperado: 
             "trimestre": df["trimestre"],
             "corredor": df["corredor"],
             "modelo": df["modelo"],
-            "version_prompt": df["version_prompt"],
+            "version": df["version_prompt"],
             "datos_sinteticos": bool(datos_sinteticos),
             "total_esperado": int(total_esperado),
             "fecha": [date.fromisoformat(f) for f in df["fecha"]],

@@ -69,11 +69,11 @@ tablas:
     - {nombre: claves_sin_nulos,            tipo: no_nulos, columnas: [fecha, servicio_id, linea_id, operador_id, estacion_id, hora_prevista, estado], severidad: bloqueante}
     - {nombre: servicio_unico,              tipo: unico, columnas: [servicio_id], severidad: bloqueante}
     - {nombre: estado_valido,               tipo: dominio, columna: estado, valores: [realizado, cancelado], severidad: bloqueante}
-    - {nombre: retraso_no_negativo,         tipo: rango, columna: retraso_min, minimo: 0, severidad: bloqueante}
+    - {nombre: retraso_no_negativo,         tipo: rango, columna: retraso_minutos, minimo: 0, severidad: bloqueante}
     - {nombre: cancelado_sin_retraso,       tipo: sql, severidad: bloqueante,
-       sql: "SELECT count(*) FROM silver_puntualidad_enriquecida WHERE estado = 'cancelado' AND (retraso_min IS NOT NULL OR hora_real IS NOT NULL)"}
+       sql: "SELECT count(*) FROM silver_puntualidad_enriquecida WHERE estado_servicio = 'cancelado' AND (retraso_minutos IS NOT NULL OR hora_real IS NOT NULL)"}
     - {nombre: realizado_con_retraso,       tipo: sql, severidad: bloqueante,
-       sql: "SELECT count(*) FROM silver_puntualidad_enriquecida WHERE estado = 'realizado' AND (retraso_min IS NULL OR hora_real IS NULL)"}
+       sql: "SELECT count(*) FROM silver_puntualidad_enriquecida WHERE estado_servicio = 'realizado' AND (retraso_minutos IS NULL OR hora_real IS NULL)"}
     - {nombre: hora_real_posterior,         tipo: sql, severidad: bloqueante,
        sql: "SELECT count(*) FROM silver_puntualidad_enriquecida WHERE hora_real < hora_prevista"}
     - {nombre: hora_prevista_del_dia,       tipo: sql, severidad: aviso,
