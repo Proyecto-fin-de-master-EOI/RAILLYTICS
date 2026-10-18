@@ -316,3 +316,197 @@ terminos:
     dashboards_relacionados: [catalogo-datos-glosario, mercado-corredor, demanda-ferroviaria, puntualidad, trazabilidad-cargas, lineage-cargas]
     quality_gates: []
     terminos_relacionados: [Capa Gold, Lineage de Cargas (Linaje)]
+
+  # ==============================================================================================
+  # DOMINIO: Modelo de demanda del proyecto
+  #
+  # Los términos de arriba son el vocabulario del sector y de la plataforma. Los que siguen son los
+  # que ha creado ESTE proyecto para repartir, predecir y poner precio, y son los que hay que poder
+  # explicar: un número del cuadro de mandos que no esté aquí definido no se puede defender.
+  # ==============================================================================================
+  - termino: Procedencia del dato
+    dominio: Negocio Ferroviario
+    tipo: Técnico
+    definicion: "La clasificación que vertebra todo el gobierno del dato del proyecto. REAL: viene de una fuente publicada y no se toca (CNMC, NAP, INE, AEMET, BOE). DERIVADO: se calcula a partir de datos reales con una regla escrita (la ocupación diaria, el precio recomendado). SINTÉTICO: lo genera el proyecto porque no existe como dato abierto (el reparto de viajes entre pares de estaciones). En el panel de dirección, las tarjetas con filo turquesa son las que el proyecto estima; las demás vienen de una fuente."
+    formula: null
+    sinonimos: Dato real frente a derivado o sintético, Medido frente a estimado
+    tablas_relacionadas: fact_viajeros, fact_ocupacion_diaria, fact_precio_recomendado, fact_mercado_trimestral
+    dashboards_relacionados: [panel-direccion, catalogo-datos-glosario]
+    quality_gates: []
+    terminos_relacionados: [Regla de nivel, Desagregación Temporal Calibrada (DTC), Modelo de gravedad]
+
+  - termino: Regla de nivel
+    dominio: Negocio Ferroviario
+    tipo: Negocio
+    definicion: "Cómo se estima el total de viajeros de un trimestre que todavía no ha publicado la CNMC: se parte del mismo trimestre del año anterior y se le aplica la variación interanual del último trimestre conocido. Nunca mira al trimestre que predice, así que no hay fuga de información del futuro."
+    formula: "total(T) = total(T−4) × total(U) / total(U−4)"
+    sinonimos: Estimación del total trimestral
+    tablas_relacionadas: cnmc_trimestral, fact_prediccion_demanda
+    dashboards_relacionados: [prediccion-demanda]
+    quality_gates: [filas_minimas]
+    terminos_relacionados: [Desagregación Temporal Calibrada (DTC), Intervalo de confianza del 90 %, Procedencia del dato]
+
+  - termino: Desagregación Temporal Calibrada (DTC)
+    dominio: Negocio Ferroviario
+    tipo: Técnico
+    definicion: "El reparto del total de un trimestre entre sus días. A cada día se le da un índice según el día de la semana, el mes y si es festivo, víspera, puente o regreso, y después se recalibra para que la suma de los días dé EXACTAMENTE el total del trimestre. Se hace con fracciones exactas y método del mayor resto, no con coma flotante, por eso el error de recalibración es 0,0 exacto y no 0,0001."
+    formula: "viajeros(día) = total(T) × índice(día) / Σ índices(T)"
+    sinonimos: DTC, Reparto diario
+    tablas_relacionadas: fact_prediccion_demanda
+    dashboards_relacionados: [prediccion-demanda, panel-direccion]
+    quality_gates: [filas_minimas]
+    terminos_relacionados: [Regla de nivel, Índice de reparto diario, Procedencia del dato]
+
+  - termino: Índice de reparto diario
+    dominio: Negocio Ferroviario
+    tipo: Negocio
+    definicion: "Cuántas veces un día normal del trimestre es un día concreto. La media del trimestre vale 1 por construcción, así que 1,357 es un 36 % por encima de un día medio y 0,692 un 31 % por debajo. Sale de multiplicar el coeficiente del día de la semana, el perfil del mes (calibrado con el turismo del INE) y los de día especial. La columna «motivo» de la predicción dice en palabras de dónde sale cada uno."
+    formula: "índice(día) = base_día_semana × perfil_mes × factores_día_especial"
+    sinonimos: Índice del día, Factor del día
+    tablas_relacionadas: fact_prediccion_demanda, fact_turismo_mensual
+    dashboards_relacionados: [prediccion-demanda, panel-direccion]
+    quality_gates: []
+    terminos_relacionados: [Desagregación Temporal Calibrada (DTC), Regla de nivel]
+
+  - termino: Intervalo de confianza del 90 %
+    dominio: Negocio Ferroviario
+    tipo: Técnico
+    definicion: "La banda entre la que se espera que caiga la demanda real. No es un margen inventado: se predijeron los 24 trimestres ya publicados con la misma regla, como si no se supiera el resultado, y la banda es el reparto de los errores que cometió. Lleva su propio control: la cobertura MEDIDA (cuántas veces el valor real cayó dentro) es del 87,5 % frente al 90 % declarado, así que la banda se queda algo corta y eso se publica junto al dato."
+    formula: null
+    sinonimos: Banda de confianza, IC 90 %, Escenario bajo y alto
+    tablas_relacionadas: fact_prediccion_demanda, fact_metricas_modelo
+    dashboards_relacionados: [prediccion-demanda, panel-direccion]
+    quality_gates: []
+    terminos_relacionados: [Regla de nivel, Backtest (validación temporal)]
+
+  - termino: Backtest (validación temporal)
+    dominio: Plataforma Data Lakehouse
+    tipo: Técnico
+    definicion: "Medir una regla o un modelo prediciendo periodos YA conocidos, siempre hacia adelante: se entrena con lo anterior a una fecha y se mide contra lo posterior. Es la única partición válida con series temporales; una partición aleatoria deja ver el futuro al modelo y da un número bonito y falso."
+    formula: null
+    sinonimos: Validación temporal, Walk-forward
+    tablas_relacionadas: fact_metricas_modelo
+    dashboards_relacionados: [prediccion-demanda, panel-direccion]
+    quality_gates: []
+    terminos_relacionados: [Intervalo de confianza del 90 %, Regla de nivel]
+
+  - termino: Par origen-destino
+    dominio: Negocio Ferroviario
+    tipo: Negocio
+    definicion: "El grano de fact_viajeros desde el 17 de octubre de 2026: una fila es «viajes de la estación A a la B ese día con ese operador». Antes había una fila por estación, y un total por estación NO es un número de viajes, porque quien va de Madrid a Barcelona aparece en las dos puntas. Con el par, la suma del día es el número de viajes del corredor, y la vista por estación sale de sumar los pares que salen o llegan a ella."
+    formula: null
+    sinonimos: Par O/D, Trayecto, Relación origen-destino
+    tablas_relacionadas: fact_viajeros, viajeros_enriquecidos, dim_estacion
+    dashboards_relacionados: [demanda-ferroviaria]
+    quality_gates: [par_con_dos_estaciones, grano_unico, distancia_positiva]
+    terminos_relacionados: [Grano de Datos (Granularidad), Punto kilométrico, Modelo de gravedad]
+
+  - termino: Punto kilométrico
+    dominio: Negocio Ferroviario
+    tipo: Técnico
+    definicion: "La distancia de cada parada desde el origen de la línea, medida sobre la vía: 0 en Madrid, 307 en Zaragoza, 528 en Camp de Tarragona y 621 en Barcelona, que son los 621 km publicados del corredor. Con ellos la distancia entre dos paradas es una resta, y de ahí salen los viajeros·km calculados desde abajo en vez de copiarlos ya agregados."
+    formula: "distancia_km(A, B) = |pk(B) − pk(A)|"
+    sinonimos: PK, Kilometraje
+    tablas_relacionadas: fact_viajeros, dim_estacion, dim_linea
+    dashboards_relacionados: [demanda-ferroviaria]
+    quality_gates: [distancia_positiva, viajeros_km_coherente]
+    terminos_relacionados: [Par origen-destino, Viajeros·km, Distancia media del viaje]
+
+  - termino: Distancia media del viaje
+    dominio: Negocio Ferroviario
+    tipo: Negocio
+    definicion: "Cuántos kilómetros recorre un viajero de media. Es MEDIBLE porque la CNMC publica viajeros y viajeros·km del corredor, y su cociente da 507,9 km de media en los seis últimos trimestres. Sirve de diana: los pesos del reparto entre pares están calibrados para que el modelo reproduzca esa cifra (da 508,3 km), y un test salta si alguien los cambia."
+    formula: "SUM(viajeros_km) / SUM(viajeros)"
+    sinonimos: Recorrido medio, Longitud media del trayecto
+    tablas_relacionadas: cnmc_trimestral, fact_viajeros, fact_mercado_trimestral
+    dashboards_relacionados: [mercado-corredor, demanda-ferroviaria]
+    quality_gates: [viajeros_km_coherente]
+    terminos_relacionados: [Viajeros·km, Punto kilométrico, Modelo de gravedad]
+
+  - termino: Modelo de gravedad
+    dominio: Negocio Ferroviario
+    tipo: Técnico
+    definicion: "Cómo se reparte la demanda del corredor entre pares de estaciones: el flujo entre dos estaciones es proporcional al producto de sus pesos. Es la parte SINTÉTICA del dato de viajeros, porque nadie publica viajeros por par, pero es contrastable por su agregado: los pesos están calibrados contra la distancia media del viaje. Madrid–Barcelona se lleva el 63,5 % de los viajes, que es lo que se espera de este eje."
+    formula: "flujo(A→B) ∝ peso(A) × peso(B)"
+    sinonimos: Reparto entre pares
+    tablas_relacionadas: viajeros_enriquecidos, fact_viajeros
+    dashboards_relacionados: [demanda-ferroviaria]
+    quality_gates: [par_con_dos_estaciones, viajeros_km_coherente]
+    terminos_relacionados: [Par origen-destino, Distancia media del viaje, Procedencia del dato]
+
+  - termino: Ocupación imposible (no plausible)
+    dominio: Negocio Ferroviario
+    tipo: Técnico
+    definicion: "Un día cuya ocupación calculada llega al 100 % o lo pasa, lo que no puede ser. No es un error de cálculo sino la consecuencia de que la oferta del NAP NO incluye a Iryo —que no publica horarios— mientras que la demanda de la CNMC sí lo incluye: demanda de tres operadores entre la oferta de dos. Esos días se marcan y se excluyen de las medias; en el panel se pintan en rojo en vez de dejar un hueco, para que el aviso se vea."
+    formula: "ocupación ≥ 1,00"
+    sinonimos: Día imposible, Marca plausible
+    tablas_relacionadas: fact_ocupacion_diaria, fact_ocupacion_franja, fact_precio_recomendado
+    dashboards_relacionados: [panel-direccion]
+    quality_gates: [ocupacion_en_rango]
+    terminos_relacionados: [Ocupación (Factor de Carga), Cobertura completa del snapshot]
+
+  - termino: Cobertura completa del snapshot
+    dominio: Plataforma Data Lakehouse
+    tipo: Técnico
+    definicion: "Marca de si la descarga del NAP de ese día cubre la jornada entera. Un snapshot parcial da menos trenes de los que de verdad circularon, así que esos días se excluyen de las medias de oferta: por eso la tabla de trenes por día de la semana dice 59 jueves y no los 72 que tienen dato. La columna «días» está precisamente para que se vea sobre cuántos se calcula la media."
+    formula: null
+    sinonimos: Snapshot completo
+    tablas_relacionadas: fact_oferta_diaria, oferta_diaria
+    dashboards_relacionados: [panel-direccion, demanda-ferroviaria]
+    quality_gates: [cuadra_con_silver]
+    terminos_relacionados: [Frescura de Datos (Freshness), Ocupación imposible (no plausible)]
+
+  - termino: Hora punta y hora valle
+    dominio: Negocio Ferroviario
+    tipo: Negocio
+    definicion: "Las franjas horarias de salida en las que se reparte la oferta y la demanda del día: punta es mañana (6-9) y tarde (15-19); el resto es valle. Los trenes por franja son dato medido del NAP; el reparto de la demanda entre franjas es hipótesis del proyecto, así que la ocupación por franja es un dato derivado."
+    formula: null
+    sinonimos: Franja horaria, Pico y valle
+    tablas_relacionadas: fact_ocupacion_franja, oferta_franja
+    dashboards_relacionados: [panel-direccion]
+    quality_gates: [grano_unico]
+    terminos_relacionados: [Ocupación (Factor de Carga), Precio recomendado, Procedencia del dato]
+
+  - termino: Precio recomendado
+    dominio: Negocio Ferroviario
+    tipo: Negocio
+    definicion: "El precio que el sistema propone para un día, franja y operador. Parte del precio medio REAL que publica la CNMC y le aplica la elasticidad según la ocupación estimada de esa franja: si va llena sube, si va vacía baja. Después se acota al rango observado. No es un precio de venta: es una recomendación sobre un dato real."
+    formula: "precio_base × (ocupación / ocupación_referencia) ^ (1 / |elasticidad|)"
+    sinonimos: Precio sugerido, Recomendación de precio
+    tablas_relacionadas: fact_precio_recomendado, cnmc_precio_trimestral
+    dashboards_relacionados: [panel-direccion]
+    quality_gates: [precio_en_rango]
+    terminos_relacionados: [Precio Medio por Trayecto, Rango observado, Elasticidad precio-demanda, Hora punta y hora valle]
+
+  - termino: Rango observado
+    dominio: Negocio Ferroviario
+    tipo: Técnico
+    definicion: "El mínimo y el máximo que ese operador ha cobrado de verdad según la CNMC. Toda recomendación se acota a él, y el porcentaje de recomendaciones que caen dentro SIN necesidad de recorte (86,2 %) es el indicador de credibilidad del modelo: sin el recorte, la regla llegaba a pedir 289,71 € por un Madrid–Barcelona en AVE cuando Renfe nunca ha pasado de 95,58 €."
+    formula: "min(precio_eur) … max(precio_eur) por operador"
+    sinonimos: Rango real, Acotado al precio observado
+    tablas_relacionadas: fact_precio_recomendado, cnmc_precio_trimestral
+    dashboards_relacionados: [panel-direccion]
+    quality_gates: [precio_en_rango]
+    terminos_relacionados: [Precio recomendado, Precio Medio por Trayecto]
+
+  - termino: Elasticidad precio-demanda
+    dominio: Negocio Ferroviario
+    tipo: Negocio
+    definicion: "Cuánto cae la demanda cuando sube el precio. En este proyecto NO se pudo medir: la regresión de panel con los datos de la CNMC da −0,299 con un error estándar de 0,453, o sea ruido, porque el corredor está limitado por capacidad (el precio subió un 72 % entre 2023-T1 y 2025-T4 con los viajeros planos) y porque precio y demanda se determinan a la vez. Se DECLARA en −1,00, que cae dentro del intervalo de confianza y es el valor neutro, y queda escrito en config/reglas_demanda.yml que es un supuesto, no una medición."
+    formula: null
+    sinonimos: Elasticidad, Sensibilidad al precio
+    tablas_relacionadas: fact_precio_recomendado, cnmc_precio_trimestral
+    dashboards_relacionados: [panel-direccion]
+    quality_gates: []
+    terminos_relacionados: [Precio recomendado, Rango observado, Procedencia del dato]
+
+  - termino: Latencia de la carga completa
+    dominio: Plataforma Data Lakehouse
+    tipo: Técnico
+    definicion: "Cuánto tarda la cadena entera de principio a fin, medida con el reloj de pared del orquestador que la lanza. Incluye las esperas a que los trabajos de streaming se asienten, que ninguna fase registra por separado. No se mide sumando fases «del día»: si una fase corre dos veces —el DAG programado de madrugada y la cadena lanzada a mano por la mañana— se contarían las horas de nada que hay en medio."
+    formula: "fin − inicio de la ejecución de carga_e2e que empieza por infra"
+    sinonimos: Latencia extremo a extremo, Tiempo de la carga
+    tablas_relacionadas: cargas
+    dashboards_relacionados: [panel-direccion, trazabilidad-cargas]
+    quality_gates: []
+    terminos_relacionados: [Trazabilidad de Cargas, Run ID, Frescura de Datos (Freshness)]
