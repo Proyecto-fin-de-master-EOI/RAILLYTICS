@@ -291,4 +291,7 @@ Dos licencias de origen exigen un texto concreto. El detalle completo está en `
   > Elaboración propia con datos extraídos del sitio web del INE: www.ine.es
 - **AEMET**: reutilización autorizada citando a AEMET como autor.
 - **BOE**: disposiciones oficiales, sin restricción; se cita el documento para identificar la versión.
-- **NAP**: condiciones **pendientes de confirmar** (su aviso legal devuelve 404).
+- **NAP**: no publica condiciones propias (su aviso legal devuelve 404 y su GTFS no trae
+  `feed_info.txt`), así que se le aplica el **régimen general** de reutilización de información del
+  sector público —Ley 37/2007 y RD 1495/2011—, cuyas cuatro condiciones el proyecto cumple. El
+  detalle, en [licencias.md](licencias.md).

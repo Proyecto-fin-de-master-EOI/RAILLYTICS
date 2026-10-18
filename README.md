@@ -1196,8 +1196,13 @@ Las otras tres no exigen fórmula, pero se citan igualmente:
   autorizada citando a AEMET como autor.
 - **Festivos:** resoluciones de la Dirección General de Trabajo publicadas en el BOE. Son
   disposiciones oficiales y no están sujetas a derecho de autor (art. 13 TRLPI).
-- **Horarios:** Punto de Acceso Nacional de Transporte Multimodal (Ministerio de Transportes).
-  Sus condiciones de uso están **pendientes de confirmar**: la página de aviso legal devuelve 404.
+- **Horarios:** Punto de Acceso Nacional de Transporte Multimodal (Ministerio de Transportes). No
+  publica condiciones de uso propias (su aviso legal devuelve 404 y su GTFS no trae `feed_info.txt`),
+  así que se le aplica el **régimen general** de reutilización de información del sector público
+  —Ley 37/2007 y RD 1495/2011—: citar la fuente, no desnaturalizar el dato, mencionar la fecha de
+  actualización y no dar a entender que el Ministerio patrocina este trabajo, **que no lo hace**: es
+  un trabajo académico sin relación con él. El detalle está en
+  [`docs/licencias.md`](docs/licencias.md).
 
 ### Lo que las licencias prohíben, y aquí importa
 
