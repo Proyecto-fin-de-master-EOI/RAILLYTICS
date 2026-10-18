@@ -26,12 +26,13 @@ SELECT
     year(f.fecha)                                                             AS anio,
     quarter(f.fecha)                                                          AS trimestre,
     month(f.fecha)                                                            AS mes,
+    day(f.fecha)                                                              AS dia,
     element_at(array('enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
                      'septiembre', 'octubre', 'noviembre', 'diciembre'), month(f.fecha)) AS nombre_mes,
     weekday(f.fecha) + 1                                                      AS dia_semana,  -- 1 = lunes ... 7 = domingo
     element_at(array('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'),
                weekday(f.fecha) + 1)                                          AS nombre_dia,
-    weekday(f.fecha) >= 5                                                     AS es_fin_de_semana,
+    weekday(f.fecha) >= 5                                                     AS es_fin_semana,
     coalesce(h.es_festivo, false)                                             AS es_festivo,
     h.festivo_nombre,
     CASE

@@ -1,6 +1,6 @@
 table_name: viajeros_diarios
 main_dttm_col: fecha
-description: 'Viajeros diarios del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN) por estación y operador: Fact_Viajeros ⋈ Dim_Fecha, Dim_Estacion, Dim_Linea y Dim_Operador, leídos con DuckDB del Parquet de Gold en MinIO. Solo se muestra el corredor.'
+description: 'Viajeros diarios del corredor AVE Madrid–Barcelona (línea AVE-MAD-BCN) por par origen-destino y operador: Fact_Viajeros ⋈ Dim_Fecha, Dim_Estacion, Dim_Linea y Dim_Operador, leídos con DuckDB del Parquet de Gold en MinIO. Solo se muestra el corredor.'
 default_endpoint: null
 offset: 0
 cache_timeout: null
@@ -18,16 +18,19 @@ sql: |-
       d.dia_semana,
       d.nombre_dia,
       d.dia_semana || '. ' || d.nombre_dia AS dia_semana_etiqueta,
-      d.es_fin_de_semana,
+      d.es_fin_semana,
       d.es_festivo,
       d.festivo_nombre,
       CASE
           WHEN d.es_festivo THEN 'festivo'
-          WHEN d.es_fin_de_semana THEN 'fin de semana'
+          WHEN d.es_fin_semana THEN 'fin de semana'
           ELSE 'laborable'
       END AS tipo_dia,
       d.estacion_anio,
       e.nombre AS estacion,
+      ed.nombre AS estacion_destino,
+      e.nombre || ' → ' || ed.nombre AS trayecto,
+      f.distancia_km,
       e.provincia,
       e.comunidad,
       e.latitud,
@@ -40,12 +43,17 @@ sql: |-
       o.empresa AS operador_empresa,
       o.segmento AS operador_segmento,
       f.viajeros,
+      f.viajeros_km,
       f.temperatura_media,
       f.precipitacion_mm,
       f.condicion_meteo
   FROM read_parquet('s3://raillytics-gold/fact_viajeros/*.parquet') AS f
   JOIN read_parquet('s3://raillytics-gold/dim_fecha/*.parquet') AS d USING (fecha_id)
-  JOIN read_parquet('s3://raillytics-gold/dim_estacion/*.parquet') AS e USING (estacion_id)
+  -- Dim_Estacion entra dos veces, una por punta del par. `estacion` es la de ORIGEN: así los
+  -- gráficos que agrupan por estación siguen funcionando y ahora cuentan salidas, que es un número
+  -- que se puede sumar sin contar dos veces al que va de Madrid a Barcelona.
+  JOIN read_parquet('s3://raillytics-gold/dim_estacion/*.parquet') AS e ON e.id_estacion = f.estacion_origen_id
+  JOIN read_parquet('s3://raillytics-gold/dim_estacion/*.parquet') AS ed ON ed.id_estacion = f.estacion_destino_id
   JOIN read_parquet('s3://raillytics-gold/dim_linea/*.parquet') AS l USING (linea_id)
   JOIN read_parquet('s3://raillytics-gold/dim_operador/*.parquet') AS o USING (operador_id)
   WHERE l.linea_id = 'AVE-MAD-BCN'
@@ -82,10 +90,26 @@ metrics:
   d3format: ',d'
   extra: null
   warning_text: null
+- metric_name: total_viajeros_km
+  verbose_name: Viajeros·km
+  metric_type: null
+  expression: SUM(viajeros_km)
+  description: Viajeros·km calculados desde abajo, viaje a viaje por la distancia de su par de estaciones.
+  d3format: ',d'
+  extra: null
+  warning_text: null
+- metric_name: distancia_media_viaje
+  verbose_name: Distancia media del viaje (km)
+  metric_type: null
+  expression: SUM(viajeros_km) / NULLIF(SUM(viajeros), 0)
+  description: null
+  d3format: ',.0f'
+  extra: null
+  warning_text: null
 - metric_name: pct_viajeros_fin_de_semana
   verbose_name: Viajeros en fin de semana (%)
   metric_type: null
-  expression: 100.0 * SUM(CASE WHEN es_fin_de_semana THEN viajeros ELSE 0 END) / NULLIF(SUM(viajeros), 0)
+  expression: 100.0 * SUM(CASE WHEN es_fin_semana THEN viajeros ELSE 0 END) / NULLIF(SUM(viajeros), 0)
   description: null
   d3format: .1f
   extra: null
@@ -203,7 +227,7 @@ columns:
   description: null
   python_date_format: null
   extra: null
-- column_name: es_fin_de_semana
+- column_name: es_fin_semana
   verbose_name: Fin de semana
   is_dttm: false
   is_active: true
@@ -264,7 +288,19 @@ columns:
   python_date_format: null
   extra: null
 - column_name: estacion
-  verbose_name: Estación
+  verbose_name: Estación de origen
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Estación de salida del viaje. Agrupar por ella da las salidas de cada estación, no los viajeros que pasan por ella.
+  python_date_format: null
+  extra: null
+- column_name: estacion_destino
+  verbose_name: Estación de destino
   is_dttm: false
   is_active: true
   type: VARCHAR
@@ -273,6 +309,30 @@ columns:
   filterable: true
   expression: null
   description: null
+  python_date_format: null
+  extra: null
+- column_name: trayecto
+  verbose_name: Trayecto
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Par origen-destino del viaje, que es el grano de la tabla.
+  python_date_format: null
+  extra: null
+- column_name: distancia_km
+  verbose_name: Distancia (km)
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Distancia entre las dos estaciones, calculada como la resta de sus puntos kilométricos.
   python_date_format: null
   extra: null
 - column_name: provincia
@@ -416,7 +476,19 @@ columns:
   groupby: true
   filterable: true
   expression: null
-  description: null
+  description: Viajes del día entre esas dos estaciones con ese operador. La suma del día es el número de viajes del corredor.
+  python_date_format: null
+  extra: null
+- column_name: viajeros_km
+  verbose_name: Viajeros·km
+  is_dttm: false
+  is_active: true
+  type: DOUBLE
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: Viajeros por la distancia de su par. Es el viajeros·km calculado desde abajo, el que se puede contrastar con el que publica la CNMC.
   python_date_format: null
   extra: null
 - column_name: condicion_meteo

@@ -17,7 +17,7 @@ params:
     sqlExpression: cuota_del_trimestre IS NOT NULL
   query_mode: aggregate
   groupby:
-  - nombre_mes
+  - mes_etiqueta
   metrics:
   - factor_del_mes
   - cuota_media_del_trimestre
@@ -25,7 +25,7 @@ params:
   all_columns: []
   percent_metrics: []
   order_by_cols:
-  - '["factor_del_mes", false]'
+  - '["mes_etiqueta", true]'
   row_limit: 1000
   server_page_length: 15
   include_search: false

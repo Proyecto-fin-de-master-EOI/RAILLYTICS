@@ -21,7 +21,7 @@ params:
   percent_metrics: []
   order_by_cols:
   - '["indice", false]'
-  row_limit: 5
+  row_limit: 1000
   server_page_length: 5
   include_search: false
   show_totals: false
@@ -29,7 +29,9 @@ params:
   show_cell_bars: true
   color_pn: false
   allow_render_html: false
-  column_config: {}
+  column_config:
+    indice: {d3NumberFormat: ',.3f'}
+    viajeros_previstos: {d3NumberFormat: ',d'}
   conditional_formatting: []
   temporal_columns_lookup: {}
   time_grain_sqla: null

@@ -1,9 +1,11 @@
 """Cuota de viajeros de cada operador del corredor, medida con los datos de CNMC.
 
 `raillytics.procesamiento.silver_sample` genera la tabla sintética `viajeros_enriquecidos` con grano
-(fecha, estación, línea, operador). De sus tres dimensiones, dos son supuestos inevitables —nadie
-publica viajeros por estación ni por línea— pero **la del operador no tenía por qué serlo**: el CSV de
-indicadores de CNMC trae columna `Empresa`, así que el reparto entre operadores está medido.
+(fecha, par origen-destino, línea, operador). De sus tres dimensiones, dos son supuestos inevitables
+—nadie publica viajeros por par de estaciones ni por línea— pero **la del operador no tenía por qué
+serlo**: el CSV de indicadores de CNMC trae columna `Empresa`, así que el reparto entre operadores
+está medido. Lo mismo pasa con el total del corredor, que la CNMC sí publica y al que está calibrada
+`demanda_base`; lo que el generador reparte entre pares es ese total medido.
 
 Esto lo calcula y lo imprime. No modifica nada: las cuotas se escriben a mano en `OPERADORES`, con su
 procedencia al lado, igual que se hizo con `base_dia_semana` y `base_mes` en las reglas de reparto.

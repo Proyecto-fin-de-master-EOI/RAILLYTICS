@@ -1,12 +1,18 @@
-slice_name: KPI del plan del Sprint 2
-description: Cada KPI medible del plan con su objetivo y si se cumple. Los que faltan no tienen fuente; el motivo está en
-  el SQL del dataset.
+slice_name: KPI de negocio del plan
+description: 'Los KPI del plan que miran el negocio: ocupación, precio e ingreso.'
 certified_by: null
 certification_details: null
 viz_type: table
 params:
   viz_type: table
-  adhoc_filters: []
+  adhoc_filters:
+  - clause: WHERE
+    subject: familia
+    operator: IN
+    comparator:
+    - negocio
+    expressionType: SIMPLE
+    filterOptionName: filtro_familia_negocio
   query_mode: raw
   groupby: []
   metrics: []

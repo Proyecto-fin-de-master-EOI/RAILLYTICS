@@ -1,10 +1,11 @@
 slice_name: Ocupación media
-description: null
+description: 'Ocupacion media del corredor con su tendencia mensual y el cambio contra el mes anterior. El color del cambio
+  no es configurable en esta version de Superset: el signo es el que lo dice.'
 certified_by: null
 certification_details: null
-viz_type: big_number_total
+viz_type: big_number
 params:
-  viz_type: big_number_total
+  viz_type: big_number
   adhoc_filters:
   - clause: WHERE
     comparator: No filter
@@ -20,6 +21,12 @@ params:
   force_timestamp_formatting: false
   extra_form_data: {}
   dashboards: []
+  x_axis: fecha
+  time_grain_sqla: P1M
+  compare_lag: 1
+  compare_suffix: vs. mes anterior
+  show_trend_line: true
+  start_y_axis_at_zero: false
 query_context: null
 cache_timeout: null
 uuid: 41806438-af01-590e-95a5-a0a3fff49728

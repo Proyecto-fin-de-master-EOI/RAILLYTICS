@@ -9,7 +9,7 @@ params:
   adhoc_filters: []
   query_mode: aggregate
   groupby:
-  - nombre_dia
+  - dia_semana_etiqueta
   metrics:
   - ocupacion_media
   - pct_imposibles
@@ -17,7 +17,7 @@ params:
   all_columns: []
   percent_metrics: []
   order_by_cols:
-  - '["ocupacion_media", false]'
+  - '["dia_semana_etiqueta", true]'
   row_limit: 1000
   server_page_length: 15
   include_search: false

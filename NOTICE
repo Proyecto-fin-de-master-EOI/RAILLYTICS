@@ -50,10 +50,15 @@ Las otras dos fuentes no exigen una fórmula literal, pero se citan igualmente:
       el BOE (BOE-A-2024-21316 para 2025, BOE-A-2025-21667 para 2026)
 
   NAP (Punto de Acceso Nacional de Transporte Multimodal, Mº de Transportes)
-  Condiciones de uso PENDIENTES DE CONFIRMAR: su página de aviso legal devuelve
-  404. Existe por el Reglamento Delegado (UE) 2017/1926, que obliga a publicar
-  la información de transporte de viajeros para que terceros la usen, y esa es
-  la finalidad declarada. Hasta confirmarlo se cita la fuente igualmente.
+  No publica condiciones de uso propias: su aviso legal devuelve 404 y el GTFS
+  que sirve no trae feed_info.txt, que es donde el estándar declara editor y
+  licencia. Existe por el Reglamento Delegado (UE) 2017/1926, que obliga a
+  publicar la información de transporte de viajeros para que terceros la usen.
+  Al ser información del sector público estatal se le aplica el régimen general
+  de la Ley 37/2007 y el RD 1495/2011: se puede reutilizar citando la fuente,
+  sin desnaturalizar el dato, mencionando la fecha de actualización y sin dar a
+  entender que el Ministerio patrocina el trabajo. Las cuatro se cumplen (ver
+  docs/licencias.md). El GTFS en crudo no se redistribuye.
 
       Horarios: Punto de Acceso Nacional de Transporte Multimodal
       (Ministerio de Transportes)

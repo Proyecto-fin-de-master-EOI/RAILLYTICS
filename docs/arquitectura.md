@@ -120,11 +120,25 @@ tener clara una mezcla**: no todo lo que hay en Silver es real.
 > Los jobs reales de Silver para esas dos tablas **no existen todavía**, y de ellas comen dos de los
 > hechos de Gold. Lo dice la cabecera del propio `silver_sample.py`.
 
-De `viajeros_enriquecidos`, **una de sus tres dimensiones ya no es inventada**: la cuota de viajeros
-de cada operador sale de la columna `Empresa` del CSV de CNMC (`make cuotas-operador`), que la publica
-por trimestre y corredor. Estación y línea siguen siendo supuestos, y no hay forma de medirlos: nadie
-publica viajeros por estación en este corredor. El reparto entre Renfe y Avlo también sigue siendo
-supuesto, porque CNMC agrega las dos marcas bajo la misma empresa.
+De `viajeros_enriquecidos`, **dos cosas ya no son inventadas**. La cuota de viajeros de cada operador
+sale de la columna `Empresa` del CSV de CNMC (`make cuotas-operador`), que la publica por trimestre y
+corredor. Y el **total diario del corredor** también es dato: 36.222 viajes al día, los 13.221.072
+viajeros que la CNMC publica para los cuatro últimos trimestres entre 365 días. Lo que el generador
+hace con ese total es repartirlo.
+
+Lo que sigue siendo supuesto es **cómo se reparte entre pares de estaciones**: un modelo de gravedad
+—el flujo entre dos estaciones es proporcional al producto de sus pesos—, porque nadie publica
+viajeros por par en este corredor. Es un supuesto, pero uno **contrastable por su agregado**: con el
+grano origen-destino y los puntos kilométricos de las paradas, los viajeros·km se calculan desde
+abajo y se pueden comparar con los que publica la CNMC. El reparto entre Renfe y Avlo también sigue
+siendo supuesto, porque CNMC agrega las dos marcas bajo la misma empresa.
+
+> **Por qué el par y no la estación.** Hasta el 17 de octubre de 2026 había una fila por estación, y
+> un total por estación no es un número de viajes: quien va de Madrid a Barcelona aparece en las dos
+> puntas, así que la suma del día no cuadraba con nada —ni con el total del corredor, ni con la
+> CNMC, ni con la predicción diaria—. Con el par, `sum(viajeros)` de un día **es** el número de
+> viajes. La vista por estación no se pierde: sale de sumar los pares que salen o llegan a ella; al
+> revés no funcionaba.
 
 **Tablas de referencia** — cargas iniciales, no van en el DAG
 - `python/raillytics/ingesta/boe_festivos.py` → `festivos` (`make festivos`)

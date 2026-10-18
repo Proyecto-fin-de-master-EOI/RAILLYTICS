@@ -1,27 +1,22 @@
 table_name: ocupacion_diaria
 main_dttm_col: fecha
-description: 'Coeficiente de ocupación diaria del corredor AVE Madrid–Barcelona: viajeros·km / plazas·km. MITAD REAL — el
-  total del trimestre es de la CNMC, pero el reparto entre los días lo hacen las reglas del proyecto, así que la ocupación
-  de un día concreto NO es una medición. No es «viajeros por plaza»: un asiento se vende por tramos, así que el ratio de cabezas
-  pasa del 100 % legítimamente; medido en km, el 100 % sí es un techo real. «Plausible» marca los días que no lo pasan, y
-  21 de los 25 imposibles son fin de semana porque el NAP da trenes y no plazas y las composiciones dobles no se ven: cualquier
+description: 'Coeficiente de ocupación diaria del corredor AVE Madrid–Barcelona: viajeros·km / plazas·km. MITAD REAL — el total del trimestre es de la CNMC, pero el reparto entre los días lo hacen las reglas
+  del proyecto, así que la ocupación de un día concreto NO es una medición. No es «viajeros por plaza»: un asiento se vende por tramos, así que el ratio de cabezas pasa del 100 % legítimamente; medido en
+  km, el 100 % sí es un techo real. «Plausible» marca los días que no lo pasan, y 21 de los 25 imposibles son fin de semana porque el NAP da trenes y no plazas y las composiciones dobles no se ven: cualquier
   media debería filtrar por plausible o decir que no lo hace.'
 default_endpoint: null
 offset: 0
 cache_timeout: null
 schema: null
 catalog: null
-sql: "-- Fact_Ocupacion_Diaria ⋈ Dim_Fecha, con los trenes del día al lado para poder leer numerador y denominador juntos.\n\
-  -- MITAD REAL: ocupacion = viajeros·km / plazas·km. El total del TRIMESTRE es de la CNMC, pero el reparto\n-- entre los\
-  \ días lo hacen las reglas del proyecto, así que la ocupación de un día NO es una medición.\n-- `plausible` marca los días\
-  \ que no pasan del 100 %. 21 de los 25 imposibles son fin de semana, y no es\n-- un fallo de la fuente: el NAP da trenes\
-  \ y no plazas, así que las composiciones dobles no se ven.\nSELECT\n    f.fecha,\n    f.fecha_id,\n    f.corredor,\n   \
-  \ f.ocupacion,\n    f.plausible,\n    f.festivo, f.vispera, f.puente, f.regreso, f.evento, f.junto_a_evento,\n    f.temperatura_media_mad,\
-  \ f.temperatura_media_bcn,\n    d.anio, d.trimestre, d.mes, d.nombre_mes, d.dia_semana, d.nombre_dia,\n    d.es_fin_de_semana,\
-  \ d.festivo_nombre, d.festivo_ambito,\n    t.trenes,\n    d.anio || '-T' || d.trimestre                           AS trimestre_etiqueta\n\
-  FROM read_parquet('s3://raillytics-gold/fact_ocupacion_diaria/*.parquet') AS f\nLEFT JOIN read_parquet('s3://raillytics-gold/dim_fecha/*.parquet')\
-  \        AS d USING (fecha_id)\nLEFT JOIN (\n    SELECT fecha_id, sum(trenes) AS trenes\n    FROM read_parquet('s3://raillytics-gold/fact_oferta_diaria/*.parquet')\n\
-  \    WHERE corredor = 'Madrid-Barcelona'\n    GROUP BY fecha_id\n) AS t USING (fecha_id)"
+sql: "-- Fact_Ocupacion_Diaria ⋈ Dim_Fecha, con los trenes del día al lado para poder leer numerador y denominador juntos.\n-- MITAD REAL: ocupacion = viajeros·km / plazas·km. El total del TRIMESTRE es\
+  \ de la CNMC, pero el reparto\n-- entre los días lo hacen las reglas del proyecto, así que la ocupación de un día NO es una medición.\n-- `plausible` marca los días que no pasan del 100 %. 21 de los 25\
+  \ imposibles son fin de semana, y no es\n-- un fallo de la fuente: el NAP da trenes y no plazas, así que las composiciones dobles no se ven.\nSELECT\n    f.fecha,\n    f.fecha_id,\n    f.corredor,\n \
+  \   f.ocupacion,\n    f.plausible,\n    f.festivo, f.vispera, f.puente, f.regreso, f.evento, f.junto_a_evento,\n    f.temperatura_media_mad, f.temperatura_media_bcn,\n    d.anio, d.trimestre, d.mes, d.nombre_mes,\
+  \ d.dia_semana, d.nombre_dia,\n    d.dia_semana || ' · ' || d.nombre_dia AS dia_semana_etiqueta,\n    d.es_fin_semana, d.festivo_nombre, d.festivo_ambito,\n    t.trenes,\n    d.anio || '-T' || d.trimestre\
+  \                           AS trimestre_etiqueta\nFROM read_parquet('s3://raillytics-gold/fact_ocupacion_diaria/*.parquet') AS f\nLEFT JOIN read_parquet('s3://raillytics-gold/dim_fecha/*.parquet')  \
+  \      AS d USING (fecha_id)\nLEFT JOIN (\n    SELECT fecha_id, sum(trenes) AS trenes\n    FROM read_parquet('s3://raillytics-gold/fact_oferta_diaria/*.parquet')\n    WHERE corredor = 'Madrid-Barcelona'\n\
+  \    GROUP BY fecha_id\n) AS t USING (fecha_id)"
 params: null
 template_params: null
 filter_select_enabled: true
@@ -67,8 +62,7 @@ metrics:
   verbose_name: '% días imposibles'
   metric_type: null
   expression: AVG(CASE WHEN plausible THEN 0.0 ELSE 1.0 END)
-  description: Días con ocupación calculada por encima del 100 %. Señala el problema del denominador, no necesariamente un
-    error de la fuente.
+  description: Días con ocupación calculada por encima del 100 %. Señala el problema del denominador, no necesariamente un error de la fuente.
   d3format: .1%
   extra: null
   warning_text: null
@@ -78,6 +72,14 @@ metrics:
   expression: AVG(trenes)
   description: null
   d3format: ',.1f'
+  extra: null
+  warning_text: null
+- metric_name: ocupacion_imposible
+  verbose_name: Ocupación imposible (más del 100 %)
+  metric_type: null
+  expression: AVG(CASE WHEN NOT plausible THEN ocupacion END)
+  description: 'Los días cuya ocupación calculada pasa del 100 %. No es que se llenen: es que la demanda de la CNMC incluye a Iryo y la oferta del NAP no.'
+  d3format: .1%
   extra: null
   warning_text: null
 columns:
@@ -189,7 +191,7 @@ columns:
   description: null
   python_date_format: null
   extra: null
-- column_name: es_fin_de_semana
+- column_name: es_fin_semana
   verbose_name: Fin de semana
   is_dttm: false
   is_active: true
@@ -307,6 +309,18 @@ columns:
   filterable: true
   expression: null
   description: null
+  python_date_format: null
+  extra: null
+- column_name: dia_semana_etiqueta
+  verbose_name: Día de la semana
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: El número delante es para que ordene de lunes a domingo.
   python_date_format: null
   extra: null
 version: 1.0.0

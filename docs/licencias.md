@@ -12,7 +12,7 @@ de esas licencias imponen condiciones que hay que cumplir.
 | INE | **CC BY 4.0** | **sí, con texto concreto** | no |
 | AEMET | reutilización autorizada citando a AEMET | **sí** | no |
 | BOE | disposiciones oficiales, sin derecho de autor | recomendable | no |
-| NAP (Mº Transportes) | **pendiente de confirmar** | — | — |
+| NAP (Mº Transportes) | sin condiciones propias; **régimen general** (Ley 37/2007) | **sí** | no |
 | Renfe GTFS-RT, CRTM | **pendiente de confirmar** | — | — |
 
 ---
@@ -95,19 +95,62 @@ Aun así conviene citar el documento concreto, porque identifica la versión usa
 > Festivos: resoluciones de la Dirección General de Trabajo publicadas en el BOE
 > (BOE-A-2024-21316 para 2025, BOE-A-2025-21667 para 2026)
 
-## NAP — pendiente de confirmar
+## NAP — sin condiciones publicadas, se aplica el régimen general
 
 El Punto de Acceso Nacional del Ministerio de Transportes existe por el Reglamento Delegado (UE)
 2017/1926, que obliga a los estados a publicar la información de transporte de viajeros en formato
 digital para que terceros la usen. Esa es la finalidad declarada.
 
-**Pero no se ha localizado la página de condiciones de uso**: `nap.transportes.gob.es/aviso-legal`
-devuelve 404. Hasta confirmarlo, lo prudente es citar la fuente igualmente:
+**Pero el NAP no publica condiciones de uso propias.** Comprobado el 18 de octubre de 2026, una por
+una:
+
+| dónde se buscó | qué responde |
+| --- | --- |
+| `nap.transportes.gob.es/aviso-legal` | **404** |
+| `nap.transportes.gob.es/Home/AvisoLegal` | **404** |
+| `www.transportes.gob.es/aviso-legal` | **403** (no se puede leer desde fuera) |
+| `nap.transportes.gob.es` (portada) | no se pudo descargar para buscar el enlace: la respuesta pasa de 10 MB |
+| el propio GTFS que descargamos | **no trae `feed_info.txt`**, que es el fichero del estándar donde se declaran el editor del feed y su licencia. El ZIP solo trae `agency.txt`, `calendar.txt`, `calendar_dates.txt`, `routes.txt`, `stops.txt`, `stop_times.txt` y `trips.txt` |
+
+Así que no hay licencia declarada que citar, y no por no haberla buscado.
+
+**Qué se aplica entonces.** El NAP es información del sector público de la Administración General del
+Estado, y para eso hay régimen general: la **Ley 37/2007** de reutilización de la información del
+sector público y el **Real Decreto 1495/2011** que la desarrolla para el sector público estatal. Es
+el mismo marco que el portal `datos.gob.es` declara en su aviso legal, que sí es legible, y que
+permite la reutilización —comercial y no comercial— con cuatro condiciones:
+
+1. citar la fuente;
+2. no desnaturalizar la información;
+3. mencionar la fecha de la última actualización si figura en el original;
+4. no dar a entender que el titular de los datos patrocina o apoya la reutilización.
+
+**Esto es una inferencia, y conviene decirlo así en la defensa**: ninguna página del NAP dice que sus
+horarios se publiquen bajo ese régimen. Lo que se afirma es que es información pública de la AGE y
+que, a falta de condiciones específicas, el régimen general es el que le corresponde por ley.
+
+**Qué hace el proyecto para cumplirlo.** Las cuatro condiciones se cumplen y se puede enseñar dónde:
+
+- **Se cita la fuente** en el `NOTICE`, en el README y al pie de los cuadros de mando que enseñan
+  oferta.
+- **No se desnaturaliza**: de los horarios solo se cuentan trenes por día, corredor y operador. El
+  dato no se modifica, se agrega, y el aviso de que **el NAP da trenes y no plazas** acompaña a
+  cualquier cifra de ocupación en `docs/arquitectura.md` y en los propios cuadros.
+- **La fecha queda registrada**: cada descarga deja su `snapshot` en `fact_oferta_diaria` y su fila
+  en la trazabilidad de cargas, con fecha y hora.
+- **No se sugiere patrocinio**: el repositorio dice en el README que es un trabajo académico y que el
+  Ministerio no participa en él.
+
+Y una condición que el proyecto se impone por prudencia, no porque se la exijan: **no se redistribuye
+el GTFS en crudo**. Los ZIP descargados se quedan en el lago, que no está versionado; lo que viaja al
+repositorio son agregados (trenes por día) y resultados derivados.
 
 > Horarios: Punto de Acceso Nacional de Transporte Multimodal (Ministerio de Transportes)
 
-**Esto hay que cerrarlo** antes de entregar, sobre todo porque la serie de oferta diaria se construye
-desde ahí y es una pieza central del trabajo.
+**Cómo se cerraría del todo**, si alguien quiere ir más lejos: escribiendo al NAP por su formulario
+de contacto y pidiendo las condiciones por escrito, o releyendo los términos que se aceptaron al dar
+de alta la clave de API (`NAP_API_KEY`), que es el otro sitio donde una administración suele ponerlos.
+Ninguna de las dos cosas es un bloqueo para entregar: el régimen general aplica igual.
 
 ## Renfe GTFS-RT y CRTM — pendiente de confirmar
 
@@ -143,10 +186,13 @@ convencional para esto.
 - el **cuadro de mandos**, en un bloque de texto al pie de los dashboards que muestran datos de la
   CNMC o del INE, que es donde alguien ve las cifras sin pasar por el repositorio.
 
-**3. Qué sigue pendiente: las condiciones del NAP.** Su página de aviso legal devuelve 404 y no se ha
-localizado otra. Es lo único abierto de este apartado, y conviene cerrarlo antes de entregar porque
-la serie de oferta diaria se construye desde ahí y es una pieza central del trabajo. Mientras, se
-cita la fuente igualmente y queda dicho que las condiciones no están confirmadas.
+**3. Las condiciones del NAP, cerradas el 18 de octubre de 2026.** No publica condiciones propias
+—su aviso legal devuelve 404, el del Ministerio 403 y su GTFS no trae `feed_info.txt`—, así que se
+aplica el régimen general de reutilización de información del sector público (Ley 37/2007 y RD
+1495/2011) y el proyecto cumple sus cuatro condiciones. El razonamiento completo, con lo que se
+comprobó y dónde se cumple cada una, está en el apartado del NAP de este mismo documento. Se deja
+dicho que es una inferencia: el NAP no declara ese régimen, se le aplica por ser información pública
+de la AGE.
 
 ## Una nota sobre quién es el titular
 

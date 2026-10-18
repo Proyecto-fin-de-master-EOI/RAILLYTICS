@@ -250,14 +250,17 @@ def test_el_origen_cnmc_con_otras_columnas_falla_con_el_nombre_del_origen(lake):
 
 
 def test_cargar_config_lee_el_origen_cnmc_si_esta_y_no_lo_exige(tmp_path):
+    # Los ficheros NO se llaman `sin.yml` y `con.yml`: `CON` es un nombre de dispositivo reservado
+    # en Windows —como PRN, AUX o NUL—, así que `con.yml` no se crea como fichero y el test fallaba
+    # siempre en Windows, que es donde trabaja el equipo, con «no existe la configuración».
     base = {n: {"sql": s} for n, s in CONSULTAS.items()}
-    sin = tmp_path / "sin.yml"
-    sin.write_text(yaml.safe_dump({"origenes": base}), encoding="utf-8")
-    con = tmp_path / "con.yml"
-    con.write_text(yaml.safe_dump({"origenes": {**base, "cnmc": {"sql": CNMC_SQL}}}), encoding="utf-8")
+    sin_cnmc = tmp_path / "sin_cnmc.yml"
+    sin_cnmc.write_text(yaml.safe_dump({"origenes": base}), encoding="utf-8")
+    con_cnmc = tmp_path / "con_cnmc.yml"
+    con_cnmc.write_text(yaml.safe_dump({"origenes": {**base, "cnmc": {"sql": CNMC_SQL}}}), encoding="utf-8")
 
-    assert "cnmc" not in cargar_config(sin)
-    assert cargar_config(con)["cnmc"] == CNMC_SQL
+    assert "cnmc" not in cargar_config(sin_cnmc)
+    assert cargar_config(con_cnmc)["cnmc"] == CNMC_SQL
 
 
 def test_cargar_trimestrales_solo_necesita_ese_origen(lake):

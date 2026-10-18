@@ -1,24 +1,19 @@
 table_name: oferta_diaria
 main_dttm_col: fecha
-description: 'Trenes que circulan cada día en el corredor, por operador (NAP, datos REALES). Es la única serie diaria medida
-  del proyecto, y con ella se calibró el coeficiente por día de la semana del reparto de la predicción. AVISO: son TRENES,
-  no plazas — una composición doble cuenta como un tren, así que esto es servicio y no capacidad. Y falta Iryo, que no publica
-  horarios en el NAP, así que la oferta cubre Renfe y OUIGO pero no el corredor completo. Filtrar por «cobertura completa»
-  o decir que no se filtra: un día al que le falta un operador no es menos servicio, es dato incompleto.'
+description: 'Trenes que circulan cada día en el corredor, por operador (NAP, datos REALES). Es la única serie diaria medida del proyecto, y con ella se calibró el coeficiente por día de la semana del reparto
+  de la predicción. AVISO: son TRENES, no plazas — una composición doble cuenta como un tren, así que esto es servicio y no capacidad. Y falta Iryo, que no publica horarios en el NAP, así que la oferta
+  cubre Renfe y OUIGO pero no el corredor completo. Filtrar por «cobertura completa» o decir que no se filtra: un día al que le falta un operador no es menos servicio, es dato incompleto.'
 default_endpoint: null
 offset: 0
 cache_timeout: null
 schema: null
 catalog: null
-sql: "-- Fact_Oferta_Diaria ⋈ Dim_Fecha ⋈ Dim_Operador, leído con DuckDB del Parquet de Gold en MinIO.\n-- DATOS REALES: son\
-  \ los viajes que el NAP publica en el GTFS de cada operador, contados por día.\n-- AVISO que hay que arrastrar a cualquier\
-  \ lectura: son TRENES, no plazas. Una composición doble cuenta\n-- como un tren. Y falta Iryo, que no publica horarios en\
-  \ el NAP.\nSELECT\n    f.fecha,\n    f.fecha_id,\n    f.corredor,\n    f.operador_id,\n    coalesce(o.nombre, f.operador_id)\
-  \                       AS operador,\n    d.anio, d.trimestre, d.mes, d.nombre_mes, d.dia_semana, d.nombre_dia,\n    d.es_fin_de_semana,\
-  \ d.es_festivo, d.festivo_nombre, d.festivo_ambito,\n    f.trenes,\n    f.trenes_todos,\n    f.cobertura_completa,\n   \
-  \ f.corredor = 'Madrid-Barcelona'                         AS es_corredor_del_proyecto\nFROM read_parquet('s3://raillytics-gold/fact_oferta_diaria/*.parquet')\
-  \ AS f\nLEFT JOIN read_parquet('s3://raillytics-gold/dim_fecha/*.parquet')     AS d USING (fecha_id)\nLEFT JOIN read_parquet('s3://raillytics-gold/dim_operador/*.parquet')\
-  \  AS o USING (operador_id)"
+sql: "-- Fact_Oferta_Diaria ⋈ Dim_Fecha ⋈ Dim_Operador, leído con DuckDB del Parquet de Gold en MinIO.\n-- DATOS REALES: son los viajes que el NAP publica en el GTFS de cada operador, contados por día.\n\
+  -- AVISO que hay que arrastrar a cualquier lectura: son TRENES, no plazas. Una composición doble cuenta\n-- como un tren. Y falta Iryo, que no publica horarios en el NAP.\nSELECT\n    f.fecha,\n    f.fecha_id,\n\
+  \    f.corredor,\n    f.operador_id,\n    coalesce(o.nombre, f.operador_id)                       AS operador,\n    d.anio, d.trimestre, d.mes, d.nombre_mes, d.dia_semana, d.nombre_dia,\n    d.dia_semana\
+  \ || ' · ' || d.nombre_dia AS dia_semana_etiqueta,\n    d.es_fin_semana, d.es_festivo, d.festivo_nombre, d.festivo_ambito,\n    f.trenes,\n    f.trenes_todos,\n    f.cobertura_completa,\n    f.corredor\
+  \ = 'Madrid-Barcelona'                         AS es_corredor_del_proyecto\nFROM read_parquet('s3://raillytics-gold/fact_oferta_diaria/*.parquet') AS f\nLEFT JOIN read_parquet('s3://raillytics-gold/dim_fecha/*.parquet')\
+  \     AS d USING (fecha_id)\nLEFT JOIN read_parquet('s3://raillytics-gold/dim_operador/*.parquet')  AS o USING (operador_id)"
 params: null
 template_params: null
 filter_select_enabled: true
@@ -181,7 +176,7 @@ columns:
   description: null
   python_date_format: null
   extra: null
-- column_name: es_fin_de_semana
+- column_name: es_fin_semana
   verbose_name: Fin de semana
   is_dttm: false
   is_active: true
@@ -275,6 +270,18 @@ columns:
   filterable: true
   expression: null
   description: null
+  python_date_format: null
+  extra: null
+- column_name: dia_semana_etiqueta
+  verbose_name: Día de la semana
+  is_dttm: false
+  is_active: true
+  type: VARCHAR
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: El número delante es para que ordene de lunes a domingo.
   python_date_format: null
   extra: null
 version: 1.0.0

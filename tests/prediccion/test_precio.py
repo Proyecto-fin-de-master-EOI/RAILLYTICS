@@ -47,7 +47,7 @@ def _lago(con, layout, ocupaciones, precios, plausibles=None):
 def _precios(operador="RENFE", valores=((2026, 1, 60.0), (2026, 2, 60.0))):
     return [
         {"anio": a, "trimestre": t, "trayecto": "Madrid-Barcelona", "empresa": operador,
-         "operador_id": operador, "precio_medio_eur": p}
+         "operador_id": operador, "precio_eur": p}
         for a, t, p in valores
     ]
 

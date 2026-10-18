@@ -459,11 +459,11 @@ locales (así corren los tests, sin MinIO).
 
 | Tabla | Grano | Columnas principales |
 | --- | --- | --- |
-| `dim_fecha` | día | `fecha_id` (AAAAMMDD), `fecha`, `anio`, `trimestre`, `mes`, `nombre_mes`, `dia_semana` (1 = lunes), `nombre_dia`, `es_fin_de_semana`, `es_festivo`, `festivo_nombre`, `estacion_anio` |
-| `dim_estacion` | estación | `estacion_id`, `nombre`, `provincia`, `comunidad`, `latitud`, `longitud` |
-| `dim_linea` | línea | `linea_id`, `nombre`, `tipo_tren`, `origen`, `destino` |
+| `dim_fecha` | día | `fecha_id` (AAAAMMDD), `fecha`, `anio`, `trimestre`, `mes`, `nombre_mes`, `dia_semana` (1 = lunes), `nombre_dia`, `es_fin_semana`, `es_festivo`, `festivo_nombre`, `estacion_anio` |
+| `dim_estacion` | estación | `id_estacion`, `nombre`, `codigo_adif` (el real, del GTFS de Renfe), `municipio`, `provincia`, `comunidad`, `latitud`, `longitud` |
+| `dim_linea` | línea | `linea_id`, `nombre`, `tipo_tren`, `origen`, `destino`, `longitud_km` |
 | `dim_operador` | operador | `operador_id`, `nombre`, `empresa`, `segmento` (alta velocidad o low cost) |
-| `fact_viajeros` | día × estación × línea × operador | `fecha_id`, `fecha`, `estacion_id`, `linea_id`, `operador_id`, `viajeros`, `temperatura_media`, `precipitacion_mm`, `condicion_meteo` |
+| `fact_viajeros` | día × par origen-destino × línea × operador | `fecha_id`, `fecha`, `estacion_origen_id`, `estacion_destino_id`, `distancia_km`, `linea_id`, `operador_id`, `viajeros`, `viajeros_km`, `temperatura_media`, `precipitacion_mm`, `condicion_meteo` |
 | `fact_puntualidad` | servicio (tren) | `fecha_id`, `fecha`, `linea_id`, `operador_id`, `estacion_id`, `servicio_id`, `hora_prevista`, `hora_real`, `hora`, `retraso_min`, `estado`, `cancelado`, `es_puntual` (retraso ≤ 5 min), meteo |
 | `fact_mercado_trimestral` (*) | trimestre × corredor × operador | `anio`, `trimestre`, `fecha_inicio`, `linea_id`, `operador_id`, `viajeros`, `plazas_ofertadas`, `plazas_km`, `tren_km`, `viajeros_km`, `ingresos_eur` |
 | `fact_precio_trimestral` (*) | trimestre × corredor × operador | `anio`, `trimestre`, `fecha_inicio`, `linea_id`, `operador_id`, `precio_medio_eur` |
@@ -1196,8 +1196,13 @@ Las otras tres no exigen fórmula, pero se citan igualmente:
   autorizada citando a AEMET como autor.
 - **Festivos:** resoluciones de la Dirección General de Trabajo publicadas en el BOE. Son
   disposiciones oficiales y no están sujetas a derecho de autor (art. 13 TRLPI).
-- **Horarios:** Punto de Acceso Nacional de Transporte Multimodal (Ministerio de Transportes).
-  Sus condiciones de uso están **pendientes de confirmar**: la página de aviso legal devuelve 404.
+- **Horarios:** Punto de Acceso Nacional de Transporte Multimodal (Ministerio de Transportes). No
+  publica condiciones de uso propias (su aviso legal devuelve 404 y su GTFS no trae `feed_info.txt`),
+  así que se le aplica el **régimen general** de reutilización de información del sector público
+  —Ley 37/2007 y RD 1495/2011—: citar la fuente, no desnaturalizar el dato, mencionar la fecha de
+  actualización y no dar a entender que el Ministerio patrocina este trabajo, **que no lo hace**: es
+  un trabajo académico sin relación con él. El detalle está en
+  [`docs/licencias.md`](docs/licencias.md).
 
 ### Lo que las licencias prohíben, y aquí importa
 

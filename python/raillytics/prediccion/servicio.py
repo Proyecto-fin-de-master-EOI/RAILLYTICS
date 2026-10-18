@@ -241,8 +241,8 @@ def ejecutar(
                 # banda diaria tiene la forma de la predicción. Ojo con lo que esto cubre y lo que
                 # no: cubre la incertidumbre del nivel trimestral, que es donde está el error
                 # grande, pero NO la del reparto entre días.
-                gold["viajeros_min"] = [float(v) for v in repartir(valores, banda.bajo)]
-                gold["viajeros_max"] = [float(v) for v in repartir(valores, banda.alto)]
+                gold["cota_inferior"] = [float(v) for v in repartir(valores, banda.bajo)]
+                gold["cota_superior"] = [float(v) for v in repartir(valores, banda.alto)]
                 gold["ic_confianza"] = float(banda.confianza)
                 gold["ic_cobertura"] = float(banda_cobertura) if banda_cobertura is not None else None
             with ejecucion.tabla(GOLD_TABLA, origen=f"{s.modelo} · {version_prompt}") as carga_gold:

@@ -87,7 +87,7 @@ class SilverSqlSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
       Seq("2026T2", "Renfe-AVE", "Comercial", "Cercanías", "Madrid-Barcelona", "5,0", "f")
     ))
 
-    val filas = silverDe("cnmc_precio_trimestral", df).select("anio", "trimestre", "operador_id", "precio_medio_eur")
+    val filas = silverDe("cnmc_precio_trimestral", df).select("anio", "trimestre", "operador_id", "precio_eur")
       .collect().map(r => (r.getString(2), r.getDecimal(3).toPlainString)).toSet
 
     filas shouldBe Set(("RENFE", "71.60"), ("AVLO", "39.90"), ("TOTAL", "66.06"))

@@ -1,5 +1,6 @@
 slice_name: Ocupación diaria
-description: viajeros·km / plazas·km. Solo días plausibles. El reparto entre días lo hacen reglas.
+description: 'La línea violeta son los días con ocupación creíble. Los puntos rojos, los días cuya ocupación calculada pasa
+  del 100 %: imposible, porque la oferta del NAP no incluye a Iryo y la demanda de la CNMC sí.'
 certified_by: null
 certification_details: null
 viz_type: echarts_timeseries_line
@@ -18,6 +19,7 @@ params:
   x_axis_sort_series_ascending: true
   metrics:
   - ocupacion_media
+  - ocupacion_imposible
   groupby: []
   order_desc: true
   row_limit: 10000
@@ -39,13 +41,15 @@ params:
   x_axis_time_format: smart_date
   rich_tooltip: true
   tooltipTimeFormat: smart_date
-  y_axis_format: SMART_NUMBER
+  y_axis_format: .0%
   truncateXAxis: true
   y_axis_bounds:
   - null
   - null
   extra_form_data: {}
   dashboards: []
+  markerEnabled: false
+  markerSize: 6
 query_context: null
 cache_timeout: null
 uuid: 9f0e0edf-dadc-57e5-9ac4-0ded6f23b27f

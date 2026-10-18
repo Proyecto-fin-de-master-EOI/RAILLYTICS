@@ -6,7 +6,9 @@ import pytest
 
 from raillytics.procesamiento.silver_sample import (
     CONDICIONES_METEO,
+    ESTACIONES,
     ESTADOS,
+    LINEAS,
     OPERADORES as OPERADORES_DEF,
     PUNTUALIDAD_COLUMNS,
     TIPOS_TREN,
@@ -40,7 +42,8 @@ def test_viajeros_follow_the_silver_contract(sample):
     assert tuple(viajeros.columns) == VIAJEROS_COLUMNS
     assert viajeros.fecha.min().date() == START and viajeros.fecha.max().date() == END
     assert not viajeros.drop(columns="festivo_nombre").isna().any().any()
-    assert not viajeros.duplicated(["fecha", "estacion_id", "linea_id", "operador_id"]).any()
+    assert not viajeros.duplicated(
+        ["fecha", "estacion_origen_id", "estacion_destino_id", "linea_id", "operador_id"]).any()
     assert (viajeros.viajeros > 0).all()
     assert set(viajeros.tipo_tren) == set(TIPOS_TREN)
     assert set(viajeros.condicion_meteo) <= set(CONDICIONES_METEO)
@@ -50,11 +53,58 @@ def test_the_sample_covers_only_the_ave_madrid_barcelona_corridor(sample):
     estaciones = {"MADPA", "ZARDE", "TARRA", "BCNSA"}  # Atocha, Zaragoza Delicias, Camp de Tarragona, Sants
 
     assert set(sample.viajeros.linea_id) == set(sample.puntualidad.linea_id) == {"AVE-MAD-BCN"}
-    assert set(sample.viajeros.estacion_id) == estaciones
+    assert set(sample.viajeros.estacion_origen_id) == estaciones
+    assert set(sample.viajeros.estacion_destino_id) == estaciones
     assert set(sample.puntualidad.estacion_id) <= estaciones
     assert set(sample.viajeros.tipo_tren) == {"AVE"}
     assert set(sample.viajeros.provincia) == {"Madrid", "Zaragoza", "Tarragona", "Barcelona"}
     assert TIPOS_TREN == ("AVE",)
+
+
+def test_viajeros_are_origin_destination_pairs(sample):
+    """El grano es el par, y de ahí salen dos cosas que antes no se podían comprobar.
+
+    Una: `sum(viajeros)` de un día ES el número de viajes del corredor, así que se puede contrastar
+    con el dato publicado al que está calibrado `demanda_base` (36.222 viajes/día de la CNMC).
+    Otra: `viajeros_km` se calcula desde abajo, viajero a viajero por su distancia, en vez de
+    copiarlo agregado de la CNMC.
+    """
+    viajeros = sample.viajeros
+    estaciones = {e.id: e for e in ESTACIONES}
+    pares = set(zip(viajeros.estacion_origen_id, viajeros.estacion_destino_id))
+
+    # Cuatro paradas -> doce pares, los seis de ida y los seis de vuelta. Nadie viaja de una
+    # estación a sí misma.
+    assert len(pares) == 12
+    assert not any(a == b for a, b in pares)
+    for a, b in pares:
+        assert (a, b) != (b, a)
+
+    # La distancia de cada par es la resta de sus puntos kilométricos, y la de Madrid–Barcelona es
+    # la longitud publicada de la línea.
+    distancias = viajeros.groupby(["estacion_origen_id", "estacion_destino_id"]).distancia_km.first()
+    for (a, b), km in distancias.items():
+        assert km == abs(estaciones[b].pk_km - estaciones[a].pk_km)
+    assert distancias[("MADPA", "BCNSA")] == 621.0
+    assert (viajeros.longitud_km == 621.0).all()
+
+    # viajeros·km es viajeros por distancia, fila a fila: es la identidad que vigila el quality gate
+    # `viajeros_km_coherente`.
+    assert (viajeros.viajeros_km == viajeros.viajeros * viajeros.distancia_km).all()
+
+    # Y la comprobación que justifica todo el cambio de grano: la distancia media de un viaje que
+    # sale del reparto tiene que ser la MEDIDA, el cociente viajeros·km / viajeros que publica la
+    # CNMC para el corredor (507,9 km de media en los seis últimos trimestres). A eso están
+    # calibrados los pesos de ESTACIONES; si alguien los cambia, este test lo cuenta.
+    km_por_viaje = viajeros.viajeros_km.sum() / viajeros.viajeros.sum()
+    assert abs(km_por_viaje - 507.9) < 5.0, km_por_viaje
+
+    # El total diario se queda cerca de la base calibrada. El margen es amplio a propósito: encima
+    # de la base actúan los factores de mes, día de la semana, festivo y meteo, que son justo lo que
+    # debe mover la demanda de un día concreto.
+    media_diaria = viajeros.groupby("fecha").viajeros.sum().mean()
+    base = LINEAS[0].demanda_base
+    assert 0.75 * base < media_diaria < 1.25 * base
 
 
 OPERADORES = {"RENFE": "Renfe", "IRYO": "Iryo", "OUIGO": "Ouigo", "AVLO": "Avlo"}
@@ -106,7 +156,7 @@ def test_each_operator_runs_its_own_number_of_services_per_day(sample):
 
 
 def test_operators_differ_in_punctuality(sample):
-    retraso = sample.puntualidad.groupby("operador_id").retraso_min.mean()
+    retraso = sample.puntualidad.groupby("operador_id").retraso_minutos.mean()
 
     assert retraso["OUIGO"] > retraso["IRYO"]  # el más lento y el más puntual del modelo
 
@@ -126,15 +176,15 @@ def test_puntualidad_follows_the_silver_contract(sample):
 
     assert tuple(puntualidad.columns) == PUNTUALIDAD_COLUMNS
     assert puntualidad.servicio_id.is_unique
-    assert set(puntualidad.estado) == set(ESTADOS)
+    assert set(puntualidad.estado_servicio) == set(ESTADOS)
     assert (puntualidad.hora_prevista.dt.date == puntualidad.fecha.dt.date).all()
 
-    cancelados = puntualidad[puntualidad.estado == "cancelado"]
-    realizados = puntualidad[puntualidad.estado == "realizado"]
+    cancelados = puntualidad[puntualidad.estado_servicio == "cancelado"]
+    realizados = puntualidad[puntualidad.estado_servicio == "realizado"]
     assert len(cancelados) > 0
-    assert cancelados.retraso_min.isna().all() and cancelados.hora_real.isna().all()
-    assert (realizados.retraso_min >= 0).all()
-    esperado = realizados.hora_prevista + pd.to_timedelta(realizados.retraso_min.astype("int64"), unit="m")
+    assert cancelados.retraso_minutos.isna().all() and cancelados.hora_real.isna().all()
+    assert (realizados.retraso_minutos >= 0).all()
+    esperado = realizados.hora_prevista + pd.to_timedelta(realizados.retraso_minutos.astype("int64"), unit="m")
     assert (realizados.hora_real == esperado).all()
 
 
