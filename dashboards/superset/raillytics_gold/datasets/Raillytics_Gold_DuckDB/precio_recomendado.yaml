@@ -43,7 +43,7 @@ metrics:
   metric_type: null
   expression: AVG(CASE WHEN plausible THEN precio_recomendado_eur END)
   description: Media de las recomendaciones de los días plausibles.
-  d3format: $,.2f
+  d3format: ',.2f'
   extra: null
   warning_text: null
 - metric_name: precio_base_medio
@@ -51,7 +51,7 @@ metrics:
   metric_type: null
   expression: AVG(CASE WHEN plausible THEN precio_base_eur END)
   description: El precio medio observado, que es la base sobre la que se recomienda.
-  d3format: $,.2f
+  d3format: ',.2f'
   extra: null
   warning_text: null
 - metric_name: precio_punta
@@ -59,7 +59,7 @@ metrics:
   metric_type: null
   expression: AVG(CASE WHEN es_punta AND plausible THEN precio_recomendado_eur END)
   description: Mañana (6-9) y tarde (15-19).
-  d3format: $,.2f
+  d3format: ',.2f'
   extra: null
   warning_text: null
 - metric_name: precio_valle
@@ -67,7 +67,7 @@ metrics:
   metric_type: null
   expression: AVG(CASE WHEN NOT es_punta AND plausible THEN precio_recomendado_eur END)
   description: null
-  d3format: $,.2f
+  d3format: ',.2f'
   extra: null
   warning_text: null
 - metric_name: en_rango

@@ -1,4 +1,4 @@
-slice_name: Precio recomendado en punta
+slice_name: Precio recomendado en punta (€)
 description: null
 certified_by: null
 certification_details: null
@@ -15,7 +15,7 @@ params:
   header_font_size: 0.4
   subheader: mañana (6-9) y tarde (15-19)
   subheader_font_size: 0.15
-  y_axis_format: $,.2f
+  y_axis_format: ',.2f'
   time_format: smart_date
   force_timestamp_formatting: false
   extra_form_data: {}

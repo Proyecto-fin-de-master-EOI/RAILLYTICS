@@ -14,14 +14,14 @@ params:
     sqlExpression: cobertura_completa
   query_mode: aggregate
   groupby:
-  - nombre_dia
+  - dia_semana_etiqueta
   metrics:
   - trenes_por_dia
   - dias
   all_columns: []
   percent_metrics: []
   order_by_cols:
-  - '["trenes_por_dia", false]'
+  - '["dia_semana_etiqueta", true]'
   row_limit: 1000
   server_page_length: 15
   include_search: false
