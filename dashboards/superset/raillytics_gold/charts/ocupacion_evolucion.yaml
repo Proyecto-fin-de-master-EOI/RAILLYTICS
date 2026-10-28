@@ -1,5 +1,5 @@
 slice_name: Ocupación diaria
-description: 'La línea violeta son los días con ocupación creíble. Los puntos rojos, los días cuya ocupación calculada pasa
+description: 'La línea violeta son los días con ocupación creíble. Los puntos turquesa, los días cuya ocupación calculada pasa
   del 100 %: imposible, porque la oferta del NAP no incluye a Iryo y la demanda de la CNMC sí.'
 certified_by: null
 certification_details: null
@@ -48,7 +48,7 @@ params:
   - null
   extra_form_data: {}
   dashboards: []
-  markerEnabled: false
+  markerEnabled: true
   markerSize: 6
 query_context: null
 cache_timeout: null
