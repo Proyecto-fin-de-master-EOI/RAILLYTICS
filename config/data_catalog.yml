@@ -1064,12 +1064,23 @@ tablas:
     upstream: [todos_los_procesos]
     downstream: [dashboard:trazabilidad-cargas, dashboard:lineage-cargas]
     columnas:
-      - {nombre: run_id, tipo: VARCHAR, descripcion: "ID único de ejecución", es_clave: true, termino_glosario: "Run ID"}
-      - {nombre: proceso, tipo: VARCHAR, descripcion: "Nombre del componente técnico", es_clave: false}
-      - {nombre: tabla, tipo: VARCHAR, descripcion: "Tabla escrita", es_clave: true}
+      - {nombre: run_id, tipo: VARCHAR, descripcion: "ID único de ejecución: AAAAMMDDTHHMMSS-proceso-hash", es_clave: true, termino_glosario: "Run ID"}
+      - {nombre: proceso, tipo: VARCHAR, descripcion: "Componente que escribió la tabla (gold_build, silver_builder, bronze_download...)", es_clave: false}
+      - {nombre: capa, tipo: VARCHAR, descripcion: "Capa del medallón a la que pertenece la tabla escrita", es_clave: false}
+      - {nombre: tabla, tipo: VARCHAR, descripcion: "Tabla escrita; vacía en la fila que registra la carga completa", es_clave: true}
+      - {nombre: origen, tipo: VARCHAR, descripcion: "De dónde salió el dato: ruta, URL o la orden que lo lanzó", es_clave: false}
+      - {nombre: destino, tipo: VARCHAR, descripcion: "Ruta del lago donde quedó escrito", es_clave: false}
       - {nombre: filas, tipo: BIGINT, descripcion: "Número de registros producidos", es_clave: false}
-      - {nombre: duracion_s, tipo: DOUBLE, descripcion: "Segundos empleados", es_clave: false, termino_glosario: "Trazabilidad de Cargas"}
+      - {nombre: bytes, tipo: BIGINT, descripcion: "Tamaño de lo escrito, cuando el proceso lo conoce", es_clave: false}
+      - {nombre: inicio, tipo: TIMESTAMP, descripcion: "Comienzo de la carga, en UTC", es_clave: false}
+      - {nombre: fin, tipo: TIMESTAMP, descripcion: "Final de la carga, en UTC", es_clave: false}
+      - {nombre: duracion_s, tipo: DOUBLE, descripcion: "Segundos empleados; es el reloj de pared, no la suma de fases", es_clave: false, termino_glosario: "Trazabilidad de Cargas"}
       - {nombre: estado, tipo: VARCHAR, descripcion: "'ok' o 'error'", es_clave: false}
+      - {nombre: error, tipo: VARCHAR, descripcion: "Motivo del fallo cuando estado es 'error'; vacío si fue bien", es_clave: false}
+      - {nombre: parametros, tipo: VARCHAR, descripcion: "JSON con lo que recibió el proceso: trimestre, ventana de fechas, segundos por paso...", es_clave: false}
+      - {nombre: lanzado_por, tipo: VARCHAR, descripcion: "Quién la disparó: 'make', 'airflow:<dag>' o 'cli'", es_clave: false}
+      - {nombre: ejecutor, tipo: VARCHAR, descripcion: "Máquina en la que corrió", es_clave: false}
+      - {nombre: usuario, tipo: VARCHAR, descripcion: "Usuario del sistema que la lanzó", es_clave: false}
 
   - tabla: calidad
     nombre: Historial de Quality Gates
@@ -1086,8 +1097,20 @@ tablas:
     upstream: [todos_los_procesos]
     downstream: [dashboard:trazabilidad-cargas, dashboard:lineage-cargas]
     columnas:
-      - {nombre: run_id, tipo: VARCHAR, descripcion: "ID único de ejecución", es_clave: true, termino_glosario: "Run ID"}
+      - {nombre: run_id, tipo: VARCHAR, descripcion: "ID único de ejecución; el mismo que en la tabla de cargas, y es lo que une las dos", es_clave: true, termino_glosario: "Run ID"}
+      - {nombre: proceso, tipo: VARCHAR, descripcion: "Componente que evaluó la regla", es_clave: false}
+      - {nombre: capa, tipo: VARCHAR, descripcion: "Capa del medallón de la tabla evaluada", es_clave: false}
       - {nombre: tabla, tipo: VARCHAR, descripcion: "Tabla evaluada", es_clave: true}
       - {nombre: gate, tipo: VARCHAR, descripcion: "Nombre de la regla", es_clave: true, termino_glosario: "Quality Gate (Control de Calidad)"}
+      - {nombre: tipo, tipo: VARCHAR, descripcion: "Clase de comprobación: filas_min, no_nulos, unico, rango, dominio, referencia, sql o fichero", es_clave: false}
+      - {nombre: severidad, tipo: VARCHAR, descripcion: "'bloqueante' detiene la escritura; 'aviso' deja pasar y queda registrado", es_clave: false, termino_glosario: "Quality Gate Bloqueante"}
       - {nombre: resultado, tipo: VARCHAR, descripcion: "'ok' o 'fallo'", es_clave: false}
-      - {nombre: severidad, tipo: VARCHAR, descripcion: "'bloqueante' o 'aviso'", es_clave: false, termino_glosario: "Quality Gate Bloqueante"}
+      - {nombre: valor, tipo: DOUBLE, descripcion: "Lo que midió la regla: filas contadas, nulos encontrados, registros fuera de rango...", es_clave: false}
+      - {nombre: umbral, tipo: VARCHAR, descripcion: "Contra qué se comparó ese valor, en texto legible ('>= 1', '= 0', 'entre 1 y 4')", es_clave: false}
+      - {nombre: detalle, tipo: VARCHAR, descripcion: "Explicación cuando la regla falla o no se puede evaluar; vacío si pasó", es_clave: false}
+      - {nombre: inicio, tipo: TIMESTAMP, descripcion: "Comienzo de la comprobación, en UTC", es_clave: false}
+      - {nombre: fin, tipo: TIMESTAMP, descripcion: "Final de la comprobación, en UTC", es_clave: false}
+      - {nombre: duracion_s, tipo: DOUBLE, descripcion: "Segundos que costó evaluarla; sirve para encontrar las reglas caras", es_clave: false}
+      - {nombre: lanzado_por, tipo: VARCHAR, descripcion: "Quién disparó la carga: 'make', 'airflow:<dag>' o 'cli'", es_clave: false}
+      - {nombre: ejecutor, tipo: VARCHAR, descripcion: "Máquina en la que corrió", es_clave: false}
+      - {nombre: usuario, tipo: VARCHAR, descripcion: "Usuario del sistema que la lanzó", es_clave: false}
