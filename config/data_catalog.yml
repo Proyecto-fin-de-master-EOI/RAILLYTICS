@@ -635,6 +635,139 @@ tablas:
       - {nombre: fecha, tipo: DATE, descripcion: "Fecha del servicio", es_clave: true}
       - {nombre: retraso_minutos, tipo: DOUBLE, descripcion: "Retraso registrado en minutos", es_clave: false}
 
+  # Las seis tablas Silver que NO construye `make 04_silver` con Spark, sino los scripts de Python de
+  # las cargas iniciales. Faltaban en el catálogo: el lago tenía trece tablas Silver y aquí había siete.
+  # Entre ellas estaba `ml_ocupacion_diaria`, que es con la que se entrena el modelo de ocupación.
+  - tabla: festivos
+    nombre: Silver Festivos del Corredor
+    capa: Silver
+    orden_capa: 4
+    dominio: Calendario y Tiempo
+    descripcion: Calendario laboral extraído de la resolución del BOE, con el ámbito del festivo en el nombre. Un festivo solo de Madrid o solo de Cataluña cambia el viaje en un corredor que une las dos ciudades, y por eso el ámbito importa.
+    grano: Un día festivo
+    claves: [fecha]
+    formato: Parquet
+    proceso: raillytics.ingesta.boe_festivos (make festivos)
+    frecuencia: Anual
+    quality_gates: [filas_minimas, claves_sin_nulos, grano_unico]
+    upstream: [fuente:boe_calendario_laboral_2025, fuente:boe_calendario_laboral_2026]
+    downstream: [silver:ml_ocupacion_diaria, gold:dim_fecha]
+    columnas:
+      - {nombre: fecha, tipo: DATE, descripcion: "Día festivo", es_clave: true}
+      - {nombre: nombre, tipo: VARCHAR, descripcion: "Nombre del festivo; entre paréntesis el ámbito, p. ej. «Jueves Santo (Madrid)»", es_clave: false}
+
+  - tabla: meteo
+    nombre: Silver Meteorología de las Cabeceras
+    capa: Silver
+    orden_capa: 4
+    dominio: Calendario y Tiempo
+    descripcion: Meteorología diaria observada en Madrid-Barajas y Barcelona-El Prat, las dos puntas del corredor. Es dato medido de AEMET, no previsión.
+    grano: Un día y una ciudad
+    claves: [fecha, ciudad]
+    formato: Parquet
+    proceso: raillytics.ingesta.aemet_historico (make meteo)
+    frecuencia: Diaria
+    quality_gates: [filas_minimas, claves_sin_nulos, grano_unico, las_dos_cabeceras, temperatura_razonable]
+    upstream: [fuente:aemet_madrid_barajas, fuente:aemet_barcelona_prat]
+    downstream: [silver:ml_ocupacion_diaria, gold:dim_fecha]
+    columnas:
+      - {nombre: fecha, tipo: DATE, descripcion: "Día observado", es_clave: true}
+      - {nombre: ciudad, tipo: VARCHAR, descripcion: "Madrid o Barcelona", es_clave: true}
+      - {nombre: temperatura_media, tipo: DOUBLE, descripcion: "Temperatura media del día en grados centígrados", es_clave: false}
+      - {nombre: precipitacion_mm, tipo: DOUBLE, descripcion: "Precipitación acumulada del día en milímetros", es_clave: false}
+
+  - tabla: turismo_mensual
+    nombre: Silver Turismo Madrid-Barcelona
+    capa: Silver
+    orden_capa: 4
+    dominio: Demanda y Tráfico
+    descripcion: Serie mensual de turistas de Madrid a Barcelona del INE. No es demanda ferroviaria -cuenta todos los medios y solo viajes con pernoctación-, pero su FORMA sirve para repartir el trimestre entre sus meses.
+    grano: Un mes, origen y destino
+    claves: [fecha, origen, destino]
+    formato: Parquet
+    proceso: raillytics.ingesta.ine_turismo (make turismo)
+    frecuencia: Mensual
+    quality_gates: [filas_minimas, claves_sin_nulos, grano_unico, turistas_positivos, siempre_el_primero_del_mes, destino_barcelona_presente, serie_actualizada]
+    upstream: [fuente:ine_turismo_madrid_barcelona]
+    downstream: [gold:fact_turismo_mensual]
+    columnas:
+      - {nombre: fecha, tipo: DATE, descripcion: "Primer día del mes de la observación", es_clave: true}
+      - {nombre: origen, tipo: VARCHAR, descripcion: "Provincia de origen", es_clave: true}
+      - {nombre: destino, tipo: VARCHAR, descripcion: "Provincia de destino", es_clave: true}
+      - {nombre: turistas, tipo: DOUBLE, descripcion: "Turistas del mes", es_clave: false}
+      - {nombre: tipo_dato, tipo: VARCHAR, descripcion: "Marca del INE: definitivo, provisional o avance", es_clave: false}
+
+  - tabla: oferta_diaria
+    nombre: Silver Oferta Diaria del Corredor
+    capa: Silver
+    orden_capa: 4
+    dominio: Oferta y Capacidad
+    descripcion: Trenes que circulan cada día por operador y corredor, contados sobre los GTFS del Punto de Acceso Nacional. Falta Iryo, que no publica horarios, y por eso la ocupación calculada se pasa del 100 % algunos días.
+    grano: Un día, operador y corredor
+    claves: [fecha, operador, corredor]
+    formato: Parquet
+    proceso: raillytics.ingesta.nap_oferta (make nap-oferta)
+    frecuencia: Diaria
+    quality_gates: [filas_minimas, claves_sin_nulos, grano_unico, trenes_no_negativos, trenes_caben_en_el_snapshot, corredor_madrid_barcelona_presente, operadores_conocidos, serie_actualizada]
+    upstream: [fuente:nap_gtfs_renfe, fuente:nap_gtfs_ouigo]
+    downstream: [silver:ml_ocupacion_diaria, gold:fact_oferta_diaria]
+    columnas:
+      - {nombre: fecha, tipo: DATE, descripcion: "Día de circulación", es_clave: true}
+      - {nombre: operador, tipo: VARCHAR, descripcion: "renfe u ouigo", es_clave: true}
+      - {nombre: corredor, tipo: VARCHAR, descripcion: "Corredor; el del proyecto es Madrid-Barcelona", es_clave: true}
+      - {nombre: trenes, tipo: BIGINT, descripcion: "Trenes de alta velocidad del día (AVE, AVE INT, AVLO, TGV)", es_clave: false}
+      - {nombre: trenes_todos, tipo: BIGINT, descripcion: "Todos los trenes sin filtrar por producto, para poder rehacer la cuenta con otro criterio", es_clave: false}
+      - {nombre: snapshot, tipo: VARCHAR, descripcion: "Identificador del GTFS del que sale el conteo", es_clave: false}
+      - {nombre: cobertura_completa, tipo: BOOLEAN, descripcion: "False si falta un operador o si uno llegó truncado; filtrar por aquí evita leer un dato incompleto como un recorte de servicio", es_clave: false}
+
+  - tabla: oferta_franja
+    nombre: Silver Oferta por Franja Horaria
+    capa: Silver
+    orden_capa: 4
+    dominio: Oferta y Capacidad
+    descripcion: La misma oferta diaria desglosada por franja de salida (madrugada, mañana, media mañana, mediodía, tarde y noche). Es lo que permite distinguir hora punta de hora valle.
+    grano: Un día, operador, corredor y franja
+    claves: [fecha, operador, corredor, franja]
+    formato: Parquet
+    proceso: raillytics.ingesta.nap_oferta (make nap-oferta)
+    frecuencia: Diaria
+    quality_gates: []
+    upstream: [fuente:nap_gtfs_renfe, fuente:nap_gtfs_ouigo]
+    downstream: [gold:fact_ocupacion_franja]
+    columnas:
+      - {nombre: fecha, tipo: DATE, descripcion: "Día de circulación", es_clave: true}
+      - {nombre: operador, tipo: VARCHAR, descripcion: "renfe u ouigo", es_clave: true}
+      - {nombre: corredor, tipo: VARCHAR, descripcion: "Corredor", es_clave: true}
+      - {nombre: franja, tipo: VARCHAR, descripcion: "Franja de la hora de salida; «sin hora» si el GTFS no la trae", es_clave: true}
+      - {nombre: trenes, tipo: BIGINT, descripcion: "Trenes que salen en esa franja", es_clave: false}
+      - {nombre: cobertura_completa, tipo: BOOLEAN, descripcion: "Heredada del día: filtrar por aquí evita leer un día incompleto como menos servicio", es_clave: false}
+
+  - tabla: ml_ocupacion_diaria
+    nombre: Silver Tabla de Entrenamiento de Ocupación
+    capa: Silver
+    orden_capa: 4
+    dominio: Predicción e IA
+    descripcion: Una fila por día con el objetivo y sus variables. ES LA TABLA CON LA QUE SE ENTRENA el modelo de ocupación. El objetivo es viajeros.km / plazas.km, no viajeros entre plazas, porque un asiento se vende por tramos y ese otro ratio pasa del 100 % sin que nada esté mal.
+    grano: Un día del corredor
+    claves: [fecha]
+    formato: Parquet
+    proceso: raillytics.ml.dataset (make ml-dataset)
+    frecuencia: Diaria
+    quality_gates: [filas_minimas, claves_sin_nulos, grano_unico, ocupacion_positiva, plausible_coincide_con_el_techo, imposibles_bajo_control]
+    upstream: [silver:oferta_diaria, silver:festivos, silver:meteo, silver:cnmc_trimestral]
+    downstream: [gold:fact_ocupacion_diaria, gold:fact_metricas_modelo]
+    columnas:
+      - {nombre: fecha, tipo: DATE, descripcion: "Día del corredor", es_clave: true}
+      - {nombre: ocupacion, tipo: DOUBLE, descripcion: "Objetivo del modelo: viajeros.km entre plazas.km del día", es_clave: false}
+      - {nombre: plausible, tipo: BOOLEAN, descripcion: "False si la ocupación pasa del 100 %, que es imposible; el entrenamiento filtra por aquí", es_clave: false}
+      - {nombre: dia_semana, tipo: VARCHAR, descripcion: "Día de la semana abreviado", es_clave: false}
+      - {nombre: festivo, tipo: BOOLEAN, descripcion: "Festivo en alguna de las dos cabeceras", es_clave: false}
+      - {nombre: vispera, tipo: BOOLEAN, descripcion: "Víspera de festivo", es_clave: false}
+      - {nombre: puente, tipo: BOOLEAN, descripcion: "Día de puente", es_clave: false}
+      - {nombre: evento, tipo: BOOLEAN, descripcion: "Hay un evento declarado en config/eventos_corredor.csv", es_clave: false}
+      - {nombre: temperatura_media_mad, tipo: DOUBLE, descripcion: "Temperatura media en Madrid ese día", es_clave: false}
+      - {nombre: temperatura_media_bcn, tipo: DOUBLE, descripcion: "Temperatura media en Barcelona ese día", es_clave: false}
+
   # ==============================================================================================
   # CAPA BRONZE (L1 Raw / L2 Parquet)
   # ==============================================================================================
