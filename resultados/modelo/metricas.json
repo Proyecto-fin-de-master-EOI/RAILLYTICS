@@ -1,16 +1,16 @@
 {
   "dias_test": 31,
-  "mape": 0.08035739133570335,
-  "mae_puntos": 6.62791966293828,
-  "r2": -0.10312977483491514,
+  "mape": 0.08074627672364396,
+  "mae_puntos": 6.6530894235275415,
+  "r2": -0.0994605706555789,
   "desde": "2026-05-14",
   "hasta": "2026-06-30",
   "validacion_temporal": {
     "tramos": 5,
-    "mape_medio": 0.10071073642758196,
-    "mape_base_medio": 0.10318938710306351,
+    "mape_medio": 0.1007956794113392,
+    "mape_base_medio": 0.10401645345939854,
     "tramos_en_que_gana": 3,
-    "r2_medio": -0.4361599149871524
+    "r2_medio": -0.442175907109045
   },
   "variables": 26,
   "dias_entrenamiento": 124
