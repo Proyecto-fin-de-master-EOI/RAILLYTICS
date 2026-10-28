@@ -14,6 +14,8 @@
 -- Y añade lo que ninguna de las dos tenía: el ámbito del festivo y la meteo observada de las dos cabeceras.
 -- El ámbito se saca del nombre, porque es donde lo deja la ingesta del BOE: «Jueves Santo (Madrid)» es
 -- festivo en Madrid y laborable en Cataluña, y para un corredor que une las dos ciudades eso cambia el viaje.
+-- El fichero no se llama como su tabla, asi que lo declara para el grafo de linaje:
+-- tabla: dim_fecha
 WITH fechas AS (
     SELECT fecha FROM silver_viajeros_enriquecidos
     UNION

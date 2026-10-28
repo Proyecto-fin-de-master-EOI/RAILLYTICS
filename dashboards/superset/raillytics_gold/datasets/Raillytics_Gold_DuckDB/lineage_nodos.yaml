@@ -93,7 +93,6 @@ sql: |-
       ('pred:prediccion_demanda_ave_mad_bcn', 'Predicción', 5, 'prediccion_demanda_ave_mad_bcn', 'Predicción diaria de demanda del corredor (CSV versionado)', '', true),
       ('gold:dim_estacion', 'Gold', 6, 'dim_estacion', 'Dim_Estacion: catálogo de estaciones con los atributos', 'src/main/resources/gold/dim_estacion.sql', true),
       ('gold:dim_fecha', 'Gold', 6, 'dim_fecha', 'Dim_Fecha: una fila por día presente en Silver (viajeros o puntualidad); fecha_id', 'src/main/resources/gold/dim_fecha.sql', true),
-      ('gold:dim_fecha_corredor', 'Gold', 6, 'dim_fecha_corredor', 'Dim_Fecha, versión del grupo «corredor»: la misma dimensión que dim_fecha.sql pero con dos arreglos que', 'src/main/resources/gold/dim_fecha_corredor.sql', true),
       ('gold:dim_linea', 'Gold', 6, 'dim_linea', 'Dim_Linea: catálogo de líneas (tipo de tren, cabeceras y kilometraje).', 'src/main/resources/gold/dim_linea.sql', true),
       ('gold:dim_operador', 'Gold', 6, 'dim_operador', 'Dim_Operador: catálogo de operadores del corredor (empresa y segmento: alta velocidad o low cost).', 'src/main/resources/gold/dim_operador.sql', true),
       ('gold:fact_cobertura_ingesta', 'Gold', 6, 'fact_cobertura_ingesta', 'KPI de cobertura de la ingesta, calculado del registro de cargas', 'python/raillytics/calidad/cobertura_ingesta.py', true),

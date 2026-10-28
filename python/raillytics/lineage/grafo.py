@@ -142,6 +142,22 @@ def sin_comentarios(sql: str) -> str:
     return re.sub(r"--[^\n]*", "", re.sub(r"/\*.*?\*/", "", sql, flags=re.S))
 
 
+def tabla_que_escribe(sql: str, por_defecto: str) -> str:
+    """La tabla Gold que construye el fichero, que no siempre se llama como él.
+
+    Por convención el SQL se llama como su tabla y no hace falta decir nada. La excepción son las
+    versiones ALTERNATIVAS: `dim_fecha_corredor.sql` escribe `dim_fecha` (GoldBuilder elige una u
+    otra según haya grupo «corredor»; ver SqlAlternativo en GoldBuilder.scala). Sin esto el grafo
+    creaba un nodo por FICHERO y el alternativo salía siempre como «sin ejecutar», porque la
+    trazabilidad registra la carga con el nombre de la TABLA y ese nodo no existía.
+
+    Se declara en el propio SQL con una línea `-- tabla: <nombre>`, para que el fichero diga qué
+    construye sin mantener la correspondencia en un segundo sitio.
+    """
+    encontrado = re.search(r"^--\s*tabla:\s*([a-z][a-z0-9_]*)\s*$", sql, re.I | re.M)
+    return encontrado.group(1) if encontrado else por_defecto
+
+
 def descripcion_de_sql(sql: str) -> str:
     """El primer comentario de línea del fichero, sin el guion: por convención dice qué construye la consulta."""
     for linea in sql.splitlines():
@@ -243,9 +259,10 @@ class _Constructor:
         for fichero in sorted(carpeta.glob("*.sql")) if carpeta.is_dir() else []:
             texto = fichero.read_text(encoding="utf-8")
             ruta = f"{RUTA_GOLD}/{fichero.name}"
-            destino = self.nodo("gold", fichero.stem, descripcion_de_sql(texto), ruta)
+            escribe = tabla_que_escribe(texto, fichero.stem)
+            destino = self.nodo("gold", escribe, descripcion_de_sql(texto), ruta)
             for capa, tabla in sorted(set(re.findall(r"\b(silver|gold)_([a-z][a-z0-9_]*)", sin_comentarios(texto)))):
-                if (capa, tabla) != ("gold", fichero.stem):
+                if (capa, tabla) != ("gold", escribe):
                     self.arista(self.nodo(capa, tabla), destino, GOLD, f"gold/{fichero.name} · Spark batch · GoldBuilder", ruta)
 
     # -- predicción
