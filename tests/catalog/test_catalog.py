@@ -22,7 +22,8 @@ def test_catalogo_carga_todas_las_tablas_con_campos_obligatorios(catalogo):
     for t in catalogo.tablas:
         assert t.tabla and t.nombre and t.capa and t.dominio and t.grano
         assert t.orden_capa >= 0
-        assert t.formato in ("Parquet", "Delta Lake", "Parquet (L2) / CSV (L1)", "Parquet (L2) / JSON (L1)", "Parquet (L2) / ZIP (L1)")
+        assert t.formato in ("Parquet", "Delta Lake", "Parquet (L2) / CSV (L1)", "Parquet (L2) / JSON (L1)",
+                             "Parquet (L2) / XML (L1)", "Parquet (L2) / ZIP (L1)")
 
 
 def test_glosario_carga_terminos_de_negocio_y_tecnicos(catalogo):

@@ -601,7 +601,7 @@ tablas:
     proceso: silver_sample / silver_builder
     frecuencia: Streaming / Batch
     quality_gates: [filas_minimas, claves_sin_nulos, grano_unico, par_con_dos_estaciones, distancia_positiva, viajeros_km_coherente]
-    upstream: [l2:renfe_trip_updates, l2:crtm]
+    upstream: [proceso:silver_sample]
     downstream: [gold:fact_viajeros, gold:dim_estacion, gold:dim_linea]
     columnas:
       - {nombre: fecha, tipo: DATE, descripcion: "Fecha de operación", es_clave: true}
@@ -628,7 +628,7 @@ tablas:
     proceso: silver_sample / silver_builder
     frecuencia: Streaming / Tiempo Real
     quality_gates: [filas_minimas, retraso_valido]
-    upstream: [l2:renfe_trip_updates, l2:renfe_vehicle_positions]
+    upstream: [proceso:silver_sample]
     downstream: [gold:fact_puntualidad]
     columnas:
       - {nombre: servicio_id, tipo: VARCHAR, descripcion: "Identificador del servicio", es_clave: true}
@@ -649,7 +649,7 @@ tablas:
     formato: Parquet (L2) / CSV (L1)
     proceso: bronze_download -> raw_uploader -> parquet_converter
     frecuencia: Trimestral
-    quality_gates: [formato_declarado, min_bytes, min_filas, columnas_obligatorias]
+    quality_gates: [contenido_no_vacio, formato_declarado, tamano_minimo, cabecera_esperada, filas_minimas, cabecera_csv, registros_corruptos]
     upstream: [fuente:cnmc_indicadores]
     downstream: [silver:cnmc_trimestral]
     columnas:
@@ -668,9 +668,9 @@ tablas:
     formato: Parquet (L2) / ZIP (L1)
     proceso: bronze_download -> raw_uploader -> parquet_converter
     frecuencia: Mensual / Bajo demanda
-    quality_gates: [formato_declarado, zip_valido]
+    quality_gates: [contenido_no_vacio, formato_declarado, zip_valido, registros_corruptos]
     upstream: [fuente:crtm]
-    downstream: [silver:viajeros_enriquecidos, gold:dim_linea]
+    downstream: []
     columnas:
       - {nombre: stop_id, tipo: VARCHAR, descripcion: "Identificador de parada", es_clave: true}
       - {nombre: stop_name, tipo: VARCHAR, descripcion: "Nombre de parada", es_clave: false}
@@ -686,12 +686,232 @@ tablas:
     formato: Parquet (L2) / JSON (L1)
     proceso: bronze_download -> raw_uploader -> parquet_converter
     frecuencia: Continuo (Streaming)
-    quality_gates: [formato_declarado, json_valido]
+    quality_gates: [contenido_no_vacio, formato_declarado, registros_corruptos]
     upstream: [fuente:renfe_trip_updates]
-    downstream: [silver:puntualidad_enriquecida]
+    downstream: []
     columnas:
       - {nombre: trip_id, tipo: VARCHAR, descripcion: "Identificador del trayecto", es_clave: true}
       - {nombre: delay, tipo: BIGINT, descripcion: "Demora en segundos", es_clave: false}
+
+  # Las once fuentes restantes que llegan a L2. El grano es la FUENTE (una carpeta en l2/), igual que
+  # en las tres de arriba, y el id es el de la fuente salvo cuando choca con una tabla Silver del
+  # mismo nombre: los cuatro CSV de la CNMC llevan el prefijo `bronze_` para no duplicar clave. `downstream: []` no es un olvido: de L2 solo leen los cinco SQL de Silver
+  # de la CNMC (src/main/resources/silver/). La meteo, los festivos, el turismo y la oferta del NAP
+  # se construyen con scripts de Python que vuelven a la fuente, así que su Parquet de L2 queda como
+  # registro de lo descargado y nadie lo consume.
+  - tabla: aemet_madrid_barajas
+    nombre: Bronze AEMET Madrid-Barajas
+    capa: Bronze L2
+    orden_capa: 3
+    dominio: Ingesta y Fuentes Externas
+    descripcion: Valores climatológicos diarios de la estación 3195 (Madrid-Barajas) servidos por la API OpenData de AEMET. La tabla Silver meteo no sale de aquí - la construye `make meteo`, que vuelve a llamar a la API.
+    grano: Un día observado en la estación
+    claves: [fecha, indicativo]
+    formato: Parquet (L2) / JSON (L1)
+    proceso: bronze_download -> raw_uploader -> parquet_converter
+    frecuencia: Diaria
+    quality_gates: [contenido_no_vacio, formato_declarado, registros_corruptos]
+    upstream: [fuente:aemet_madrid_barajas]
+    downstream: []
+    columnas:
+      - {nombre: fecha, tipo: VARCHAR, descripcion: "Día observado, en texto ISO", es_clave: true}
+      - {nombre: indicativo, tipo: VARCHAR, descripcion: "Código AEMET de la estación (3195)", es_clave: true}
+      - {nombre: tmed, tipo: VARCHAR, descripcion: "Temperatura media del día, con coma decimal", es_clave: false}
+      - {nombre: prec, tipo: VARCHAR, descripcion: "Precipitación en mm; 'Ip' significa inapreciable", es_clave: false}
+
+  - tabla: aemet_barcelona_prat
+    nombre: Bronze AEMET Barcelona-El Prat
+    capa: Bronze L2
+    orden_capa: 3
+    dominio: Ingesta y Fuentes Externas
+    descripcion: Valores climatológicos diarios de la estación 0076 (Barcelona-El Prat) servidos por la API OpenData de AEMET. Es la cabecera este del corredor, la pareja de Madrid-Barajas.
+    grano: Un día observado en la estación
+    claves: [fecha, indicativo]
+    formato: Parquet (L2) / JSON (L1)
+    proceso: bronze_download -> raw_uploader -> parquet_converter
+    frecuencia: Diaria
+    quality_gates: [contenido_no_vacio, formato_declarado, registros_corruptos]
+    upstream: [fuente:aemet_barcelona_prat]
+    downstream: []
+    columnas:
+      - {nombre: fecha, tipo: VARCHAR, descripcion: "Día observado, en texto ISO", es_clave: true}
+      - {nombre: indicativo, tipo: VARCHAR, descripcion: "Código AEMET de la estación (0076)", es_clave: true}
+      - {nombre: tmed, tipo: VARCHAR, descripcion: "Temperatura media del día, con coma decimal", es_clave: false}
+      - {nombre: prec, tipo: VARCHAR, descripcion: "Precipitación en mm; 'Ip' significa inapreciable", es_clave: false}
+
+  - tabla: boe_calendario_laboral_2025
+    nombre: Bronze BOE Calendario Laboral 2025
+    capa: Bronze L2
+    orden_capa: 3
+    dominio: Ingesta y Fuentes Externas
+    descripcion: XML completo de la resolución del BOE que publica los festivos nacionales y por comunidad autónoma de 2025. La tabla Silver festivos la extrae `make festivos` parseando la tabla del XML.
+    grano: Una disposición del BOE (el documento entero)
+    claves: [metadatos]
+    formato: Parquet (L2) / XML (L1)
+    proceso: bronze_download -> raw_uploader -> parquet_converter
+    frecuencia: Anual
+    quality_gates: [contenido_no_vacio, formato_declarado, registros_corruptos]
+    upstream: [fuente:boe_calendario_laboral_2025]
+    downstream: []
+    columnas:
+      - {nombre: metadatos, tipo: STRUCT, descripcion: "Cabecera de la disposición: identificador, fecha, rango, título", es_clave: true}
+      - {nombre: texto, tipo: STRUCT, descripcion: "Cuerpo de la resolución, con la tabla de festivos por comunidad", es_clave: false}
+      - {nombre: analisis, tipo: STRUCT, descripcion: "Materias y referencias a otras disposiciones", es_clave: false}
+
+  - tabla: boe_calendario_laboral_2026
+    nombre: Bronze BOE Calendario Laboral 2026
+    capa: Bronze L2
+    orden_capa: 3
+    dominio: Ingesta y Fuentes Externas
+    descripcion: XML completo de la resolución del BOE que publica los festivos nacionales y por comunidad autónoma de 2026. Se ingieren dos años porque la predicción necesita el calendario del trimestre siguiente.
+    grano: Una disposición del BOE (el documento entero)
+    claves: [metadatos]
+    formato: Parquet (L2) / XML (L1)
+    proceso: bronze_download -> raw_uploader -> parquet_converter
+    frecuencia: Anual
+    quality_gates: [contenido_no_vacio, formato_declarado, registros_corruptos]
+    upstream: [fuente:boe_calendario_laboral_2026]
+    downstream: []
+    columnas:
+      - {nombre: metadatos, tipo: STRUCT, descripcion: "Cabecera de la disposición: identificador, fecha, rango, título", es_clave: true}
+      - {nombre: texto, tipo: STRUCT, descripcion: "Cuerpo de la resolución, con la tabla de festivos por comunidad", es_clave: false}
+      - {nombre: analisis, tipo: STRUCT, descripcion: "Materias y referencias a otras disposiciones", es_clave: false}
+
+  - tabla: bronze_cnmc_precio_trimestral
+    nombre: Bronze CNMC Precio Medio Trimestral
+    capa: Bronze L2
+    orden_capa: 3
+    dominio: Ingesta y Fuentes Externas
+    descripcion: CSV del indicador de precio medio por trayecto y trimestre publicado por la CNMC. Es la base del precio recomendado - el precio real medido, no una estimación.
+    grano: Registro original del CSV fuente
+    claves: [Trimestre, Empresa, Trayecto]
+    formato: Parquet (L2) / CSV (L1)
+    proceso: bronze_download -> raw_uploader -> parquet_converter
+    frecuencia: Trimestral
+    quality_gates: [contenido_no_vacio, formato_declarado, tamano_minimo, cabecera_esperada, filas_minimas, cabecera_csv, registros_corruptos]
+    upstream: [fuente:cnmc_precio_trimestral]
+    downstream: [silver:cnmc_precio_trimestral]
+    columnas:
+      - {nombre: Trimestre, tipo: VARCHAR, descripcion: "Trimestre en texto original (formato 2026T2)", es_clave: true}
+      - {nombre: Empresa, tipo: VARCHAR, descripcion: "Operador: Renfe, Ouigo, Iryo", es_clave: true}
+      - {nombre: Trayecto, tipo: VARCHAR, descripcion: "Par origen-destino tal y como lo nombra la CNMC", es_clave: true}
+      - {nombre: Precio (€), tipo: VARCHAR, descripcion: "Precio medio del trayecto, con coma decimal", es_clave: false}
+
+  - tabla: bronze_cnmc_precio_mensual
+    nombre: Bronze CNMC Precio Medio Mensual
+    capa: Bronze L2
+    orden_capa: 3
+    dominio: Ingesta y Fuentes Externas
+    descripcion: CSV del indicador de precio medio por trayecto y mes publicado por la CNMC. Da el detalle mensual que el trimestral no tiene, y es lo que permite ver el perfil de precio dentro del trimestre.
+    grano: Registro original del CSV fuente
+    claves: [Mes, Empresa, Trayecto]
+    formato: Parquet (L2) / CSV (L1)
+    proceso: bronze_download -> raw_uploader -> parquet_converter
+    frecuencia: Mensual
+    quality_gates: [contenido_no_vacio, formato_declarado, tamano_minimo, cabecera_esperada, filas_minimas, cabecera_csv, registros_corruptos]
+    upstream: [fuente:cnmc_precio_mensual]
+    downstream: [silver:cnmc_precio_mensual]
+    columnas:
+      - {nombre: Mes, tipo: VARCHAR, descripcion: "Mes en texto original (formato 2026-06)", es_clave: true}
+      - {nombre: Empresa, tipo: VARCHAR, descripcion: "Operador: Renfe, Avlo, Ouigo, Iryo", es_clave: true}
+      - {nombre: Trayecto, tipo: VARCHAR, descripcion: "Par origen-destino tal y como lo nombra la CNMC", es_clave: true}
+      - {nombre: Precio (€), tipo: VARCHAR, descripcion: "Precio medio del trayecto, con coma decimal", es_clave: false}
+
+  - tabla: bronze_cnmc_viajeros_corredor
+    nombre: Bronze CNMC Viajeros por Corredor
+    capa: Bronze L2
+    orden_capa: 3
+    dominio: Ingesta y Fuentes Externas
+    descripcion: CSV trimestral de viajeros y plazas ofertadas de larga distancia de alta velocidad, desglosado por corredor y empresa. Es el total del corredor que la DTC reparte entre los días.
+    grano: Registro original del CSV fuente
+    claves: [Trimestre, Corredor, Empresa]
+    formato: Parquet (L2) / CSV (L1)
+    proceso: bronze_download -> raw_uploader -> parquet_converter
+    frecuencia: Trimestral
+    quality_gates: [contenido_no_vacio, formato_declarado, tamano_minimo, cabecera_esperada, filas_minimas, cabecera_csv, registros_corruptos]
+    upstream: [fuente:cnmc_viajeros_corredor]
+    downstream: [silver:cnmc_viajeros_corredor]
+    columnas:
+      - {nombre: Trimestre, tipo: VARCHAR, descripcion: "Trimestre en texto original (formato 2026T2)", es_clave: true}
+      - {nombre: Corredor, tipo: VARCHAR, descripcion: "Corredor de alta velocidad; el nuestro es Madrid-Barcelona", es_clave: true}
+      - {nombre: Empresa, tipo: VARCHAR, descripcion: "Operador que presta el servicio en ese corredor", es_clave: true}
+      - {nombre: Viajeros (Mill.), tipo: VARCHAR, descripcion: "Viajeros del trimestre en millones, con coma decimal", es_clave: false}
+
+  - tabla: bronze_cnmc_viajeros_producto
+    nombre: Bronze CNMC Viajeros por Tipo de Producto
+    capa: Bronze L2
+    orden_capa: 3
+    dominio: Ingesta y Fuentes Externas
+    descripcion: CSV trimestral de viajeros y plazas por tipo de producto (Cercanías, Media Distancia y Larga Distancia) a nivel nacional. Sirve de contexto y de contraste del peso del corredor sobre el total.
+    grano: Registro original del CSV fuente
+    claves: [Trimestre, Tipo de producto]
+    formato: Parquet (L2) / CSV (L1)
+    proceso: bronze_download -> raw_uploader -> parquet_converter
+    frecuencia: Trimestral
+    quality_gates: [contenido_no_vacio, formato_declarado, tamano_minimo, cabecera_esperada, filas_minimas, cabecera_csv, registros_corruptos]
+    upstream: [fuente:cnmc_viajeros_producto]
+    downstream: [silver:cnmc_viajeros_producto]
+    columnas:
+      - {nombre: Trimestre, tipo: VARCHAR, descripcion: "Trimestre en texto original (formato 2026T2)", es_clave: true}
+      - {nombre: Tipo de producto, tipo: VARCHAR, descripcion: "Cercanías, Media Distancia o Larga Distancia", es_clave: true}
+      - {nombre: Viajeros (Mill.), tipo: VARCHAR, descripcion: "Viajeros del trimestre en millones, con coma decimal", es_clave: false}
+
+  - tabla: ine_turismo_madrid_barcelona
+    nombre: Bronze INE Turismo Madrid-Barcelona
+    capa: Bronze L2
+    orden_capa: 3
+    dominio: Ingesta y Fuentes Externas
+    descripcion: Respuesta JSON de la API Tempus3 del INE con la serie mensual de turistas de Madrid a Barcelona (operación TMOV, tabla 53267). La tabla Silver turismo_mensual la construye `make turismo` llamando de nuevo a la API.
+    grano: Una serie del INE, con sus observaciones anidadas
+    claves: [COD]
+    formato: Parquet (L2) / JSON (L1)
+    proceso: bronze_download -> raw_uploader -> parquet_converter
+    frecuencia: Mensual
+    quality_gates: [contenido_no_vacio, formato_declarado, registros_corruptos]
+    upstream: [fuente:ine_turismo_madrid_barcelona]
+    downstream: []
+    columnas:
+      - {nombre: COD, tipo: VARCHAR, descripcion: "Código de la serie en el INE", es_clave: true}
+      - {nombre: Nombre, tipo: VARCHAR, descripcion: "Nombre largo de la serie, con origen, destino y unidad", es_clave: false}
+      - {nombre: Data, tipo: "STRUCT[]", descripcion: "Observaciones mensuales: año, periodo, fecha y valor", es_clave: false}
+
+  - tabla: nap_gtfs_renfe
+    nombre: Bronze NAP GTFS Renfe
+    capa: Bronze L2
+    orden_capa: 3
+    dominio: Ingesta y Fuentes Externas
+    descripcion: GTFS estático de Renfe (Media y Larga Distancia y AVE) descargado del Punto de Acceso Nacional, desglosado en un Parquet por miembro. La oferta de Silver no sale de aquí - `make nap-oferta` lee los ZIP del histórico en disco.
+    grano: Múltiples ficheros desglosados (agency, calendar, calendar_dates, routes, stops, stop_times, trips)
+    claves: [trip_id, route_id, stop_id]
+    formato: Parquet (L2) / ZIP (L1)
+    proceso: bronze_download -> raw_uploader -> parquet_converter
+    frecuencia: Diaria (snapshot del histórico)
+    quality_gates: [contenido_no_vacio, formato_declarado, zip_valido, registros_corruptos]
+    upstream: [fuente:nap_gtfs_renfe]
+    downstream: []
+    columnas:
+      - {nombre: trip_id, tipo: VARCHAR, descripcion: "Identificador de la circulación en trips y stop_times", es_clave: true}
+      - {nombre: route_id, tipo: VARCHAR, descripcion: "Identificador de la línea comercial", es_clave: true}
+      - {nombre: stop_id, tipo: VARCHAR, descripcion: "Identificador de la estación en stops y stop_times", es_clave: true}
+      - {nombre: departure_time, tipo: VARCHAR, descripcion: "Hora de salida de cada parada; de aquí salen las franjas horarias", es_clave: false}
+
+  - tabla: renfe_vehicle_positions
+    nombre: Bronze Renfe GTFS-RT Vehicle Positions
+    capa: Bronze L2
+    orden_capa: 3
+    dominio: Ingesta y Fuentes Externas
+    descripcion: Feed JSON GTFS-RT de Renfe con la posición de los trenes de larga distancia en ese instante. Se ingiere pero todavía no lo consume nadie - es el ejemplo de tiempo real con el que se montó el framework.
+    grano: Una foto de la flota en un instante
+    claves: [header]
+    formato: Parquet (L2) / JSON (L1)
+    proceso: bronze_download -> raw_uploader -> parquet_converter
+    frecuencia: Continuo (Streaming)
+    quality_gates: [contenido_no_vacio, formato_declarado, registros_corruptos]
+    upstream: [fuente:renfe_vehicle_positions]
+    downstream: []
+    columnas:
+      - {nombre: header, tipo: STRUCT, descripcion: "Versión del feed y marca de tiempo de la foto", es_clave: true}
+      - {nombre: entity, tipo: "STRUCT[]", descripcion: "Un elemento por vehículo: viaje, parada actual, estado y coordenadas", es_clave: false}
 
   # ==============================================================================================
   # GOBERNANZA, METADATOS Y AUDITORÍA
