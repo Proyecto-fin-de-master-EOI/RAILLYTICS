@@ -101,6 +101,16 @@ PRODUCTOS_ALTA_VELOCIDAD = {"AVE", "AVE INT", "AVLO", "TGV"}
 # Días a cada lado que se miran para decidir si un 0 es real o un artefacto de cambio de horario.
 VENTANA_CEROS = 3
 
+# Cuánto puede caer un operador respecto al que más circula ese día, en proporción a la mediana de
+# cada uno, antes de dar el día por incompleto. Un tercio deja fuera los feeds truncados (0,10 y
+# 0,23 en la serie) y deja pasar los recortes reales de Navidad y agosto (0,45 y 0,56).
+# Ver _marcar_operador_truncado.
+DESPROPORCION_MAXIMA = 1 / 3
+
+# Y cuanto tiene que haber caido ese operador respecto a SU PROPIA mediana para que cuente como
+# desplome. Sin esta segunda condicion, un dia se marcaba porque OTRO operador habia subido.
+CAIDA_MAXIMA = 0.5
+
 # Ficheros del GTFS sin los que no se puede contar nada.
 GTFS_MINIMO = {"stop_times.txt", "trips.txt", "calendar.txt", "routes.txt"}
 
@@ -358,6 +368,66 @@ def _limpiar_ceros_espurios(registros: list[dict], ventana: int = VENTANA_CEROS)
     return limpios
 
 
+def _marcar_operador_truncado(df: pd.DataFrame, umbral: float = DESPROPORCION_MAXIMA) -> pd.DataFrame:
+    """Marca cobertura_completa=False el día en que UN operador se desploma y el otro no.
+
+    Por qué hace falta. La comprobación de arriba mira que estén TODOS los operadores, no que cada
+    uno traiga un número de trenes creíble. El 2026-02-04 el NAP publicó un GTFS de Renfe truncado:
+    6 trenes en el corredor frente a los 54 del día anterior y los 57 del siguiente. Renfe estaba,
+    así que el día pasó por bueno, y la ocupación de ese día salió del 271 % —demanda normal entre
+    una oferta rota—. El marco de calidad lo cazó aguas abajo (plausible=False, fuera del
+    entrenamiento), pero el dato malo había entrado.
+
+    Cómo se distingue de un día de servicio reducido DE VERDAD, que es lo difícil. Un recorte real
+    —Navidad, domingos de agosto— lo hacen todos los operadores a la vez; un feed truncado afecta a
+    uno solo. Así que no se mira cuánto cae un operador, sino cuánto cae COMPARADO CON EL OTRO:
+
+        ratio(operador) = trenes del día / mediana de ese operador en ese día de la semana
+        el día es sospechoso si   min(ratio) / max(ratio) < umbral
+
+    Medido sobre la serie del proyecto, la separación es limpia y no depende de afinar el umbral:
+
+        2026-02-04  Renfe 0,10 · Ouigo 1,00 -> 0,10   feed truncado
+        2025-06-30  Renfe 0,26 · Ouigo 1,11 -> 0,23   feed truncado
+        2025-12-24  Renfe 0,36 · Ouigo 0,80 -> 0,45   Nochebuena, servicio reducido de verdad
+        2025-08-31  Renfe 0,50 · Ouigo 0,90 -> 0,56   domingo de agosto, idem
+
+    La mediana es por día de la semana porque un domingo tiene de suyo menos trenes que un martes, y
+    se calcula solo sobre los días que ya pasaban la comprobación de operadores, para no contaminarla
+    con días a medias. Con un solo operador no se puede distinguir, así que no se marca nada.
+    """
+    completos = df[df["cobertura_completa"]]
+    if completos.empty or completos["operador"].nunique() < 2:
+        return df
+
+    dia_semana = pd.to_datetime(completos["fecha"]).dt.dayofweek
+    medianas = completos.assign(dia_semana=dia_semana).groupby(
+        ["operador", "corredor", "dia_semana"])["trenes"].median()
+
+    clave = list(zip(df["operador"], df["corredor"], pd.to_datetime(df["fecha"]).dt.dayofweek))
+    mediana = pd.Series([medianas.get(k, float("nan")) for k in clave], index=df.index)
+    ratio = (df["trenes"] / mediana).where(mediana > 0)
+
+    por_dia = ratio.groupby([df["corredor"], df["fecha"]])
+    # Solo con dos o más operadores el día tiene con qué compararse.
+    comparables = por_dia.transform("count") > 1
+    minimo, maximo = por_dia.transform("min"), por_dia.transform("max")
+    # DOS condiciones, y las dos hacen falta. Que un operador se haya desplomado de verdad (la
+    # primera) y que los demás no (la segunda). Sin la primera se marcaba un día porque OTRO
+    # operador había SUBIDO: en agosto de 2025 Ouigo triplicó su oferta Madrid-Málaga y Renfe, que
+    # estaba en su 0,97 de siempre, quedaba marcada como truncada.
+    truncados = ((minimo < CAIDA_MAXIMA) & (minimo / maximo < umbral)).where(comparables, False)
+    if not truncados.any():
+        return df
+
+    dias = sorted({f for f in df.loc[truncados, "fecha"]})
+    logger.warning("%d día(s) con un operador truncado respecto al resto (%s): "
+                   "marcados cobertura_completa=False", len(dias), ", ".join(str(d) for d in dias))
+    df = df.copy()
+    df.loc[truncados, "cobertura_completa"] = False
+    return df
+
+
 def _conteos_a_json(conteos: dict[date, dict[str, dict]] | None) -> object:
     """Las claves de la caché son JSON, y las de `trenes_por_dias` son fechas."""
     if conteos is None:
@@ -448,6 +518,7 @@ def construir(raiz: Path, desde: date, hasta: date,
     if incompletos:
         logger.warning("%d filas en días sin los %d operadores: marcadas cobertura_completa=False",
                        incompletos, esperados)
+    df = _marcar_operador_truncado(df)
     # La cobertura viaja también a las franjas: filtrar por ella es lo que evita leer un día
     # incompleto como un recorte de servicio.
     if not franjas_df.empty:

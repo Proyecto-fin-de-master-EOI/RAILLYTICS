@@ -7,13 +7,15 @@ cambio de horario. Un fallo en cualquiera de los tres da una serie creíble pero
 from __future__ import annotations
 
 import zipfile
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from raillytics.ingesta.nap_oferta import (
     _limpiar_ceros_espurios,
+    _marcar_operador_truncado,
     franja_de,
     coherente,
     construir,
@@ -359,6 +361,54 @@ def test_marca_los_dias_a_los_que_les_falta_un_operador(tmp_path):
     # El 10 lo publican los dos; el 11 solo renfe, porque el calendario de ouigo no llega.
     assert set(mb[mb["fecha"] == date(2026, 3, 10)]["cobertura_completa"]) == {True}
     assert set(mb[mb["fecha"] == date(2026, 3, 11)]["cobertura_completa"]) == {False}
+
+
+# --- un operador presente pero truncado ---
+#
+# Que ESTÉN los dos operadores no basta: el 2026-02-04 el NAP publicó un GTFS de Renfe con 6 trenes
+# en el corredor frente a los 54 de la víspera, el día pasó por completo y la ocupación de ese día
+# salió del 271 %. Lo que distingue eso de un día de servicio reducido de verdad es que el recorte
+# real lo hacen todos los operadores y el feed truncado afecta a uno solo.
+
+def _serie(martes: int, renfe: int, ouigo: int) -> pd.DataFrame:
+    """Diez martes con la oferta de siempre, salvo el que se indique."""
+    filas = []
+    for i in range(10):
+        dia = date(2026, 1, 6) + timedelta(weeks=i)
+        normales = {"renfe": 50, "ouigo": 10}
+        especiales = {"renfe": renfe, "ouigo": ouigo}
+        for operador, trenes in (especiales if i == martes else normales).items():
+            filas.append({"operador": operador, "corredor": "Madrid-Barcelona", "fecha": dia,
+                          "trenes": trenes, "cobertura_completa": True})
+    return pd.DataFrame(filas)
+
+
+def _cobertura_del_martes(df: pd.DataFrame, martes: int) -> set[bool]:
+    dia = date(2026, 1, 6) + timedelta(weeks=martes)
+    return set(_marcar_operador_truncado(df).loc[lambda d: d["fecha"] == dia, "cobertura_completa"])
+
+
+def test_marca_el_dia_en_que_un_operador_se_desploma_y_el_otro_no():
+    # Renfe a la décima parte de lo suyo, Ouigo igual que siempre: el feed de Renfe venía truncado.
+    assert _cobertura_del_martes(_serie(9, renfe=5, ouigo=10), 9) == {False}
+
+
+def test_no_marca_el_dia_en_que_bajan_todos_los_operadores():
+    # Nochebuena, domingos de agosto: menos servicio DE VERDAD, y el dato es bueno.
+    assert _cobertura_del_martes(_serie(9, renfe=20, ouigo=4), 9) == {True}
+
+
+def test_no_marca_un_dia_porque_otro_operador_haya_subido():
+    # En agosto de 2025 Ouigo triplicó su oferta Madrid-Málaga y Renfe, en su nivel de siempre,
+    # quedaba marcada como truncada: la desproporción sola no basta, el que cae tiene que caer.
+    assert _cobertura_del_martes(_serie(9, renfe=50, ouigo=30), 9) == {True}
+
+
+def test_no_marca_nada_cuando_solo_hay_un_operador():
+    # Sin otro con quien compararse no se puede distinguir un recorte de un feed roto.
+    solo_renfe = _serie(9, renfe=5, ouigo=10)
+    solo_renfe = solo_renfe[solo_renfe["operador"] == "renfe"].reset_index(drop=True)
+    assert set(_marcar_operador_truncado(solo_renfe)["cobertura_completa"]) == {True}
 
 
 # --- franja horaria de salida ---
